@@ -84,5 +84,5 @@ export default function PumpWalletConnect({ compact = false, onConnected }: { co
     finally { setBusy(false); }
   };
 
-  return <div className="flex flex-col items-start gap-2"><button type="button" onClick={() => { if (!address) void connect(); }} disabled={busy || !!address} className={`${compact ? "px-4 py-2 text-xs" : "px-6 py-3.5 text-sm"} rounded-full bg-[#d9ff46] font-semibold text-[#101210] transition hover:bg-white disabled:cursor-default disabled:opacity-60`}>{busy ? "Connecting…" : address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Connect wallet"}</button>{error && <p role="alert" className="max-w-xs text-xs text-red-300">{error}</p>}</div>;
+  return <div className="pump-wallet-connect flex flex-col items-start gap-2"><button type="button" onClick={() => { if (!address) void connect(); }} disabled={busy || !!address} className={`${compact ? "px-4 py-2 text-xs" : "px-6 py-3.5 text-sm"} rounded-full bg-[#d9ff46] font-semibold text-[#101210] transition hover:bg-white disabled:cursor-default disabled:opacity-60`}>{busy ? "Connecting…" : address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Connect wallet"}</button>{error && <p role="alert" className="max-w-xs text-xs text-red-300">{error}</p>}</div>;
 }

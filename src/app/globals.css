@@ -99,3 +99,130 @@ html {
     grid-row: 1;
   }
 }
+
+/* Standalone BitBT PUMP terminal shell. Keep the board data and transaction
+   handlers in PumpLiveBoard; these rules only define the Lovable-inspired UI. */
+.pump-terminal__notice {
+  background: #d9ff46;
+  color: #101210;
+  padding: .45rem 1rem;
+  text-align: center;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.pump-terminal__header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, .1);
+  background: rgba(245, 244, 242, .94);
+  padding: .85rem clamp(1rem, 3vw, 2.5rem);
+  backdrop-filter: blur(14px);
+}
+
+.pump-terminal__header .pump-wallet-connect button {
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, .2);
+}
+
+.pump-terminal__main {
+  width: min(1400px, 100%);
+  margin: 0 auto;
+}
+
+.pump-terminal__titlebar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, .1);
+  padding: clamp(1.75rem, 5vw, 4rem) clamp(1rem, 3vw, 2.5rem) 1.5rem;
+}
+
+.pump-terminal__titlebar h1 {
+  margin-top: .55rem;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-weight: 650;
+  letter-spacing: -.065em;
+  line-height: .98;
+}
+
+.pump-terminal__titlebar p:last-child {
+  margin-top: .6rem;
+  color: #777;
+  font-size: .9rem;
+}
+
+.pump-terminal .pump-board {
+  max-width: none;
+  border-top: 0;
+  padding: 1.25rem clamp(1rem, 3vw, 2.5rem) 4rem;
+}
+
+.pump-terminal .pump-board > div:first-child > div:first-child p:first-child {
+  color: #777;
+}
+
+.pump-terminal .pump-board > div:first-child > div:first-child h2 {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  letter-spacing: -.04em;
+}
+
+.pump-terminal .pump-board > div:first-child > div:last-child {
+  display: none;
+}
+
+.pump-terminal .pump-board > div:nth-child(2) {
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, .72);
+  padding: .65rem;
+}
+
+.pump-terminal .pump-board > div:nth-child(4) {
+  margin-top: 1.25rem;
+}
+
+.pump-terminal .pump-board .grid.content-start > button {
+  grid-template-columns: minmax(0, 1.65fr) minmax(85px, .65fr) minmax(95px, .75fr);
+  padding: .9rem 1rem;
+}
+
+.pump-terminal .pump-board .grid.content-start > button > div:first-child::before {
+  background-color: #101210;
+  background-size: 20px 20px;
+}
+
+.pump-terminal .pump-board .grid.lg\:grid-cols-\[1\.1fr_\.9fr\] {
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .pump-terminal__header {
+    align-items: flex-start;
+  }
+
+  .pump-terminal__header .pump-wallet-connect button {
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pump-terminal .pump-board {
+    padding-inline: .75rem;
+  }
+
+  .pump-terminal .pump-board > div:first-child {
+    gap: .25rem;
+  }
+
+  .pump-terminal .pump-board .grid.content-start > button {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
