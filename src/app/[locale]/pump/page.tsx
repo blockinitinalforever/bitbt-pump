@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { useLocale } from "next-intl";
 import Image from "next/image";
 import Link from "next/link";
 import PumpWalletConnect from "@/components/PumpWalletConnect";
 import PumpLiveBoard from "@/components/PumpLiveBoard";
+
+export const metadata: Metadata = {
+  title: "BitBT PUMP — On-chain project terminal",
+  description: "Non-custodial BNB Chain Pump trading with live quotes, charts and transaction receipts.",
+};
 
 export default function PumpPage() {
   const locale = useLocale();
