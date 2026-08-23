@@ -17,6 +17,7 @@ export type PumpToken = {
   chain_id: string;
   quote_token: string;
   status: string;
+  submitted_at?: string;
   progress_percent: number;
   current_price_quote?: string;
   total_raised_quote?: string;

@@ -100,6 +100,99 @@ html {
   }
 }
 
+/* Lovable PumpTerminal shell: the data and actions above remain real BitBT
+   logic; these classes reproduce the terminal's dense board geometry. */
+.pump-terminal-board { padding: 1.1rem clamp(1rem, 3vw, 2.5rem) 4rem; }
+.pump-terminal-board__controls { overflow: hidden; border: 1px solid #deddda; border-radius: 1rem; background: #fff; }
+.pump-terminal-board__tabs { display: flex; gap: .2rem; overflow-x: auto; border-bottom: 1px solid #e8e7e4; padding: .55rem; scrollbar-width: none; }
+.pump-terminal-board__tabs button { flex: 0 0 auto; border: 0; border-radius: 999px; background: transparent; color: #777; padding: .65rem 1rem; font-size: .78rem; }
+.pump-terminal-board__tabs button.active { background: #101210; color: #fff; }
+.pump-terminal-board__search { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .65rem; padding: .65rem; }
+.pump-terminal-board__search input, .pump-terminal-board__search select, .pump-terminal-board__search button { min-width: 0; border: 1px solid #deddda; border-radius: .75rem; background: #fff; padding: .75rem 1rem; color: #444; font-size: .85rem; outline: none; }
+.pump-terminal-board__search input:focus { border-color: #999; }
+.pump-terminal-board__error { margin-top: .75rem; border: 1px solid #fecaca; border-radius: .75rem; background: #fff1f2; padding: .8rem 1rem; color: #b42318; font-size: .8rem; }
+.pump-terminal-board__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .9fr); gap: 1rem; margin-top: 1.2rem; }
+.pump-terminal-board__list-wrap { min-width: 0; overflow: hidden; border: 1px solid #d7d6d3; border-radius: 1.25rem; background: #fff; }
+.pump-terminal-board__columns, .pump-token-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(85px, .7fr) minmax(90px, .75fr) minmax(95px, .8fr); gap: 1rem; align-items: center; }
+.pump-terminal-board__columns { padding: .7rem 1rem; color: #888; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+.pump-token-row { width: 100%; min-height: 82px; border: 0; border-top: 1px solid #e5e4e1; background: #fff; padding: .8rem 1rem; text-align: left; transition: background .15s, box-shadow .15s; }
+.pump-token-row:hover, .pump-token-row.selected { background: #f3f2ef; box-shadow: inset 3px 0 #d9ff46; }
+.pump-token-row__identity { display: flex; min-width: 0; align-items: center; gap: .8rem; }
+.pump-token-row__avatar { display: grid; width: 2.2rem; height: 2.2rem; flex: 0 0 auto; place-items: center; border: 1px solid rgba(217,255,70,.55); border-radius: .65rem; background: #101210 url('/icon.svg') center / 1.35rem no-repeat; color: transparent; }
+.pump-token-row__identity > span:last-child { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: .4rem; }
+.pump-token-row__identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; font-weight: 650; }
+.pump-token-row__identity small { grid-column: 1 / -1; margin-top: .2rem; color: #888; font-size: .68rem; }
+.pump-token-row__identity em { border: 1px solid #dddcd8; border-radius: .3rem; padding: .12rem .3rem; color: #888; font-size: .62rem; font-style: normal; }
+.pump-token-row__progress { display: flex; align-items: center; gap: .45rem; color: #555; font-size: .72rem; }
+.pump-token-row__progress i { display: block; width: 4.5rem; height: .38rem; overflow: hidden; border-radius: 99px; background: #e6e5e2; }
+.pump-token-row__progress b { display: block; height: 100%; border-radius: inherit; background: #d9ff46; }
+.pump-token-row__metric { overflow: hidden; color: #444; font-size: .75rem; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.pump-terminal-board__empty { padding: 3rem 1rem; color: #888; font-size: .8rem; text-align: center; }
+.pump-terminal-board__pagination { display: flex; justify-content: space-between; padding: .75rem 1rem; color: #888; font-size: .72rem; }
+.pump-terminal-board__pagination span:last-child { display: flex; align-items: center; gap: .5rem; }
+.pump-terminal-board__pagination button { border: 1px solid #dddcd8; border-radius: .4rem; background: #fff; padding: .15rem .5rem; }
+.pump-terminal-board__pagination button:disabled { opacity: .35; }
+.pump-terminal-detail { min-width: 0; }
+.pump-terminal-detail__empty, .pump-terminal-detail__chart { border-radius: 1.25rem; background: #101210; color: #fff; }
+.pump-terminal-detail__empty { min-height: 14rem; padding: 2rem; color: rgba(255,255,255,.45); font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; }
+.pump-terminal-detail__chart { padding: 1.35rem; }
+.pump-terminal-detail__heading { display: flex; justify-content: space-between; gap: 1rem; }
+.pump-terminal-detail__heading span, .pump-terminal-detail__heading small { color: rgba(255,255,255,.5); font-size: .7rem; }
+.pump-terminal-detail__heading h2 { margin-top: .35rem; font-size: 1.3rem; }
+.pump-terminal-detail__heading > strong { color: #d9ff46; font-size: 1.1rem; white-space: nowrap; }
+.pump-chart-periods { display: flex; justify-content: flex-end; gap: .25rem; margin-top: .5rem; }
+.pump-chart-periods button { border: 0; border-radius: .3rem; background: rgba(255,255,255,.1); color: rgba(255,255,255,.6); padding: .25rem .45rem; font-size: .65rem; }
+.pump-chart-periods button.active { background: #d9ff46; color: #101210; }
+.pump-terminal-detail__chart svg { display: block; width: 100%; height: 12rem; margin-top: .5rem; }
+.pump-terminal-detail__nochart { height: 12rem; padding-top: 5rem; color: rgba(255,255,255,.4); font-size: .75rem; text-align: center; }
+.pump-terminal-detail__chart dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .5rem 0 0; border-top: 1px solid rgba(255,255,255,.12); padding-top: .8rem; }
+.pump-terminal-detail__chart dt { color: rgba(255,255,255,.5); font-size: .68rem; }
+.pump-terminal-detail__chart dd { margin: .2rem 0 0; font-size: .78rem; }
+.pump-terminal-trade, .pump-terminal-trades { margin-top: 1rem; border: 1px solid #deddda; border-radius: 1.25rem; background: #fff; padding: 1rem; color: #222; }
+.pump-terminal-trade__switch { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; border-radius: .75rem; background: #e9e8e5; padding: .25rem; }
+.pump-terminal-trade__switch button { border: 0; border-radius: .55rem; background: transparent; padding: .7rem; color: #777; font-weight: 650; }
+.pump-terminal-trade__switch button.active { background: #d9ff46; color: #101210; }
+.pump-terminal-trade > label { position: relative; display: block; margin-top: .9rem; color: #888; font-size: .7rem; text-transform: uppercase; }
+.pump-terminal-trade > label input { width: 100%; margin-top: .35rem; border: 1px solid #dddcd8; border-radius: .75rem; padding: .9rem 4rem .9rem .9rem; font-size: 1rem; outline: none; }
+.pump-terminal-trade > label > span { position: absolute; right: .85rem; bottom: .9rem; color: #888; font-size: .7rem; }
+.pump-terminal-trade__quick { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .6rem; }
+.pump-terminal-trade__quick button { border: 1px solid #dddcd8; border-radius: 999px; background: #fff; padding: .35rem .6rem; color: #666; font-size: .7rem; }
+.pump-terminal-trade__quick button:last-child { border-color: #b9d638; color: #728500; }
+.pump-terminal-trade__settings { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-top: .75rem; }
+.pump-terminal-trade__settings label { color: #888; font-size: .68rem; }
+.pump-terminal-trade__settings select { display: block; width: 100%; margin-top: .25rem; border: 1px solid #dddcd8; border-radius: .5rem; background: #fff; padding: .45rem; font-size: .72rem; }
+.pump-terminal-trade__quote { min-height: 1.2rem; margin-top: .75rem; color: #728500; font-size: .75rem; }
+.pump-terminal-trade__balances { display: flex; justify-content: space-between; gap: .5rem; margin-top: .4rem; color: #888; font-size: .68rem; }
+.pump-terminal-trade > button { width: 100%; margin-top: .75rem; border: 0; border-radius: .7rem; background: #101210; padding: .8rem; color: #fff; font-size: .8rem; font-weight: 650; }
+.pump-terminal-trade > button:disabled { cursor: wait; opacity: .45; }
+.pump-terminal-trade > p { margin-top: .6rem; color: #888; font-size: .7rem; }
+.pump-terminal-trade > p a { color: #728500; }
+.pump-terminal-trades h3 { display: flex; justify-content: space-between; border-bottom: 1px solid #e8e7e4; padding-bottom: .65rem; font-size: .8rem; }
+.pump-terminal-trades h3 button { border: 0; background: transparent; color: #888; font-size: .7rem; }
+.pump-terminal-trades > p { padding-top: .8rem; color: #888; font-size: .72rem; }
+.pump-terminal-trades > div { display: grid; grid-template-columns: auto 1fr auto; gap: .55rem; align-items: center; border-bottom: 1px solid #eee; padding: .55rem 0; font-size: .72rem; }
+.pump-terminal-trades > div:last-child { border-bottom: 0; }
+.pump-terminal-trades .buy { color: #789000; } .pump-terminal-trades .sell { color: #c45b5b; }
+.pump-terminal-trades small { color: #888; font-size: .65rem; }
+
+@media (max-width: 800px) {
+  .pump-terminal-board__grid { grid-template-columns: 1fr; }
+  .pump-terminal-detail { order: -1; }
+}
+@media (max-width: 600px) {
+  .pump-terminal-board__search { grid-template-columns: minmax(0, 1fr) auto; }
+  .pump-terminal-board__search select { grid-column: 1; }
+  .pump-terminal-board__search button { grid-column: 2; grid-row: 2; }
+  .pump-terminal-board__columns { display: none; }
+  .pump-token-row { grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
+  .pump-token-row__progress { justify-self: end; }
+  .pump-token-row__metric { display: none; }
+  .pump-token-row__identity { align-items: flex-start; }
+  .pump-token-row__identity small { max-width: 12rem; }
+  .pump-terminal-detail__chart svg, .pump-terminal-detail__nochart { height: 10rem; }
+  .pump-terminal-detail__nochart { padding-top: 4rem; }
+}
+
 /* Standalone BitBT PUMP terminal shell. Keep the board data and transaction
    handlers in PumpLiveBoard; these rules only define the Lovable-inspired UI. */
 .pump-terminal__notice {
