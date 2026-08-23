@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="BitBT administration">
+    <title>BitBT Admin</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="BitBT Admin home">
+          <span class="brand-mark" aria-hidden="true">B</span>
+          <span>BitBT <strong>Admin</strong></span>
+        </a>
+        <div id="account-actions" class="account-actions" hidden>
+          <span id="session-username" class="username"></span>
+          <button id="logout-button" class="button button-quiet" type="button">Log out</button>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section id="boot-screen" class="center-panel" aria-live="polite">
+          <div class="spinner" aria-hidden="true"></div>
+          <p>Checking your session…</p>
+        </section>
+
+        <section id="login-screen" class="center-panel" hidden>
+          <div class="login-card">
+            <p class="eyebrow">Secure access</p>
+            <h1>Welcome back</h1>
+            <p class="muted">Sign in to manage the BitBT team and review contact submissions.</p>
+            <form id="login-form">
+              <label for="username">Username</label>
+              <input id="username" name="username" type="text" autocomplete="username" maxlength="64" required>
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+              <p id="login-error" class="form-error" role="alert" hidden></p>
+              <button id="login-button" class="button button-primary button-full" type="submit">Sign in</button>
+            </form>
+          </div>
+        </section>
+
+        <section id="admin-screen" class="admin-layout" hidden>
+          <nav class="section-nav" aria-label="Administration">
+            <button class="nav-item is-active" type="button" data-view="team" aria-current="page">Team</button>
+            <button class="nav-item" type="button" data-view="verification">Official Verification</button>
+            <button class="nav-item" type="button" data-view="contacts">Contacts</button>
+          </nav>
+
+          <div class="workspace">
+            <div id="global-message" class="notice" role="status" hidden></div>
+
+            <section id="team-view" aria-labelledby="team-heading">
+              <div class="page-heading">
+                <div>
+                  <p class="eyebrow">People</p>
+                  <h1 id="team-heading">Team members</h1>
+                  <p class="muted">Manage bilingual roles, responsibilities, visibility, and display order.</p>
+                </div>
+                <button id="add-member-button" class="button button-primary" type="button">Add member</button>
+              </div>
+              <div id="team-loading" class="loading-state" aria-live="polite">Loading team…</div>
+              <div id="team-list" class="team-list" aria-live="polite"></div>
+            </section>
+
+            <section id="contacts-view" aria-labelledby="contacts-heading" hidden>
+              <div class="page-heading">
+                <div>
+                  <p class="eyebrow">Inbox</p>
+                  <h1 id="contacts-heading">Contact submissions</h1>
+                  <p id="contacts-summary" class="muted">Read-only messages received from the public site.</p>
+                </div>
+              </div>
+              <div id="contacts-loading" class="loading-state" aria-live="polite">Loading submissions…</div>
+              <div id="contacts-list" class="contacts-list" aria-live="polite"></div>
+              <nav id="pagination" class="pagination" aria-label="Contact submissions pages" hidden>
+                <button id="previous-page" class="button button-secondary" type="button">Previous</button>
+                <span id="page-status" aria-live="polite"></span>
+                <button id="next-page" class="button button-secondary" type="button">Next</button>
+              </nav>
+            </section>
+
+            <section id="verification-view" aria-labelledby="verification-heading" hidden>
+              <div class="page-heading">
+                <div>
+                  <p class="eyebrow">Trust center</p>
+                  <h1 id="verification-heading">Official identities</h1>
+                  <p class="muted">Manage the websites, accounts, email addresses, and phone numbers visitors can verify.</p>
+                </div>
+                <button id="add-identity-button" class="button button-primary" type="button">Add identity</button>
+              </div>
+              <div id="verification-loading" class="loading-state" aria-live="polite">Loading identities…</div>
+              <div id="identity-list" class="team-list" aria-live="polite"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="member-dialog" aria-labelledby="member-dialog-title">
+      <form id="member-form" class="member-form">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Team member</p>
+            <h2 id="member-dialog-title">Add member</h2>
+          </div>
+          <button id="close-dialog-button" class="icon-button" type="button" aria-label="Close">×</button>
+        </div>
+        <input id="member-id" type="hidden">
+        <div class="form-grid">
+          <div class="field field-wide">
+            <label for="member-name">Name</label>
+            <input id="member-name" type="text" maxlength="100" required>
+          </div>
+          <div class="field">
+            <label for="member-role-en">Role (English)</label>
+            <input id="member-role-en" type="text" maxlength="200" required>
+          </div>
+          <div class="field">
+            <label for="member-role-zh">Role (Chinese)</label>
+            <input id="member-role-zh" type="text" maxlength="200" required>
+          </div>
+          <div class="field">
+            <label for="member-tags-en">Tags (English)</label>
+            <input id="member-tags-en" type="text" placeholder="Investment, Strategy">
+            <span class="field-help">Separate tags with commas.</span>
+          </div>
+          <div class="field">
+            <label for="member-tags-zh">Tags (Chinese)</label>
+            <input id="member-tags-zh" type="text" placeholder="投资, 战略">
+            <span class="field-help">Separate tags with commas.</span>
+          </div>
+          <div class="field">
+            <label for="member-sort-order">Sort order</label>
+            <input id="member-sort-order" type="number" min="0" step="1">
+          </div>
+          <div class="field checkbox-field">
+            <input id="member-active" type="checkbox" checked>
+            <label for="member-active">Active on public site</label>
+          </div>
+        </div>
+        <p id="member-form-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancel-member-button" class="button button-secondary" type="button">Cancel</button>
+          <button id="save-member-button" class="button button-primary" type="submit">Save member</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="identity-dialog" aria-labelledby="identity-dialog-title">
+      <form id="identity-form" class="member-form">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Official verification</p>
+            <h2 id="identity-dialog-title">Add identity</h2>
+          </div>
+          <button id="close-identity-dialog-button" class="icon-button" type="button" aria-label="Close">×</button>
+        </div>
+        <input id="identity-id" type="hidden">
+        <div class="form-grid">
+          <div class="field">
+            <label for="identity-channel-type">Channel type</label>
+            <select id="identity-channel-type" required>
+              <option value="website">Website</option>
+              <option value="telegram">Telegram</option>
+              <option value="email">Email</option>
+              <option value="phone">Phone</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="x">X / Twitter</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="identity-value">Official identity</label>
+            <input id="identity-value" type="text" maxlength="320" placeholder="@account or name@example.com" required>
+          </div>
+          <div class="field checkbox-field">
+            <input id="identity-active" type="checkbox" checked>
+            <label for="identity-active">Available for public verification</label>
+          </div>
+        </div>
+        <p class="field-help">Links and account handles are normalized automatically. Telegram usernames must be 5–32 characters; X usernames must be at most 15. Duplicate identities are rejected.</p>
+        <p id="identity-form-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancel-identity-button" class="button button-secondary" type="button">Cancel</button>
+          <button id="save-identity-button" class="button button-primary" type="submit">Save identity</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="delete-identity-dialog" aria-labelledby="delete-identity-dialog-title">
+      <div class="confirm-dialog">
+        <p class="eyebrow">Confirm deletion</p>
+        <h2 id="delete-identity-dialog-title">Delete official identity?</h2>
+        <p id="delete-identity-dialog-copy" class="muted"></p>
+        <div class="dialog-actions">
+          <button id="cancel-delete-identity-button" class="button button-secondary" type="button">Cancel</button>
+          <button id="confirm-delete-identity-button" class="button button-danger" type="button">Delete</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="delete-dialog" aria-labelledby="delete-dialog-title">
+      <div class="confirm-dialog">
+        <p class="eyebrow">Confirm deletion</p>
+        <h2 id="delete-dialog-title">Delete team member?</h2>
+        <p id="delete-dialog-copy" class="muted"></p>
+        <div class="dialog-actions">
+          <button id="cancel-delete-button" class="button button-secondary" type="button">Cancel</button>
+          <button id="confirm-delete-button" class="button button-danger" type="button">Delete</button>
+        </div>
+      </div>
+    </dialog>
+  </body>
+</html>

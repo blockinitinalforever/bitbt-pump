@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f4f2;
+  --foreground: #1a1a1a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Marquee animation */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+
+/* Pump board: dense market rows inspired by modern launchpad terminals. */
+.pump-board .grid.content-start {
+  grid-template-columns: 1fr;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, .1);
+  border-radius: 1.25rem;
+  background: rgba(0, 0, 0, .08);
+}
+
+.pump-board .grid.content-start > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(90px, .7fr) minmax(90px, .7fr);
+  align-items: center;
+  gap: 1rem;
+  min-height: 78px;
+  border: 0;
+  border-radius: 0;
+  background: rgba(255, 255, 255, .88);
+}
+
+.pump-board .grid.content-start > button:hover,
+.pump-board .grid.content-start > button.border-\[\#1a1a1a\] {
+  background: #fff;
+  box-shadow: inset 3px 0 #d9ff46;
+}
+
+.pump-board .grid.content-start > button > div:first-child {
+  min-width: 0;
+}
+
+.pump-board .grid.content-start > button > div:first-child::before {
+  content: "";
+  float: left;
+  width: 34px;
+  height: 34px;
+  margin: 0 12px 0 0;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 255, 70, .35);
+  background: #101210 url("/icon.svg") center / 19px 19px no-repeat;
+  box-shadow: 0 3px 10px rgba(16, 18, 16, .12);
+}
+
+.pump-board .grid.content-start > button > p {
+  margin: 0;
+  color: #6b6b6b;
+}
+
+.pump-board .grid.content-start > button > div:last-child {
+  display: contents;
+}
+
+@media (max-width: 640px) {
+  .pump-board .grid.content-start > button {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .5rem;
+    min-height: 70px;
+    padding: 1rem;
+  }
+  .pump-board .grid.content-start > button > p {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .pump-board .grid.content-start > button > div:last-child {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}

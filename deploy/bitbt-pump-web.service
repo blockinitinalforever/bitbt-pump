@@ -1,0 +1,19 @@
+[Unit]
+Description=BitBT Pump Web (Next.js)
+After=network.target bitbt-api.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/bitbt-pump-web/current
+ExecStart=/usr/bin/node /opt/bitbt-pump-web/current/server.js
+ExecStartPre=/usr/bin/test -f /opt/bitbt-pump-web/current/server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3003
+Environment=HOSTNAME=127.0.0.1
+Environment=BITBT_PUMP_API_URL=https://appbackend.bitbt.com
+Environment=NEXT_PUBLIC_PUMP_SIWE_DOMAIN=bitbt.fun
+
+[Install]
+WantedBy=multi-user.target
