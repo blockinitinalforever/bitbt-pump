@@ -16,6 +16,14 @@ type QuoteBinding = { tokenAddress: string; side: Side; amount: string; curveAdd
 function amountFromApi(value?: string): bigint { if (!value) return 0n; return /^\d+$/.test(value) ? BigInt(value) : parseUnits(value); }
 function shortened(value: string): string { return `${value.slice(0, 6)}…${value.slice(-4)}`; }
 function errorMessage(cause: unknown): string { return cause instanceof Error ? cause.message : String(cause); }
+function displayMetric(value?: string): string {
+  if (!value) return "—";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  if (number === 0) return "0";
+  if (Math.abs(number) < 0.000001) return number.toExponential(4);
+  return number.toLocaleString("en-US", { maximumFractionDigits: 8 });
+}
 function tabForToken(token: PumpToken): Exclude<ListTab, "all"> {
   const status = token.status.toLowerCase();
   if (status === "migrated" || (token.progress_percent ?? 0) >= 100) return "migrated";
@@ -181,6 +189,10 @@ export default function PumpLiveBoard({ zh }: { zh: boolean }) {
   const pageCount = Math.max(1, Math.ceil(filteredTokens.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const visibleTokens = filteredTokens.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => {
+    if (selected || deepLinkToken || loading || visibleTokens.length === 0) return;
+    queueMicrotask(() => { void selectToken(visibleTokens[0]); });
+  }, [deepLinkToken, loading, selected, selectToken, visibleTokens]);
   const quickAmounts = useMemo(() => getPumpQuickAmounts(side, detail?.quote_token), [detail?.quote_token, side]);
   const setMaxAmount = () => {
     if (!detail) return;
@@ -271,8 +283,8 @@ export default function PumpLiveBoard({ zh }: { zh: boolean }) {
     const minutes = Math.max(0, Math.floor((now - Date.parse(value)) / 60000));
     return minutes < 60 ? `${minutes}m` : minutes < 1440 ? `${Math.floor(minutes / 60)}h` : `${Math.floor(minutes / 1440)}d`;
   };
-  const priceOf = (token: PumpToken) => token.current_price_quote || token.current_price_bnb || "—";
-  const raisedOf = (token: PumpToken) => token.total_raised_quote || token.total_raised_bnb || "—";
+  const priceOf = (token: PumpToken) => displayMetric(token.current_price_quote || token.current_price_bnb);
+  const raisedOf = (token: PumpToken) => displayMetric(token.total_raised_quote || token.total_raised_bnb);
 
   return <section className="pump-terminal-board">
     <div className="hidden"><PumpWalletConnect compact onConnected={setAddress} /></div>
