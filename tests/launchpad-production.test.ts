@@ -9,13 +9,16 @@ const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 
-const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>) => {
+type BootOptions = { account?: string; chainId?: string | number };
+
+const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
   const storage = new Map<string, string>();
   const providerCalls: string[] = [];
   const providerEvents: Record<string, (value: unknown) => void> = {};
   const chartData: unknown[][] = [];
-  const ethereum = { request: async ({ method }: { method: string }) => { providerCalls.push(method); if (method === "eth_accounts") return []; if (method === "eth_chainId") return "0x38"; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
+  const account = options.account || "";
+  const ethereum = { request: async ({ method }: { method: string }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_sendTransaction") return "0xlaunch"; if (method === "eth_getTransactionReceipt") return { status: "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
   const context = { window, document: window.document, fetch: fetchImpl, ethereum, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history: { replaceState: () => undefined }, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   Object.assign(window, context, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), timeScale: () => ({ fitContent: () => undefined }) }) } });
   vm.runInNewContext(bridge, context);
@@ -95,8 +98,57 @@ test("zero, unsafe, and lower-than-policy minOut are rejected", async () => {
   }
 });
 
+test("launch signing binds every prepare field and single-flights the wallet send", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const factory = "0x2222222222222222222222222222222222222222";
+  const recipient = "0x3333333333333333333333333333333333333333";
+  const predicted = "0x4444444444444444444444444444444444444444";
+  const curve = "0x5555555555555555555555555555555555555555";
+  const fee = { fee_wei: "5000000000000000", receive_address: recipient, factory_address: factory, chain_id: "bsc" };
+  const prepared = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: "0x0000000000000000000000000000000000000000", method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" };
+  const run = async (mutate?: (value: typeof prepared) => typeof prepared) => {
+    let sendCount = 0;
+    const response = async (input: string) => {
+      const url = String(input);
+      if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+      if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { domain: "bitbt.fun", nonce: "n1" } }) };
+      if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account } }) };
+      if (url.includes("v1/token/launch-fee")) return { ok: true, json: async () => ({ data: fee }) };
+      if (url.includes("v1/token/prepare-launch")) return { ok: true, json: async () => ({ data: mutate ? mutate(prepared) : prepared }) };
+      if (url.includes("v1/token/launch")) return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) };
+      throw new Error(`unmocked ${url}`);
+    };
+    const { window, providerCalls } = await boot(response, { account });
+    const name = window.document.querySelector("#token-name") as HTMLInputElement;
+    const symbol = window.document.querySelector("#token-symbol") as HTMLInputElement;
+    name.value = "Real Token";
+    symbol.value = "REAL";
+    window.document.querySelector("[data-open='create-review']")?.dispatchEvent(new window.Event("click", { bubbles: true }));
+    const submit = window.document.querySelector("[data-panel='create-review'] .primary") as HTMLButtonElement;
+    submit.dispatchEvent(new window.Event("click", { bubbles: true }));
+    submit.dispatchEvent(new window.Event("click", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    sendCount = providerCalls.filter((method) => method === "eth_sendTransaction").length;
+    return { sendCount, providerCalls };
+  };
+  assert.equal((await run()).sendCount, 1);
+  const altered = [
+    (value: typeof prepared) => ({ ...value, chain_id: "1" }),
+    (value: typeof prepared) => ({ ...value, fee_recipient: factory }),
+    (value: typeof prepared) => ({ ...value, factory_address: recipient }),
+    (value: typeof prepared) => ({ ...value, quote_token_address: recipient }),
+    (value: typeof prepared) => ({ ...value, curve_address: "0x0000000000000000000000000000000000000000" }),
+    (value: typeof prepared) => ({ ...value, predicted_token_address: "0x0000000000000000000000000000000000000000" }),
+    (value: typeof prepared) => ({ ...value, migration_threshold_wei: "0" }),
+    (value: typeof prepared) => ({ ...value, method: "wrong" }),
+    (value: typeof prepared) => ({ ...value, salt: "0x00" }),
+    (value: typeof prepared) => ({ ...value, launch: { ...value.launch, creator_address: recipient } }),
+  ];
+  for (const [index, mutation] of altered.entries()) assert.equal((await run(mutation)).sendCount, 0, `altered launch field ${index} was signed`);
+});
+
 test("bridge contains provider-state and quote binding guards", () => {
-  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
+  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "assertLaunchBinding", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
   assert.equal(bridge.includes("state.quote = response"), false);
   assert.equal(bridge.includes("Math.sin"), false);
 });
