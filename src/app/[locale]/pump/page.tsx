@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { useLocale } from "next-intl";
-import PumpLiveBoard from "@/components/PumpLiveBoard";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "BitBT PUMP — On-chain project terminal",
@@ -8,8 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function PumpPage() {
-  const locale = useLocale();
-  const zh = locale === "zh";
-
-  return <PumpLiveBoard zh={zh} />;
+  redirect("/launchpad/bitbt-wallet-ui.html");
 }

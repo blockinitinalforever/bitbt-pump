@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Arbitrum placeholder">
+  <rect width="128" height="128" rx="40" fill="#213147"/>
+  <path fill="#fff" d="m64 19 39 22v46l-39 22-39-22V41l39-22z"/><path fill="#2D68F6" d="M41 86 59 39h12L53 86H41zm24 0 18-47h8L73 86h-8z"/><path fill="#28A0F0" d="m56 86 18-47h8L64 86h-8z"/>
+</svg>

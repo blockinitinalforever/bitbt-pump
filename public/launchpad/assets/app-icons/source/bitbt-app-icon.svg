@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-label="BitBT app icon master">
+  <rect width="1000" height="1000" rx="220" fill="#fff"/>
+  <path fill="#000" d="M260 140h145v136H260z"/>
+  <path fill="#000" d="M405 276h131c109 0 179 54 179 142 0 72-43 119-113 134H405v-37h94c42 0 69-26 69-64 0-39-28-63-71-63h-92V276z"/>
+  <path fill="#000" d="M260 388h145v164h197c84 0 136 61 136 149 0 93-70 157-190 157H260V388zm145 218v138h98c50 0 81-26 81-67 0-43-29-71-71-71H405z"/>
+</svg>
