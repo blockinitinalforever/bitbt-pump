@@ -23,6 +23,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "eslint-formatter-compact": "^9.0.1",
+    "linkedom": "^0.18.13",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
