@@ -68,6 +68,7 @@ export type PumpTrade = {
 export const pumpApi = {
   tokens: () => request<PumpToken[]>("v1/pump/tokens"),
   detail: (address: string) => request<PumpDetail>(`v1/pump/detail?address=${encodeURIComponent(address)}`),
+  details: () => request<PumpDetail[]>("v1/pump/details"),
   buyQuote: (address: string, amount: string) => request<PumpQuote>(`v1/pump/buy-quote?token_address=${encodeURIComponent(address)}&quote_amount=${encodeURIComponent(amount)}`),
   sellQuote: (address: string, amount: string) => request<PumpQuote>(`v1/pump/sell-quote?token_address=${encodeURIComponent(address)}&token_amount=${encodeURIComponent(amount)}`),
   trades: (address: string) => request<PumpTrade[]>(`v1/pump/trades?token_address=${encodeURIComponent(address)}`),

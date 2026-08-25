@@ -9,6 +9,7 @@ const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
+const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 
 type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean };
 
@@ -236,4 +237,12 @@ test("all launch entry points are wallet-gated until SIWE connection succeeds", 
   assert.doesNotMatch(html, /BitBT LAUNCH/);
   assert.equal((html.match(/class="connect-global"/g) || []).length, 1);
   assert.doesNotMatch(html, /class="connect"/);
+});
+
+test("Pump startup uses the batch details endpoint instead of an N+1 detail request", () => {
+  assert.match(bridge, /v1\/pump\/details/);
+  assert.match(bridge, /loadAllDetails/);
+  assert.match(bridge, /state\.details\[address\]/);
+  assert.match(bridge, /v1\/pump\/trades\?token_address/);
+  assert.match(proxy, /v1\/pump\/details/);
 });

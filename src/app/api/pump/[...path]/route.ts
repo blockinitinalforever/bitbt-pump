@@ -6,6 +6,7 @@ const ALLOWED = new Set([
   "v1/auth/siwe/verify",
   "v1/pump/tokens",
   "v1/pump/detail",
+  "v1/pump/details",
   "v1/pump/buy-quote",
   "v1/pump/sell-quote",
   "v1/pump/trades",
