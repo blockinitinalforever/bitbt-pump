@@ -229,3 +229,9 @@ test("live tokens use API logo URLs and the launch form uploads Logo to S3 befor
   assert.match(bridge, /dataset\.launchLogoUrl/);
   assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net data:/);
 });
+
+test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {
+  for (const marker of ["setLaunchAvailability", "data-open=\"create-mode\"", "data-nav=\"create-mode\"", "data-launch-mode", "wallet-gated", "请先连接并验证钱包"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(html, /BitBT Ventures — AI &amp; Web3 Institutional Investment Venture Studio/);
+  assert.doesNotMatch(html, /BitBT LAUNCH/);
+});
