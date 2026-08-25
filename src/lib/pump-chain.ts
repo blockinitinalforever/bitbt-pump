@@ -133,14 +133,10 @@ export async function switchToBsc(wallet: EvmWallet): Promise<string> {
 export async function getDynamicFeePolicy(wallet: EvmWallet, requestedPriority: bigint): Promise<{ maxPriorityFeePerGas: bigint; maxFeePerGas: bigint }> {
   const fallbackBase = 2_000_000_000n;
   try {
-    const [rpcPriority, latestBlock] = await Promise.all([
-      wallet.request({ method: "eth_maxPriorityFeePerGas" }),
-      wallet.request({ method: "eth_getBlockByNumber", params: ["latest", false] }),
-    ]);
-    const nodePriority = readUint256(rpcPriority);
+    const latestBlock = await wallet.request({ method: "eth_getBlockByNumber", params: ["latest", false] });
     const block = latestBlock && typeof latestBlock === "object" ? latestBlock as { baseFeePerGas?: unknown } : {};
     const baseFee = block.baseFeePerGas === undefined ? 0n : readUint256(block.baseFeePerGas);
-    const priority = nodePriority > requestedPriority ? nodePriority : requestedPriority;
+    const priority = requestedPriority;
     return { maxPriorityFeePerGas: priority, maxFeePerGas: baseFee > 0n ? baseFee * 2n + priority : priority + fallbackBase };
   } catch {
     return { maxPriorityFeePerGas: requestedPriority, maxFeePerGas: requestedPriority + fallbackBase };

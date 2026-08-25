@@ -46,7 +46,8 @@ export default function PumpLiveBoard({ zh }: { zh: boolean }) {
   const [quoteFilter, setQuoteFilter] = useState("all");
   const [page, setPage] = useState(1);
   const slippageBps = 100;
-  const priorityGwei = 1;
+  const priorityGwei = 0.05;
+  const priorityWei = 50_000_000n;
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -195,7 +196,6 @@ export default function PumpLiveBoard({ zh }: { zh: boolean }) {
     const currentAddress = Array.isArray(accounts) ? String(accounts[0] || "") : "";
     if (currentAddress.toLowerCase() !== address.toLowerCase()) throw new Error("Connected wallet account changed; reconnect");
     const minOut = output * BigInt(10_000 - slippageBps) / 10_000n;
-    const priorityWei = BigInt(priorityGwei) * 1_000_000_000n;
     const feePolicy = await getDynamicFeePolicy(wallet, priorityWei);
     let mainHash = "";
     setBusy(true); setError(undefined); setTxHash("");
