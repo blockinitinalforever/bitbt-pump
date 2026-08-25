@@ -34,6 +34,7 @@
     reader.readAsDataURL(file);
   });
   const originalFetch = window.fetch.bind(window);
+  window.addEventListener("bitbt:launch-reset", () => { document.documentElement.dataset.launchLogoUrl = ""; });
   window.fetch = async (inputValue, init = {}) => {
     if (String(inputValue).includes("/api/pump/v1/token/prepare-launch") && typeof init.body === "string") {
       const body = JSON.parse(init.body);
