@@ -1,10 +1,31 @@
-export type PumpApiResponse<T> = { success?: boolean; data?: T; error?: string; message?: string };
+export type PumpApiResponse<T> = {
+  success?: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = typeof window !== "undefined" ? sessionStorage.getItem("bitbt_pump_session") : null;
-  const response = await fetch(`/api/pump/${path}`, { ...init, headers: { accept: "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}), ...(init?.headers || {}) }, cache: "no-store" });
+  const token =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("bitbt_pump_session")
+      : null;
+  const response = await fetch(`/api/pump/${path}`, {
+    ...init,
+    headers: {
+      accept: "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers || {}),
+    },
+    cache: "no-store",
+  });
   const payload = (await response.json()) as PumpApiResponse<T>;
-  if (!response.ok || payload.data === undefined) throw new Error(payload.error || payload.message || `Pump API request failed (${response.status})`);
+  if (!response.ok || payload.data === undefined)
+    throw new Error(
+      payload.error ||
+        payload.message ||
+        `Pump API request failed (${response.status})`,
+    );
   return payload.data;
 }
 
@@ -67,11 +88,29 @@ export type PumpTrade = {
 
 export const pumpApi = {
   tokens: () => request<PumpToken[]>("v1/pump/tokens"),
-  detail: (address: string) => request<PumpDetail>(`v1/pump/detail?address=${encodeURIComponent(address)}`),
-  buyQuote: (address: string, amount: string) => request<PumpQuote>(`v1/pump/buy-quote?token_address=${encodeURIComponent(address)}&quote_amount=${encodeURIComponent(amount)}`),
-  sellQuote: (address: string, amount: string) => request<PumpQuote>(`v1/pump/sell-quote?token_address=${encodeURIComponent(address)}&token_amount=${encodeURIComponent(amount)}`),
-  trades: (address: string) => request<PumpTrade[]>(`v1/pump/trades?token_address=${encodeURIComponent(address)}`),
-  reportTransaction: (data: PumpTransactionReport) => request<unknown>("v1/wallet/tx/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }),
+  detail: (address: string) =>
+    request<PumpDetail>(
+      `v1/pump/detail?address=${encodeURIComponent(address)}`,
+    ),
+  details: () => request<PumpDetail[]>("v1/pump/details"),
+  buyQuote: (address: string, amount: string) =>
+    request<PumpQuote>(
+      `v1/pump/buy-quote?token_address=${encodeURIComponent(address)}&quote_amount=${encodeURIComponent(amount)}`,
+    ),
+  sellQuote: (address: string, amount: string) =>
+    request<PumpQuote>(
+      `v1/pump/sell-quote?token_address=${encodeURIComponent(address)}&token_amount=${encodeURIComponent(amount)}`,
+    ),
+  trades: (address: string) =>
+    request<PumpTrade[]>(
+      `v1/pump/trades?token_address=${encodeURIComponent(address)}`,
+    ),
+  reportTransaction: (data: PumpTransactionReport) =>
+    request<unknown>("v1/wallet/tx/report", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+    }),
 };
 
 export type PumpTransactionReport = {
@@ -97,7 +136,14 @@ export type LaunchFeeInfo = {
 };
 
 export type PreparedLaunch = {
-  launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; status: string };
+  launch: {
+    id: string;
+    token_name: string;
+    symbol: string;
+    creator_address: string;
+    quote_token: string;
+    status: string;
+  };
   amount_bnb: number;
   fee_wei: string;
   factory_address: string;
@@ -127,6 +173,7 @@ export type PrepareLaunchInput = {
   discord?: string;
   memo?: string;
   classification?: string;
+  logo_url?: string;
 };
 
 export type ConfirmedLaunch = {
@@ -140,6 +187,32 @@ export type ConfirmedLaunch = {
 
 export const pumpLaunchApi = {
   fee: () => request<LaunchFeeInfo>("v1/token/launch-fee"),
-  prepare: (body: PrepareLaunchInput) => request<PreparedLaunch>("v1/token/prepare-launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
-  confirm: (body: { launch_id: string; deploy_tx_hash: string }) => request<ConfirmedLaunch>("v1/token/launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  uploadImage: async (file: File) => {
+    const image = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Unable to read logo file"));
+      reader.onload = () =>
+        typeof reader.result === "string"
+          ? resolve(reader.result)
+          : reject(new Error("Invalid logo file"));
+      reader.readAsDataURL(file);
+    });
+    return request<{ url: string }>("v1/upload/image", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ image, filename: file.name }),
+    });
+  },
+  prepare: (body: PrepareLaunchInput) =>
+    request<PreparedLaunch>("v1/token/prepare-launch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  confirm: (body: { launch_id: string; deploy_tx_hash: string }) =>
+    request<ConfirmedLaunch>("v1/token/launch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
 };

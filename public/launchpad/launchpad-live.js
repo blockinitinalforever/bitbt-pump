@@ -2,12 +2,14 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
+  window.setTimeout(() => $$('[data-panel="detail"] .actions [data-open="watchlist"]').forEach((node) => node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); toggleFavorite().catch((error) => toast(error.message)); }, true)), 0);
 
-  const state = { tokens: [], selected: null, detail: null, trades: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchSnapshot: null, launchTerminal: false };
+  const state = { tokens: [], details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false, refreshPromise: null };
+  const charts = new Map();
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
   const text = (selector, value) => $$(selector).forEach((node) => { node.textContent = value == null || value === "" ? "—" : String(value); });
-  const assetImage = (token) => `./assets/tokens/${token?.symbol ? "generic.svg" : "generic.svg"}`;
+  const assetImage = (token) => { const remote = token?.logo_url || token?.image_url || token?.logo; return typeof remote === "string" && /^https:\/\//i.test(remote) ? remote : "./assets/tokens/generic.svg"; };
   const short = (value) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
   const number = (value) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; };
   const pretty = (value, digits = 6) => { const parsed = number(value); return parsed ? parsed.toLocaleString("en-US", { maximumFractionDigits: digits }) : "—"; };
@@ -20,6 +22,8 @@
     return payload.data;
   };
   const toast = (message) => { const node = $(".toast"); if (!node) return; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2200); };
+  window.addEventListener("bitbt:toast", (event) => toast(event.detail));
+  const setLaunchAvailability = (enabled) => $$('[data-open="create-mode"], [data-nav="create-mode"], [data-launch-mode], .launch-now').forEach((node) => { node.classList.add("wallet-gated"); node.disabled = !enabled; node.setAttribute("aria-disabled", String(!enabled)); node.title = enabled ? "开始发币" : "请先连接并验证钱包"; });
   const tokenAddress = (token) => token?.contract_address || "";
   const status = (token) => String(token?.status || "").replaceAll("_", " ");
   const tokenCard = (token) => {
@@ -34,6 +38,12 @@
     bindLiveTokenSelection();
     renderRank();
   };
+  const renderTradeConfig = () => {
+    const quote = String(state.detail?.quote_token || "BNB").toUpperCase();
+    const amounts = state.config?.pump?.quickAmountsByQuote?.[quote] || state.config?.pump?.quickAmounts || [];
+    const chips = [...amounts, "MAX"];
+    $$('[data-panel="trade"] [data-amount]').forEach((node, index) => { const amount = chips[index]; node.hidden = amount === undefined; if (amount !== undefined) { node.dataset.amount = amount; node.textContent = amount === "MAX" ? "MAX" : amount; } });
+  };
   const renderLiveRows = () => {
     const rows = state.trades.slice(0, 12).map((trade) => `<div class="live-row"><span class="trade-type ${String(trade.trade_type).toLowerCase() === "buy" ? "buy" : "sell"}">${String(trade.trade_type || "TRADE").toUpperCase()}</span><div><p><b>${short(trade.trader)}</b></p><small>${pretty(trade.bnb_amount || trade.quote_amount)} BNB · ${pretty(trade.token_amount)} ${state.detail?.symbol || "TOKEN"}</small></div><small>${age(new Date((trade.timestamp > 1e12 ? trade.timestamp : trade.timestamp * 1000)).toISOString())}</small></div>`).join("");
     const livePanel = $('[data-panel="live"]');
@@ -45,7 +55,52 @@
     const rows = [...state.tokens].sort((a, b) => number(b.progress_percent) - number(a.progress_percent)).slice(0, 10).map((token, index) => `<div class="rank-row"><span class="num">${String(index + 1).padStart(2, "0")}</span><img src="${assetImage(token)}" alt="${token.symbol || "Token"}"><div><strong>${token.symbol || token.token_name || "—"}</strong><small>${status(token)} · ${token.quote_token || "BNB"}</small></div><div class="rank-price"><strong>${pretty(token.current_price_quote || token.current_price_bnb)}</strong><span class="up">${number(token.progress_percent).toFixed(0)}%</span></div></div>`).join("");
     panel.querySelector(".rank-tabs")?.insertAdjacentHTML("afterend", rows || `<p class="footer-note">暂无真实 Pump 排行数据。</p>`);
   };
+  const deviceId = () => { try { let id = localStorage.getItem("bitbt_pump_device"); if (!id) { id = crypto.randomUUID(); localStorage.setItem("bitbt_pump_device", id); } return id; } catch { return "pump-browser-device"; } };
+  const renderMyPanels = () => {
+    const launches = state.myLaunches;
+    const launchPanel = $('[data-panel="my-launches"]');
+    if (launchPanel) {
+      launchPanel.querySelectorAll(".launch-card, .summary-hero").forEach((node) => node.remove());
+      launchPanel.querySelector(".filter-row")?.insertAdjacentHTML("beforebegin", `<div class="summary-hero"><span class="eyebrow">CREATOR OVERVIEW</span><h1>${state.account ? "真实链上数据" : "—"}</h1><p>${state.account ? "当前钱包的真实发射记录" : "连接并验证钱包后显示真实数据"}</p><div class="summary-grid"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>已迁移</span><strong>${launches.filter((item) => item.status === "migrated").length}</strong></div><div><span>交易记录</span><strong>${state.history.length}</strong></div></div></div>`);
+      const cards = launches.map((launch) => `<div class="launch-card"><div class="launch-card-head"><img src="${assetImage(launch)}" alt="${launch.token_name || launch.symbol || "Token"}"><div><strong>${launch.token_name || launch.symbol || "—"} · ${launch.symbol || "—"}</strong><small>${status(launch)} · ${age(launch.submitted_at)}</small></div><span class="tag lime">${String(launch.status || "").toUpperCase()}</span></div><div class="card-metrics"><div><span>计价</span><strong>${launch.quote_token || "BNB"}</strong></div><div><span>地址</span><strong>${short(launch.contract_address)}</strong></div><div><span>网络</span><strong>${launch.chain_id || "bsc"}</strong></div></div></div>`).join("");
+      launchPanel.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">连接并验证钱包后显示真实发射记录。</p>`);
+    }
+    const activity = $('[data-panel="activity"]');
+    if (activity) {
+      activity.querySelectorAll(".activity-card").forEach((node) => node.remove());
+      const cards = state.history.map((tx) => `<div class="activity-card"><span class="activity-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${tx.tx_type === "pump_sell" ? "arrow-up-right" : tx.tx_type === "pump_buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><div><strong>${tx.tx_type || "交易"}</strong><small>${tx.from_token || "—"} → ${tx.to_token || "—"} · ${tx.status || "—"}</small></div><div class="right"><strong>${tx.tx_hash ? short(tx.tx_hash) : "—"}</strong><small>${age(tx.created_at)}</small></div></div>`).join("");
+      activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">暂无真实交易记录。</p>`);
+    }
+    const profilePanel = $('[data-panel="profile"]');
+    if (profilePanel && !profilePanel.querySelector(".profile-card")) profilePanel.querySelector(".section-title")?.insertAdjacentHTML("beforebegin", `<div class="profile-card"><div class="profile-head"><span class="profile-avatar">${state.account ? state.account.slice(2, 4).toUpperCase() : "—"}</span><div><h2>${state.account ? short(state.account) : "请连接钱包"}</h2><p>${state.account ? "BNB CHAIN · 实时数据" : "连接钱包后显示账户数据"}</p></div><span class="tag lime">PUMP</span></div><div class="card-metrics"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>交易次数</span><strong>${state.history.length}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div></div>`);
+    const watchlist = $('[data-panel="watchlist"] .token-grid');
+    if (watchlist) { const favoriteAddresses = new Set(state.favorites.map((item) => String(item.contract_address || "").toLowerCase())); const cards = state.tokens.filter((token) => favoriteAddresses.has(tokenAddress(token).toLowerCase())).map(tokenCard).join(""); watchlist.innerHTML = cards || `<p class="footer-note">暂无自选代币。请在代币详情中点击收藏。</p>`; bindLiveTokenSelection(); }
+  };
+  const loadUserPanels = async () => {
+    if (!state.account) return;
+    const [launches, history, favorites] = await Promise.allSettled([
+      api(`v1/token/my-tokens?address=${encodeURIComponent(state.account)}`),
+      api(`v1/wallet/tx/history?address=${encodeURIComponent(state.account)}&chain_id=bsc&limit=100`),
+      api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`),
+    ]);
+    state.myLaunches = launches.status === "fulfilled" ? launches.value : [];
+    state.history = history.status === "fulfilled" ? history.value : [];
+    state.favorites = favorites.status === "fulfilled" ? favorites.value : [];
+    renderMyPanels();
+  };
+  const toggleFavorite = async () => {
+    if (!state.account || !state.selected) throw new Error("请先连接并验证钱包");
+    const token = state.selected;
+    const address = tokenAddress(token).toLowerCase();
+    const favorite = state.favorites.some((item) => String(item.contract_address || "").toLowerCase() === address);
+    await api("v1/market/favorites", { method: favorite ? "DELETE" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ device_id: deviceId(), symbol: token.symbol || token.token_name, chain_id: "bsc", contract_address: tokenAddress(token) }) });
+    state.favorites = favorite ? state.favorites.filter((item) => String(item.contract_address || "").toLowerCase() !== address) : [...state.favorites, { symbol: token.symbol, chain_id: "bsc", contract_address: tokenAddress(token) }];
+    renderMyPanels();
+    toast(favorite ? "已取消收藏" : "已加入自选");
+  };
   const clearPrototype = () => {
+    charts.forEach(({ chart }) => chart.remove?.());
+    charts.clear();
     $$(".token-grid").forEach((node) => { node.innerHTML = `<p class="footer-note">正在读取真实 Pump 项目…</p>`; });
     const livePanel = $('[data-panel="live"]'); if (livePanel) [...livePanel.querySelectorAll(".live-row")].forEach((node) => node.remove());
     const rankPanel = $('[data-panel="rank"]'); if (rankPanel) [...rankPanel.querySelectorAll(".rank-row")].forEach((node) => node.remove());
@@ -65,21 +120,32 @@
   const quoteAddress = (symbol) => ({ BNB: null, USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" })[String(symbol || "").toUpperCase()];
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
   const USER_SLIPPAGE_BPS = 200;
+  const PRIORITY_FEE_WEI = 50_000_000n;
+  const getFeePolicy = async () => {
+    const fallbackBaseFee = 2_000_000_000n;
+    try {
+      const latest = await window.ethereum.request({ method: "eth_getBlockByNumber", params: ["latest", false] });
+      const baseFee = latest?.baseFeePerGas ? BigInt(latest.baseFeePerGas) : 0n;
+      return { maxPriorityFeePerGas: PRIORITY_FEE_WEI, maxFeePerGas: (baseFee > 0n ? baseFee * 2n : fallbackBaseFee) + PRIORITY_FEE_WEI };
+    } catch {
+      return { maxPriorityFeePerGas: PRIORITY_FEE_WEI, maxFeePerGas: fallbackBaseFee + PRIORITY_FEE_WEI };
+    }
+  };
   const normalizeChainId = (value) => { const normalized = String(value ?? "").trim().toLowerCase(); if (normalized === "0x38" || normalized === "56" || normalized === "bsc" || normalized === "bnb") return "0x38"; return ""; };
   const rpc = (to, data) => window.ethereum.request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
   const walletNativeBalance = () => window.ethereum.request({ method: "eth_getBalance", params: [state.account, "latest"] }).then((value) => BigInt(value));
   const walletTokenBalance = (token) => rpc(token, `0x70a08231${addressWord(state.account)}`);
   const allowance = (token, owner, spender) => rpc(token, `0xdd62ed3e${addressWord(owner)}${addressWord(spender)}`);
-  const send = (tx) => window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: tx.from, to: tx.to, ...(tx.data ? { data: tx.data } : {}), ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), gas: `0x${tx.gas.toString(16)}` }] });
+  const send = async (tx) => { const fee = await getFeePolicy(); return window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: tx.from, to: tx.to, ...(tx.data ? { data: tx.data } : {}), ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), gas: `0x${tx.gas.toString(16)}`, maxPriorityFeePerGas: `0x${fee.maxPriorityFeePerGas.toString(16)}`, maxFeePerGas: `0x${fee.maxFeePerGas.toString(16)}` }] }); };
   const waitReceipt = async (hash) => { for (let i = 0; i < 60; i += 1) { const receipt = await window.ethereum.request({ method: "eth_getTransactionReceipt", params: [hash] }); if (receipt?.status) return receipt; await new Promise((resolve) => window.setTimeout(resolve, 2000)); } throw new Error("交易回执超时，请到 BscScan 查询"); };
   const report = (body) => api("v1/wallet/tx/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => undefined);
   const invalidateQuote = () => { state.quote = null; state.quoteKey = ""; text("[data-quote-output], [data-quote-min]", "—"); };
   const clearLaunchReview = () => { text("[data-preview-name], [data-preview-ticker], [data-launch-review-chain], [data-launch-review-name], [data-launch-review-quote], [data-launch-review-quote-address], [data-launch-review-curve], [data-launch-review-threshold], [data-launch-review-fee], [data-launch-review-recipient], [data-launch-review-factory], [data-launch-review-id], [data-launch-review-salt], [data-launch-review-predicted], [data-launch-review-description]", "—"); text("[data-preview-symbol]", "—"); const loadButton = $("[data-launch-load]"); const publishButton = $("[data-launch-publish]"); if (loadButton) { loadButton.disabled = state.launchTerminal; loadButton.toggleAttribute("disabled", state.launchTerminal); loadButton.textContent = state.launchTerminal ? "发币流程已结束" : "加载并检查发币参数"; } if (publishButton) { publishButton.disabled = true; publishButton.setAttribute("disabled", ""); publishButton.textContent = "确认快照并发布代币"; } };
   const invalidateLaunchSnapshot = () => { if (state.launchBusy) return; state.launchSnapshot = null; clearLaunchReview(); };
   const setLaunchTerminal = (message) => { state.launchSnapshot = null; state.launchTerminal = true; clearLaunchReview(); const loadButton = $("[data-launch-load]"); if (loadButton) loadButton.textContent = message; };
-  const resetLaunchFlow = () => { state.launchSnapshot = null; state.launchTerminal = false; clearLaunchReview(); };
+  const resetLaunchFlow = () => { state.launchSnapshot = null; state.launchLogoUrl = ""; document.documentElement.dataset.launchLogoUrl = ""; state.launchTerminal = false; clearLaunchReview(); const art = $("#create-art"); if (art) { art.textContent = "MB"; art.style.backgroundImage = ""; } const fileName = $("[data-launch-file-name]"); if (fileName) fileName.textContent = "尚未选择文件"; const input = $("#token-logo-file"); if (input) input.value = ""; window.dispatchEvent(new CustomEvent("bitbt:launch-reset")); };
   const renderLaunchReview = (fee, prepared, description) => { text("[data-preview-name], [data-launch-review-name]", prepared.launch.token_name); text("[data-preview-ticker], [data-launch-review-quote]", prepared.launch.symbol); text("[data-preview-symbol]", prepared.launch.symbol.slice(0, 2).toUpperCase()); text("[data-launch-review-chain]", `BSC Chain · ${prepared.launch.quote_token}`); text("[data-launch-review-description]", description); text("[data-launch-review-quote-address]", prepared.quote_token_address); text("[data-launch-review-curve]", prepared.curve_address); text("[data-launch-review-threshold]", `${prepared.migration_threshold_wei} wei`); text("[data-launch-review-fee]", `${fee.fee_wei} wei`); text("[data-launch-review-recipient]", prepared.fee_recipient); text("[data-launch-review-factory]", prepared.factory_address); text("[data-launch-review-id]", prepared.launch.id); text("[data-launch-review-salt]", prepared.salt); text("[data-launch-review-predicted]", prepared.predicted_token_address); const loadButton = $("[data-launch-load]"); const publishButton = $("[data-launch-publish]"); if (loadButton) { loadButton.disabled = true; loadButton.setAttribute("disabled", ""); loadButton.textContent = "参数已加载"; } if (publishButton) { publishButton.disabled = false; publishButton.removeAttribute("disabled"); publishButton.textContent = "确认以上快照并发布代币"; } };
-  const resetProviderState = (message = "钱包状态已变化，请重新连接") => { sessionStorage.removeItem("bitbt_pump_session"); state.account = ""; state.chainId = ""; state.balances = { quote: null, token: null, gas: null }; invalidateQuote(); invalidateLaunchSnapshot(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = "连接钱包"; }); if (message) toast(message); };
+  const resetProviderState = (message = "钱包状态已变化，请重新连接") => { sessionStorage.removeItem("bitbt_pump_session"); state.account = ""; state.chainId = ""; state.balances = { quote: null, token: null, gas: null }; setLaunchAvailability(false); invalidateQuote(); invalidateLaunchSnapshot(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = "连接钱包"; }); if (message) toast(message); };
   const assertProviderState = async () => { if (!window.ethereum || !state.account) throw new Error("请先连接并验证钱包"); const [accounts, chainId] = await Promise.all([window.ethereum.request({ method: "eth_accounts" }), window.ethereum.request({ method: "eth_chainId" })]); const account = String(accounts?.[0] || "").toLowerCase(); const normalizedChain = normalizeChainId(chainId); if (account !== state.account || normalizedChain !== "0x38") { resetProviderState(); throw new Error("钱包账户或网络已变化，请重新连接 BSC 钱包"); } state.chainId = normalizedChain; return { account, chainId: state.chainId }; };
   const bindProviderEvents = () => { if (!window.ethereum?.on) return; window.ethereum.on("accountsChanged", () => resetProviderState()); window.ethereum.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); };
   const connectWallet = async () => {
@@ -89,7 +155,7 @@
     const noncePayload = await api("v1/auth/siwe/nonce"); const domain = String(noncePayload.domain || "").toLowerCase(); if (domain !== "bitbt.fun") throw new Error("SIWE domain 不受信任");
     const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: 56\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
     const signature = await window.ethereum.request({ method: "personal_sign", params: [message, address] }); const verified = await api("v1/auth/siwe/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
-    sessionStorage.setItem("bitbt_pump_session", verified.token); state.account = String(verified.address || address).toLowerCase(); state.chainId = "0x38"; invalidateQuote(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = short(state.account); }); await assertProviderState(); await refreshBalances(); toast("钱包已连接"); return state.account;
+    sessionStorage.setItem("bitbt_pump_session", verified.token); state.account = String(verified.address || address).toLowerCase(); state.chainId = "0x38"; setLaunchAvailability(true); invalidateQuote(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = short(state.account); }); await assertProviderState(); await refreshBalances(); await loadUserPanels().catch(() => undefined); toast("钱包已连接"); return state.account;
   };
   const refreshBalances = async () => {
     if (!state.account || !state.detail || !window.ethereum) return;
@@ -103,7 +169,7 @@
   };
   const loadDetail = async (token) => {
     if (!tokenAddress(token)) return;
-    state.selected = token; state.detail = await api(`v1/pump/detail?address=${encodeURIComponent(tokenAddress(token))}`); state.trades = await api(`v1/pump/trades?token_address=${encodeURIComponent(tokenAddress(token))}`); state.balances = { quote: null, token: null, gas: null }; renderSelected(); renderLiveRows(); drawCharts(); if (state.account) await refreshBalances();
+    state.selected = token; const address = tokenAddress(token).toLowerCase(); state.detail = state.details[address] || await api(`v1/pump/detail?address=${encodeURIComponent(tokenAddress(token))}`); state.details[address] = state.detail; state.trades = await api(`v1/pump/trades?token_address=${encodeURIComponent(tokenAddress(token))}`); state.balances = { quote: null, token: null, gas: null }; renderSelected(); renderTradeConfig(); renderLiveRows(); drawCharts(); if (state.account) await refreshBalances();
   };
   const drawCharts = () => {
     if (!window.LightweightCharts || !state.trades.length) return;
@@ -111,7 +177,7 @@
     // Lightweight Charts accepts numbers only. The exact integer ratio is bounded to 15 decimal places before this final chart-API conversion.
     const chartPrice = (quoteRaw, tokenRaw) => { const decimal = ratioDecimal(quoteRaw, tokenRaw); const value = parseFloat(decimal); return Number.isFinite(value) ? value : 0; }; const prices = state.trades.map((trade) => { const quote = trade.quote_amount || trade.bnb_amount; const token = trade.token_amount; return { time: Math.floor((trade.timestamp > 1e12 ? trade.timestamp : trade.timestamp * 1000) / 300000) * 300, price: chartPrice(quote, token) }; }).filter((point) => point.price > 0).sort((a, b) => a.time - b.time);
     const candles = []; prices.forEach((point) => { const last = candles[candles.length - 1]; if (last && last.time === point.time) { last.high = Math.max(last.high, point.price); last.low = Math.min(last.low, point.price); last.close = point.price; } else candles.push({ time: point.time, open: point.price, high: point.price, low: point.price, close: point.price }); });
-    ["#launch-kline", "#trade-kline"].forEach((selector) => { const host = $(selector); if (!host || !candles.length) return; host.replaceChildren(); const chart = window.LightweightCharts.createChart(host, { width: host.clientWidth || 640, height: 260, layout: { background: { type: "solid", color: "#0a0b0c" }, textColor: "#777c78" }, grid: { vertLines: { color: "#1d2021" }, horzLines: { color: "#1d2021" } }, rightPriceScale: { borderColor: "#303334" }, timeScale: { borderColor: "#303334", timeVisible: true } }); const series = chart.addCandlestickSeries({ upColor: "#32cf7c", downColor: "#ff5c73", borderUpColor: "#32cf7c", borderDownColor: "#ff5c73", wickUpColor: "#32cf7c", wickDownColor: "#ff5c73" }); series.setData(candles); chart.timeScale().fitContent(); });
+    ["#launch-kline", "#trade-kline"].forEach((selector) => { const host = $(selector); if (!host || !candles.length) return; let entry = charts.get(selector); if (!entry || entry.host !== host) { entry?.chart.remove?.(); host.replaceChildren(); const chart = window.LightweightCharts.createChart(host, { width: host.clientWidth || 640, height: 260, layout: { background: { type: "solid", color: "#0a0b0c" }, textColor: "#777c78" }, grid: { vertLines: { color: "#1d2021" }, horzLines: { color: "#1d2021" } }, rightPriceScale: { borderColor: "#303334" }, timeScale: { borderColor: "#303334", timeVisible: true } }); const series = chart.addCandlestickSeries({ upColor: "#32cf7c", downColor: "#ff5c73", borderUpColor: "#32cf7c", borderDownColor: "#ff5c73", wickUpColor: "#32cf7c", wickDownColor: "#ff5c73" }); entry = { host, chart, series }; charts.set(selector, entry); } entry.series.setData(candles); entry.chart.applyOptions?.({ width: host.clientWidth || 640 }); entry.chart.timeScale().fitContent(); });
   };
   const renderSelected = () => {
     const token = state.selected; const detail = state.detail; if (!token || !detail) return; const progress = Math.max(0, Math.min(100, number(detail.progress_percent))); const address = tokenAddress(token);
@@ -123,10 +189,59 @@
   const updateQuote = async () => { if (!state.selected || !state.detail) return; const input = $("#trade-amount"); const amount = input?.value?.trim(); if (!amount || number(amount) <= 0) { invalidateQuote(); return; } const address = tokenAddress(state.selected); const response = state.side === "buy" ? await api(`v1/pump/buy-quote?token_address=${encodeURIComponent(address)}&quote_amount=${encodeURIComponent(amount)}`) : await api(`v1/pump/sell-quote?token_address=${encodeURIComponent(address)}&token_amount=${encodeURIComponent(amount)}`); state.quote = quoteBinding(response, address, amount); state.quoteKey = `${state.side}:${address}:${amount}:${state.account}:${state.chainId}`; const output = state.quote.output; text("[data-quote-output]", `${pretty(output, 4)} ${state.side === "buy" ? state.detail.symbol : state.detail.quote_token}`); text("[data-quote-min]", `${pretty(state.quote.minOut.toString(), 4)} ${state.side === "buy" ? state.detail.symbol : state.detail.quote_token}`); text("[data-quote-route]", state.side === "buy" ? `${state.detail.quote_token} → 联合曲线` : `联合曲线 → ${state.detail.quote_token}`); };
   const applySide = (sell) => { state.side = sell ? "sell" : "buy"; $$('[data-trade-side]').forEach((node) => node.classList.toggle("active", (node.dataset.tradeSide === "sell") === sell)); const token = state.selected; const detail = state.detail; if (!token || !detail) return; const balance = sell ? state.balances.token : state.balances.quote; text("[data-order-label]", sell ? "卖出数量" : "支付"); text("[data-order-unit]", sell ? detail.symbol : detail.quote_token); text("[data-order-balance]", balance == null ? "钱包余额 —" : `钱包余额 ${formatUnits(balance)} ${sell ? detail.symbol : detail.quote_token}`); const submit = $("#trade-submit"); if (submit) { submit.textContent = sell ? "连接钱包并卖出" : "连接钱包并买入"; submit.classList.toggle("red", sell); } updateQuote().catch((error) => toast(error.message)); };
   const executeTradeSingleFlight = async () => {
-    if (!state.account) await connectWallet(); if (!state.selected || !state.detail) throw new Error("请先选择代币"); const amount = $("#trade-amount")?.value?.trim(); if (!amount) throw new Error("请输入交易数量"); const expectedKey = `${state.side}:${tokenAddress(state.selected)}:${amount}:${state.account}:${state.chainId}`; if (!state.quote || state.quoteKey !== expectedKey) { await updateQuote(); if (!state.quote) throw new Error("报价尚未准备好"); } const quoteBindingState = await assertQuoteBinding();
-    const curve = quoteBindingState.curveAddress; const quote = quoteBindingState.quoteTokenAddress === "0x0000000000000000000000000000000000000000" ? null : quoteBindingState.quoteTokenAddress; const amountWei = parseUnits(amount); const output = amountFromApi(quoteBindingState.output); const minOut = quoteBindingState.minOut; const selector = state.side === "buy" ? (quote ? "0x6818735c" : "0xd96a094a") : (quote ? "0x5969261f" : "0xd79875eb"); let hash;
-    state.busy = true; try { if (state.side === "buy" && quote || state.side === "sell") { await assertQuoteBinding(); const asset = state.side === "buy" ? quote : tokenAddress(state.selected); const currentAllowance = await allowance(asset, state.account, curve); if (currentAllowance < amountWei) { const approval = await send({ from: state.account, to: asset, data: `0x095ea7b3${addressWord(curve)}${word(amountWei)}`, gas: 100000n }); toast("授权交易已发送"); const receipt = await waitReceipt(approval); if (receipt.status !== "0x1" && receipt.status !== "0x01") throw new Error("授权失败"); await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, status: "success", metadata: { spender: curve } }); await assertQuoteBinding(); } }
-      const data = state.side === "buy" ? (quote ? `${selector}${word(amountWei)}` : `${selector}${word(minOut)}`) : `${selector}${word(amountWei)}${word(minOut)}`; hash = await send({ from: state.account, to: curve, data, value: state.side === "buy" && !quote ? amountWei : 0n, gas: 350000n }); toast("交易已广播，等待回执…"); const receipt = await waitReceipt(hash); const ok = receipt.status === "0x1" || receipt.status === "0x01"; await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, to_token: state.side === "buy" ? state.detail.symbol : state.detail.quote_token, from_amount: amount, to_amount: formatUnits(output), status: ok ? "success" : "failed", metadata: { token_address: tokenAddress(state.selected), curve_address: curve } }); if (!ok) throw new Error("交易回执失败"); toast("交易已确认"); await loadDetail(state.selected); } catch (error) { if (hash) await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", status: "failed", metadata: { error: error.message } }); throw error; } finally { state.busy = false; }
+    if (!state.account) await connectWallet();
+    if (!state.selected || !state.detail) throw new Error("请先选择代币");
+    const amount = $("#trade-amount")?.value?.trim();
+    if (!amount) throw new Error("请输入交易数量");
+    const expectedKey = `${state.side}:${tokenAddress(state.selected)}:${amount}:${state.account}:${state.chainId}`;
+    if (!state.quote || state.quoteKey !== expectedKey) { await updateQuote(); if (!state.quote) throw new Error("报价尚未准备好"); }
+    const quoteBindingState = await assertQuoteBinding();
+    const curve = quoteBindingState.curveAddress;
+    const quote = quoteBindingState.quoteTokenAddress === ZERO_ADDRESS ? null : quoteBindingState.quoteTokenAddress;
+    const amountWei = parseUnits(amount);
+    const output = amountFromApi(quoteBindingState.output);
+    const minOut = quoteBindingState.minOut;
+    const selector = state.side === "buy" ? (quote ? "0x6818735c" : "0xd96a094a") : (quote ? "0x5969261f" : "0xd79875eb");
+    let hash;
+    let mainStatusReported = false;
+    state.busy = true;
+    try {
+      if ((state.side === "buy" && quote) || state.side === "sell") {
+        await assertQuoteBinding();
+        const asset = state.side === "buy" ? quote : tokenAddress(state.selected);
+        const currentAllowance = await allowance(asset, state.account, curve);
+        if (currentAllowance < amountWei) {
+          let approval;
+          try {
+            approval = await send({ from: state.account, to: asset, data: `0x095ea7b3${addressWord(curve)}${word(amountWei)}`, gas: 100000n });
+            await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, status: "pending", metadata: { spender: curve } });
+            toast("授权交易已发送");
+            const receipt = await waitReceipt(approval);
+            const ok = receipt.status === "0x1" || receipt.status === "0x01";
+            await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, status: ok ? "success" : "failed", metadata: { spender: curve } });
+            if (!ok) throw new Error("授权失败");
+          } catch (error) {
+            if (approval) await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", status: "failed", metadata: { spender: curve, error: error.message } });
+            throw error;
+          }
+          await assertQuoteBinding();
+        }
+      }
+      const data = state.side === "buy" ? (quote ? `${selector}${word(amountWei)}` : `${selector}${word(minOut)}`) : `${selector}${word(amountWei)}${word(minOut)}`;
+      hash = await send({ from: state.account, to: curve, data, value: state.side === "buy" && !quote ? amountWei : 0n, gas: 350000n });
+      await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, to_token: state.side === "buy" ? state.detail.symbol : state.detail.quote_token, from_amount: amount, to_amount: formatUnits(output), status: "pending", metadata: { token_address: tokenAddress(state.selected), curve_address: curve } });
+      toast("交易已广播，等待回执…");
+      const receipt = await waitReceipt(hash);
+      const ok = receipt.status === "0x1" || receipt.status === "0x01";
+      await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, to_token: state.side === "buy" ? state.detail.symbol : state.detail.quote_token, from_amount: amount, to_amount: formatUnits(output), status: ok ? "success" : "failed", metadata: { token_address: tokenAddress(state.selected), curve_address: curve } });
+      mainStatusReported = true;
+      if (!ok) throw new Error("交易回执失败");
+      toast("交易已确认");
+      await loadDetail(state.selected);
+    } catch (error) {
+      if (hash && !mainStatusReported) await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", status: "failed", metadata: { error: error.message } });
+      throw error;
+    } finally { state.busy = false; }
   };
   const executeTrade = async () => { if (state.busy) throw new Error("交易正在处理中，请等待当前交易完成"); const submit = $("#trade-submit"); state.busy = true; if (submit) submit.disabled = true; try { return await executeTradeSingleFlight(); } finally { state.busy = false; if (submit) submit.disabled = false; } };
   const launchWord = (value) => value.toString(16).padStart(64, "0");
@@ -149,25 +264,27 @@
     if (prepared.launch.creator_address?.toLowerCase() !== address.toLowerCase() || prepared.launch.token_name !== name || prepared.launch.symbol !== symbol || prepared.launch.quote_token?.toUpperCase() !== quote) throw new Error("发币准备参数与钱包或表单不匹配");
     return prepared;
   };
-  const launchFormKey = () => $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select, [data-panel="create-economics"] .active, [data-panel="create-tax"] .active').map((node) => `${node.id || node.name || node.className}:${node.value || node.textContent || ""}`).join("|");
+  const launchFormKey = () => `${state.launchLogoUrl}|` + $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select, [data-panel="create-economics"] .active, [data-panel="create-tax"] .active').map((node) => `${node.id || node.name || node.className}:${node.value || node.textContent || ""}`).join("|");
   const launchTokenSingleFlight = async () => {
     if (state.launchTerminal) throw new Error("本次发币流程已结束，请刷新页面开始新的流程");
     const name = $("#token-name")?.value?.trim(); const symbol = $("#token-symbol")?.value?.trim().toUpperCase(); if (!name || !symbol) throw new Error("请填写代币名称和符号"); const address = state.account || await connectWallet(); await assertProviderState();
-    const quote = state.launchQuote; if (!quoteAddress(quote) && quote !== "BNB") throw new Error("不支持的发币计价资产"); const description = $("#token-story")?.value?.trim() || ""; const formKey = launchFormKey(); const snapshotKey = `${address}|${name}|${symbol}|${quote}|${description}|${formKey}`; let snapshot = state.launchSnapshot;
-    if (!snapshot || snapshot.key !== snapshotKey) { const fee = await api("v1/token/launch-fee"); if (!/^0x[0-9a-fA-F]{40}$/.test(fee.factory_address) || !/^\d+$/.test(fee.fee_wei)) throw new Error("发币费用配置无效"); const prepared = await api("v1/token/prepare-launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ creator_address: address, token_name: name, symbol, total_supply: "1000000000", decimals: 18, mintable: false, burnable: false, chain_id: "bsc", quote_token: quote, description: description || undefined, classification: "Meme" }) }); assertLaunchBinding(fee, prepared, address, name, symbol, quote); snapshot = { key: snapshotKey, fee, prepared, address, name, symbol, quote, description, formKey }; state.launchSnapshot = snapshot; renderLaunchReview(fee, prepared, description); toast("请核对当前发币快照，再次点击发布"); return; }
+    const quote = state.launchQuote; if (!quoteAddress(quote) && quote !== "BNB") throw new Error("不支持的发币计价资产"); const description = $("#token-story")?.value?.trim() || ""; const logoUrl = document.documentElement.dataset.launchLogoUrl || state.launchLogoUrl || ""; state.launchLogoUrl = logoUrl; const formKey = launchFormKey(); const snapshotKey = `${address}|${name}|${symbol}|${quote}|${description}|${logoUrl}|${formKey}`; let snapshot = state.launchSnapshot;
+    if (!snapshot || snapshot.key !== snapshotKey) { const fee = await api("v1/token/launch-fee"); if (!/^0x[0-9a-fA-F]{40}$/.test(fee.factory_address) || !/^\d+$/.test(fee.fee_wei)) throw new Error("发币费用配置无效"); const prepared = await api("v1/token/prepare-launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ creator_address: address, token_name: name, symbol, total_supply: "1000000000", decimals: 18, mintable: false, burnable: false, chain_id: "bsc", quote_token: quote, description: description || undefined, logo_url: logoUrl || undefined, classification: "Meme" }) }); assertLaunchBinding(fee, prepared, address, name, symbol, quote); snapshot = { key: snapshotKey, fee, prepared, address, name, symbol, quote, description, formKey, logoUrl }; state.launchSnapshot = snapshot; renderLaunchReview(fee, prepared, description); toast("请核对当前发币快照，再次点击发布"); return; }
     const { fee, prepared } = snapshot; assertLaunchBinding(fee, prepared, address, name, symbol, quote); if (snapshot.name !== name || snapshot.symbol !== symbol || snapshot.quote !== quote || snapshot.address !== address || snapshot.description !== description || snapshot.formKey !== formKey) { invalidateLaunchSnapshot(); throw new Error("发币确认快照已过期，请重新加载"); }
     await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); await assertProviderState(); const accounts = await window.ethereum.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
-    let hash; try { hash = await window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: address, to: prepared.factory_address, data: encodeLaunch(prepared), value: `0x${BigInt(fee.fee_wei).toString(16)}`, gas: "0x3567e0" }] }); } catch (error) { const code = Number(error?.code ?? error?.data?.originalError?.code); if (code === 4001) { state.launchTerminal = false; renderLaunchReview(fee, prepared, description); toast("钱包取消了交易，可以重新确认"); } else { setLaunchTerminal("交易状态未知，请先核对链上状态后再继续"); } throw error; } if (typeof hash !== "string" || !/^0x[0-9a-fA-F]+$/.test(hash)) { setLaunchTerminal("交易状态未知，请先核对链上状态后再继续"); throw new Error("钱包未返回可验证的发币交易哈希"); } setLaunchTerminal(`已广播 ${hash.slice(0, 10)}…，等待回执`); toast("发币交易已广播，等待回执…"); let receipt; try { receipt = await waitReceipt(hash); } catch (error) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 未完成，请核对链上状态`); throw error; } if (receipt.status !== "0x1" && receipt.status !== "0x01") { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 回执失败`); throw new Error("发币交易回执失败"); } const result = await api("v1/token/launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ launch_id: prepared.launch.id, deploy_tx_hash: hash }) }); if (!["deployed", "migrated"].includes(result.status)) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 状态未确认`); throw new Error(result.rejection_reason || `发币状态为 ${result.status}`); } state.launchTerminal = true; text("[data-panel='success'] .success-copy h1", `${name} 已上线。`); text("[data-panel='success'] .launch-card-head strong", `${name} · ${symbol}`); text("[data-panel='success'] .launch-card-head small", `${result.contract_address || prepared.predicted_token_address} · BNB Chain`); toast("发币完成"); activate("success");
+    let hash; try { hash = await send({ from: address, to: prepared.factory_address, data: encodeLaunch(prepared), value: BigInt(fee.fee_wei), gas: 0x3567e0n }); } catch (error) { const code = Number(error?.code ?? error?.data?.originalError?.code); if (code === 4001) { state.launchTerminal = false; renderLaunchReview(fee, prepared, description); toast("钱包取消了交易，可以重新确认"); } else { setLaunchTerminal("交易状态未知，请先核对链上状态后再继续"); } throw error; } if (typeof hash !== "string" || !/^0x[0-9a-fA-F]+$/.test(hash)) { setLaunchTerminal("交易状态未知，请先核对链上状态后再继续"); throw new Error("钱包未返回可验证的发币交易哈希"); } setLaunchTerminal(`已广播 ${hash.slice(0, 10)}…，等待回执`); toast("发币交易已广播，等待回执…"); let receipt; try { receipt = await waitReceipt(hash); } catch (error) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 未完成，请核对链上状态`); throw error; } if (receipt.status !== "0x1" && receipt.status !== "0x01") { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 回执失败`); throw new Error("发币交易回执失败"); } const result = await api("v1/token/launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ launch_id: prepared.launch.id, deploy_tx_hash: hash }) }); if (!["deployed", "migrated"].includes(result.status)) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 状态未确认`); throw new Error(result.rejection_reason || `发币状态为 ${result.status}`); } state.launchTerminal = true; text("[data-panel='success'] .success-copy h1", `${name} 已上线。`); text("[data-panel='success'] .launch-card-head strong", `${name} · ${symbol}`); text("[data-panel='success'] .launch-card-head small", `${result.contract_address || prepared.predicted_token_address} · BNB Chain`); toast("发币完成"); activate("success");
   };
   const launchToken = async () => { if (state.launchBusy) throw new Error("发币正在处理中，请等待当前交易完成"); state.launchBusy = true; try { return await launchTokenSingleFlight(); } finally { state.launchBusy = false; } };
   const bindLiveTokenSelection = () => $$("[data-live-token]").forEach((node) => node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); const token = state.tokens.find((item) => tokenAddress(item) === node.dataset.liveToken); if (token) { loadDetail(token).catch((error) => toast(error.message)); const detailPanel = $('[data-panel="detail"]'); if (detailPanel) { $$("[data-panel]").forEach((panel) => panel.classList.toggle("active", panel === detailPanel)); detailPanel.classList.add("has-bottom-nav"); } } }, true));
   const show = (name) => { const target = root.querySelector(`[data-panel="${CSS.escape(name)}"]`); if (!target) return; invalidateQuote(); if (name === "create-mode" || (name === "create-basic" && state.launchTerminal)) resetLaunchFlow(); else if (!state.launchSnapshot || name !== "create-review") invalidateLaunchSnapshot(); $$(`[data-panel]`).forEach((panel) => panel.classList.toggle("active", panel === target)); target.classList.add("has-bottom-nav"); target.scrollTop = 0; history.replaceState(null, "", `?screen=${encodeURIComponent(name)}`); };
   const bindNavigation = () => { $$("[data-open]").forEach((node) => node.addEventListener("click", (event) => { if (node.dataset.liveToken) return; event.preventDefault(); show(node.dataset.open); if (node.dataset.side) applySide(node.dataset.side === "sell"); })); $$("[data-nav]").forEach((node) => node.addEventListener("click", () => show(node.dataset.nav))); $$("[data-detail-tab]").forEach((node) => node.addEventListener("click", () => $$("[data-detail-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.detailPanel === node.dataset.detailTab)))); $$("[data-amount]").forEach((node) => node.addEventListener("click", () => { const input = $("#trade-amount"); if (input) input.value = node.dataset.amount === "MAX" ? "" : node.dataset.amount; invalidateQuote(); })); $$("[data-lang-toggle]").forEach((node) => node.addEventListener("click", () => toast("语言切换将在真实数据加载后应用"))); };
   const bind = () => { $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.dataset.walletBound = "1"; node.addEventListener("click", () => connectWallet().catch((error) => toast(error.message))); }); $$("[data-trade-side]").forEach((node) => node.addEventListener("click", () => applySide(node.dataset.tradeSide === "sell"))); const input = $("#trade-amount"); input?.addEventListener("input", () => { window.clearTimeout(input._quoteTimer); input._quoteTimer = window.setTimeout(() => updateQuote().catch((error) => toast(error.message)), 350); }); $("#trade-submit")?.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); executeTrade().catch((error) => toast(error.message)); }, true); $$('[data-launch-load], [data-launch-publish]').forEach((node) => { if (node.dataset.launchBound) return; node.dataset.launchBound = "1"; node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); launchToken().catch((error) => toast(error.message)); }, true); }); };
-  const renderUnavailable = (error) => { clearPrototype(); state.tokens = []; state.selected = null; state.detail = null; state.trades = []; const banner = $("[data-api-status]"); if (banner) banner.textContent = "实时 Pump 数据暂不可用"; toast(error.message); };
-  const load = async () => { try { state.tokens = await api("v1/pump/tokens"); renderTokens(); const first = state.tokens.find((token) => tokenAddress(token)); if (first) await loadDetail(first); } catch (error) { renderUnavailable(error); } };
+  const loadAllDetails = async () => { try { const details = await api("v1/pump/details"); state.details = Object.fromEntries(details.filter((detail) => detail.contract_address).map((detail) => [detail.contract_address.toLowerCase(), detail])); return details; } catch { state.details = {}; return []; } };
+  const renderUnavailable = (error) => { clearPrototype(); state.tokens = []; state.details = {}; state.selected = null; state.detail = null; state.trades = []; const banner = $("[data-api-status]"); if (banner) banner.textContent = "实时 Pump 数据暂不可用"; toast(error.message); };
+  const load = async () => { try { const [tokens, config] = await Promise.all([api("v1/pump/tokens"), api("v1/app/config").catch(() => null)]); state.tokens = tokens; state.config = config; await loadAllDetails(); renderTokens(); const first = state.tokens.find((token) => tokenAddress(token)); if (first) await loadDetail(first); } catch (error) { renderUnavailable(error); } };
+  const refreshLive = () => { if (state.refreshPromise) return state.refreshPromise; state.refreshPromise = (async () => { const [tokens] = await Promise.all([api("v1/pump/tokens"), loadAllDetails()]); state.tokens = tokens; renderTokens(); if (state.selected) await loadDetail(state.selected); })().catch((error) => renderUnavailable(error)).finally(() => { state.refreshPromise = null; }); return state.refreshPromise; };
   $$('[data-launch-quote]').forEach((node) => node.addEventListener("click", () => { state.launchQuote = String(node.dataset.launchQuote || "").toUpperCase(); invalidateLaunchSnapshot(); $$('[data-launch-quote]').forEach((choice) => choice.classList.toggle("active", choice === node)); }));
   $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select').forEach((node) => { node.addEventListener("input", invalidateLaunchSnapshot); node.addEventListener("change", invalidateLaunchSnapshot); });
   $$('[data-panel="create-economics"] .choice, [data-panel="create-tax"] .choice, [data-panel="create-mode"] [data-launch-mode]').forEach((node) => node.addEventListener("click", invalidateLaunchSnapshot));
-  invalidateLaunchSnapshot(); clearPrototype(); bindProviderEvents(); bindNavigation(); bind(); void load(); window.setInterval(() => { api("v1/pump/tokens").then((tokens) => { state.tokens = tokens; renderTokens(); }).catch((error) => renderUnavailable(error)); if (state.selected) loadDetail(state.selected).catch((error) => renderUnavailable(error)); }, 15000);
+  setLaunchAvailability(false); invalidateLaunchSnapshot(); clearPrototype(); bindProviderEvents(); bindNavigation(); bind(); void load(); window.setInterval(() => { if (document.visibilityState !== "hidden") void refreshLive(); }, 15000);
 })();

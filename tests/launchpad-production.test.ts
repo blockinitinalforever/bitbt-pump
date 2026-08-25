@@ -8,6 +8,8 @@ import { parseHTML } from "linkedom";
 const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
+const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
+const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 
 type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean };
 
@@ -220,4 +222,34 @@ test("bridge contains provider-state and quote binding guards", () => {
   for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
   assert.equal(bridge.includes("state.quote = response"), false);
   assert.equal(bridge.includes("Math.sin"), false);
+});
+
+test("production wallet bridge applies the fixed 0.05 Gwei policy and reports every tx state", () => {
+  for (const marker of ["PRIORITY_FEE_WEI = 50_000_000n", "maxPriorityFeePerGas", "maxFeePerGas", "eth_getBlockByNumber", 'status: "pending"', 'status: "failed"']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
+  assert.match(bridge, /status: ok \? "success" : "failed"/);
+  assert.match(bridge, /const send = async \(tx\)/);
+  assert.doesNotMatch(bridge, /launchTokenSingleFlight[\\s\\S]*eth_sendTransaction/);
+});
+
+test("live tokens use API logo URLs and the launch form uploads Logo to S3 before prepare", () => {
+  assert.match(bridge, /logo_url \|\| token\?\.image_url \|\| token\?\.logo/);
+  for (const marker of ["token-logo-file", "/api/pump/v1/upload/image", "dataset.launchLogoUrl", "logo_url", "已上传到 S3", "bitbt:launch-reset"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(bridge, /dataset\.launchLogoUrl/);
+  assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net data:/);
+});
+
+test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {
+  for (const marker of ["setLaunchAvailability", "data-open=\"create-mode\"", "data-nav=\"create-mode\"", "data-launch-mode", "wallet-gated", "请先连接并验证钱包"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(html, /BitBT Ventures — AI &amp; Web3 Institutional Investment Venture Studio/);
+  assert.doesNotMatch(html, /BitBT LAUNCH/);
+  assert.equal((html.match(/class="connect-global"/g) || []).length, 1);
+  assert.doesNotMatch(html, /class="connect"/);
+});
+
+test("Pump startup uses the batch details endpoint instead of an N+1 detail request", () => {
+  assert.match(bridge, /v1\/pump\/details/);
+  assert.match(bridge, /loadAllDetails/);
+  assert.match(bridge, /state\.details\[address\]/);
+  assert.match(bridge, /v1\/pump\/trades\?token_address/);
+  assert.match(proxy, /v1\/pump\/details/);
 });

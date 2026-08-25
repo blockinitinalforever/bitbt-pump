@@ -4,15 +4,21 @@ const API_BASE = process.env.BITBT_PUMP_API_URL || "https://appbackend.bitbt.com
 const ALLOWED = new Set([
   "v1/auth/siwe/nonce",
   "v1/auth/siwe/verify",
+  "v1/app/config",
   "v1/pump/tokens",
   "v1/pump/detail",
+  "v1/pump/details",
   "v1/pump/buy-quote",
   "v1/pump/sell-quote",
   "v1/pump/trades",
   "v1/wallet/tx/report",
+  "v1/wallet/tx/history",
+  "v1/market/favorites",
+  "v1/token/my-tokens",
   "v1/token/launch-fee",
   "v1/token/prepare-launch",
   "v1/token/launch",
+  "v1/upload/image",
 ]);
 
 async function forward(request: NextRequest, path: string[]) {
@@ -31,13 +37,18 @@ async function forward(request: NextRequest, path: string[]) {
   if (contentType) headers.set("content-type", contentType);
   const authorization = request.headers.get("authorization");
   if (authorization) headers.set("authorization", authorization);
+  const apiKey = process.env.BITBT_PUMP_API_KEY;
+  if (apiKey) headers.set("x-api-key", apiKey);
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
     const response = await fetch(upstream, {
       method: request.method,
       headers,
       body: request.method === "GET" ? undefined : await request.text(),
       cache: "no-store",
+      signal: controller.signal,
     });
     return new NextResponse(response.body, {
       status: response.status,
@@ -45,6 +56,8 @@ async function forward(request: NextRequest, path: string[]) {
     });
   } catch {
     return NextResponse.json({ success: false, error: "Pump service is temporarily unavailable" }, { status: 502, headers: { "cache-control": "no-store" } });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-  <title>BitBT Launch · MEME Launchpad UI</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.amazonaws.com https://*.cloudfront.net data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>BitBT PUMP · BitBT Ventures</title>
   <link rel="stylesheet" href="./assets/fonts/fonts.css">
   <style>
     :root{color-scheme:light;--paper:#f1efe7;--surface:#fbfaf5;--ink:#0b0c0b;--muted:#72766f;--line:#d8d8cf;--lime:#b7ff3c;--cyan:#5be7ff;--red:#ff5a6d;--green:#0a9f63;--amber:#ffb62e;--logo:url('./assets/branding/bitbt-logo.svg');font-family:"Manrope","Noto Sans SC",sans-serif;background:var(--paper);color:var(--ink)}
@@ -20,7 +20,7 @@
     .brand-lockup{display:flex;align-items:center;gap:12px}
     .brand-mark{width:44px;height:44px;background:var(--logo) center/cover no-repeat;border:1px solid var(--ink)}
     .brand-lockup h1,.brand-lockup p{margin:0}
-    .brand-lockup h1{font-size:22px;letter-spacing:-.04em;line-height:1}
+    .brand-lockup h1{font-size:clamp(14px,1.35vw,22px);letter-spacing:-.04em;line-height:1.1;max-width:620px}
     .brand-lockup p{margin-top:5px;font:11px/1.2 "IBM Plex Sans",sans-serif;letter-spacing:.13em;color:var(--muted)}
     .studio-meta{text-align:right;font:11px/1.45 "IBM Plex Sans",sans-serif;letter-spacing:.08em;text-transform:uppercase}
     .studio-meta b{display:inline-block;background:var(--lime);padding:3px 6px;border:1px solid var(--ink);margin-bottom:4px}
@@ -66,7 +66,7 @@
     .curve{height:8px;border:1px solid var(--ink);margin-top:10px;background:#fff;position:relative}.curve i{display:block;height:100%;background:var(--lime);border-right:1px solid var(--ink)}.curve-label{display:flex;justify-content:space-between;margin-top:5px;font:9px/1.2 "IBM Plex Sans",sans-serif;color:var(--muted)}
     .tag{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--ink);padding:3px 5px;font:8px/1 "IBM Plex Sans",sans-serif;text-transform:uppercase;letter-spacing:.05em}.tag.cyan{background:var(--cyan)}.tag.lime{background:var(--lime)}.tag.red{background:var(--red)}
     .bottom-nav{height:70px;position:absolute;z-index:10;bottom:0;left:0;right:0;background:rgba(251,250,245,.97);border-top:1px solid var(--ink);display:grid;grid-template-columns:repeat(5,1fr)}
-    .bottom-nav button{border:0;background:transparent;display:grid;place-items:center;align-content:center;gap:4px;color:var(--muted);font-size:9px}.bottom-nav button.active{color:var(--ink)}.bottom-nav button.launch-button span:first-child{width:38px;height:38px;border:1px solid var(--ink);background:var(--lime);display:grid;place-items:center;margin-top:-25px;box-shadow:4px 4px 0 var(--ink)}
+    .bottom-nav button{border:0;background:transparent;display:grid;place-items:center;align-content:center;gap:4px;color:var(--muted);font-size:9px}.bottom-nav button.active{color:var(--ink)}.bottom-nav button.launch-button span:first-child{width:38px;height:38px;border:1px solid var(--ink);background:var(--lime);display:grid;place-items:center;margin-top:-25px;box-shadow:4px 4px 0 var(--ink)}button.wallet-gated:disabled{opacity:.42;filter:grayscale(1);cursor:not-allowed}
     .page-title{padding:16px 0 12px}.page-title h1{font-size:30px;letter-spacing:-.055em;margin:4px 0}.page-title p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
     .live-row{display:grid;grid-template-columns:38px 1fr auto;gap:10px;border-top:1px solid var(--line);padding:12px 0;align-items:start}.live-row img{width:38px;height:38px;border:1px solid var(--ink)}.live-row p{margin:0;font-size:11px;line-height:1.45}.live-row p b{font-weight:600}.live-row small{font:9px/1.3 "IBM Plex Sans",sans-serif;color:var(--muted)}.trade-type{font:9px/1 "IBM Plex Sans",sans-serif;border:1px solid var(--ink);padding:4px 5px}.trade-type.buy{background:var(--lime)}.trade-type.sell{background:var(--red)}
     .pulse-line{display:flex;align-items:center;gap:7px;font:10px/1.2 "IBM Plex Sans",sans-serif;margin:14px 0}.pulse-dot{width:7px;height:7px;background:var(--lime);border:1px solid var(--ink);animation:pulse 1.4s steps(2,end) infinite}@keyframes pulse{50%{opacity:.2}}
@@ -220,7 +220,7 @@
 <body>
 <main class="launch-stage" id="bitbt-launch">
   <header class="studio-head">
-    <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>BitBT LAUNCH</h1><p>MEME MARKETS, BUILT ON-CHAIN.</p></div></div>
+    <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>BitBT Ventures — AI &amp; Web3 Institutional Investment Venture Studio</h1><p>BITBT PUMP · MEME MARKETS, BUILT ON-CHAIN.</p></div></div>
     <div class="studio-actions"><button class="language-toggle" data-lang-toggle aria-label="切换语言"><i class="ico sm" style="--icon:url('./assets/icons/lucide/languages.svg')"></i><span data-lang-label>中文 / EN</span></button><button class="connect-global" data-toast="钱包连接仅用于签名">连接钱包</button></div>
   </header>
   <nav class="screen-switcher" aria-label="发射器界面预览">
@@ -236,7 +236,7 @@
       <div class="announcement" role="status"><span class="announcement-badge">状态</span><div class="announcement-copy" data-api-status>正在读取真实 Pump 数据…</div></div>
       <div class="screen-viewport">
         <section class="screen active has-bottom-nav" data-panel="discover">
-          <div class="appbar"><div class="wordmark"><span class="mini-mark"></span><span>LAUNCH<em>BNB MEME TERMINAL</em></span></div><div class="actions"><button class="icon-btn" aria-label="搜索"><i class="ico" style="--icon:url('./assets/icons/lucide/search.svg')"></i></button><button class="connect" data-toast="钱包连接仅用于签名">连接</button></div></div>
+          <div class="appbar"><div class="wordmark"><span class="mini-mark"></span><span>PUMP<em>BNB MEME TERMINAL</em></span></div><div class="actions"><button class="icon-btn" aria-label="搜索"><i class="ico" style="--icon:url('./assets/icons/lucide/search.svg')"></i></button></div></div>
           <div class="market-strip"><div><span>BNB / USDT</span><strong>$842.63 <b class="up">+1.8%</b></strong></div><div><span>24H LAUNCHES</span><strong>1,284</strong></div><div><span>24H VOLUME</span><strong>$18.6M</strong></div></div>
           <div class="hero-launch"><span class="eyebrow">Permissionless / Fair Launch</span><h1>把一个想法，变成可交易的代币。</h1><p>填写资料、选择联合曲线并签名发布。没有预售，达到目标后自动迁移至 DEX。</p><button class="launch-now" data-open="create-mode">创建代币</button></div>
           <div class="how-it-works" aria-label="创建流程"><div class="how-step"><span>01 / SETUP</span><strong>填写代币资料</strong><small>名称、符号、头像与社区链接</small></div><div class="how-step"><span>02 / CURVE</span><strong>选择发行规则</strong><small>计价资产、联合曲线与税费</small></div><div class="how-step"><span>03 / LAUNCH</span><strong>签名后立即上线</strong><small>达标自动迁移 PancakeSwap</small></div></div>
@@ -278,10 +278,10 @@
           <div class="appbar"><button class="icon-btn" data-open="discover" aria-label="返回"><i class="ico" style="--icon:url('./assets/icons/lucide/chevron-left.svg')"></i></button><div><div class="eyebrow">BITBT UPDATES</div><strong>公告中心</strong></div><button class="icon-btn" data-toast="所有公告已标为已读" aria-label="全部已读"><i class="ico" style="--icon:url('./assets/icons/lucide/check.svg')"></i></button></div>
           <div class="page-title"><h1>重要更新，一处看完。</h1><p>产品更新、活动、迁移安排与安全提示都会在这里发布。</p></div>
           <div class="filter-row"><button class="active">全部</button><button>产品更新</button><button>活动</button><button>安全</button><button>系统状态</button></div>
-          <article class="announcement-detail" id="announcement-detail"><span class="tag lime">置顶公告</span><h2 id="announcement-detail-title">BitBT Launch 测试季开放</h2><p id="announcement-detail-body">创建费限时降至 0.005 BNB。联合曲线达到 100% 后，流动性将自动迁移至 PancakeSwap V3；整个过程无需项目方手动操作。</p><div class="review-row"><span>生效时间</span><strong id="announcement-detail-date">2026/08/24 20:00</strong></div><div class="review-row"><span>适用网络</span><strong>BNB Chain</strong></div><button class="primary" data-open="create-mode">立即创建代币</button></article>
+          <article class="announcement-detail" id="announcement-detail"><span class="tag lime">置顶公告</span><h2 id="announcement-detail-title">BitBT PUMP 测试季开放</h2><p id="announcement-detail-body">创建费限时降至 0.005 BNB。联合曲线达到 100% 后，流动性将自动迁移至 PancakeSwap V3；整个过程无需项目方手动操作。</p><div class="review-row"><span>生效时间</span><strong id="announcement-detail-date">2026/08/24 20:00</strong></div><div class="review-row"><span>适用网络</span><strong>BNB Chain</strong></div><button class="primary" data-open="create-mode">立即创建代币</button></article>
           <div class="section-title"><h3>全部公告</h3><a>4 条未读</a></div>
           <div class="announcement-list">
-            <button class="announcement-card unread" data-announcement-title="BitBT Launch 测试季开放" data-announcement-body="创建费限时降至 0.005 BNB。联合曲线达到 100% 后，流动性将自动迁移至 PancakeSwap V3；整个过程无需项目方手动操作。" data-announcement-date="2026/08/24 20:00"><span class="announcement-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/bell-plus.svg')"></i></span><div><h3>测试季与创建费优惠</h3><p>创建费调整、适用范围与 DEX 迁移说明。</p></div><time>今天 20:00</time></button>
+            <button class="announcement-card unread" data-announcement-title="BitBT PUMP 测试季开放" data-announcement-body="创建费限时降至 0.005 BNB。联合曲线达到 100% 后，流动性将自动迁移至 PancakeSwap V3；整个过程无需项目方手动操作。" data-announcement-date="2026/08/24 20:00"><span class="announcement-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/bell-plus.svg')"></i></span><div><h3>测试季与创建费优惠</h3><p>创建费调整、适用范围与 DEX 迁移说明。</p></div><time>今天 20:00</time></button>
             <button class="announcement-card unread" data-announcement-title="LIVE TOKEN 即将迁移至 DEX" data-announcement-body="LIVE TOKEN 联合曲线已完成 78.24%，预计还需 1.34 BNB 储备。达到目标后将自动创建 PancakeSwap V3 流动性池。" data-announcement-date="2026/08/24 18:36"><span class="announcement-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/waypoints.svg')"></i></span><div><h3>LIVE TOKEN 迁移进度提醒</h3><p>当前 78.24%，预计迁移市值 $92.4K。</p></div><time>今天 18:36</time></button>
             <button class="announcement-card" data-announcement-title="安全提示：确认合约与签名内容" data-announcement-body="BitBT 不会通过私信索取任何钱包敏感凭证。连接钱包前请确认域名与合约地址，签名前请核对授权范围和预计支出。" data-announcement-date="2026/08/23 10:20"><span class="announcement-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/shield-check.svg')"></i></span><div><h3>签名与防诈骗提醒</h3><p>BitBT 不会索取任何钱包敏感凭证。</p></div><time>08/23</time></button>
             <button class="announcement-card" data-announcement-title="K 线与逐笔成交数据升级" data-announcement-body="行情页现已支持 1 分钟至 1 日周期、逐笔成交、持仓分布及创建者地址标识。数据来自链上成交记录。" data-announcement-date="2026/08/22 14:00"><span class="announcement-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/chart-candlestick.svg')"></i></span><div><h3>行情数据模块升级</h3><p>新增周期 K 线、持仓分布与创建者标识。</p></div><time>08/22</time></button>
@@ -324,7 +324,7 @@
           <div class="appbar"><button class="icon-btn" data-open="create-mode"><i class="ico" style="--icon:url('./assets/icons/lucide/chevron-left.svg')"></i></button><div><div class="eyebrow">CREATE / STEP 01</div><strong>代币资料</strong></div><span class="tag lime">1 / 4</span></div>
           <div class="stepper"><i class="current"></i><i></i><i></i><i></i></div>
           <div class="page-title"><h1>先填写代币资料。</h1><p>共 4 步，约 2 分钟。名称、符号和头像部署后不可修改。</p></div>
-          <div class="upload"><div class="upload-art" id="create-art">MB</div><div><strong>上传代币头像</strong><small>PNG / JPG / WEBP · 建议 1000×1000<br>最大 5MB</small><button class="secondary" style="padding:7px;margin-top:7px">选择文件</button></div></div>
+          <div class="upload"><div class="upload-art" id="create-art">MB</div><div><strong>上传代币头像</strong><small>PNG / JPG / WEBP · 建议 1000×1000<br>最大 5MB</small><input id="token-logo-file" type="file" accept="image/png,image/jpeg,image/webp" hidden><button class="secondary" data-launch-file type="button" style="padding:7px;margin-top:7px">选择文件</button><small data-launch-file-name>尚未选择文件</small></div></div>
           <div class="form-group"><label for="token-name">代币名称 <span>2–24 字符</span></label><input class="field" id="token-name" value="Live token" maxlength="24"></div>
           <div class="form-group"><label for="token-symbol">代币符号 <span>2–10 字符</span></label><input class="field" id="token-symbol" value="MOON" maxlength="10"></div>
           <div class="form-group"><label for="token-story">一句话故事 <span>0 / 160</span></label><textarea class="field" id="token-story">A moon-born bun powered by the BNB community.</textarea></div>
@@ -404,7 +404,7 @@
           <div class="profile-card"><div class="profile-head"><span class="profile-avatar">0X</span><div><h2>0x71A4…89F2</h2><p>BNB CHAIN · CREATOR LEVEL 03</p></div><span class="tag lime">PRO</span></div><div class="card-metrics"><div><span>已发射</span><strong>3</strong></div><div><span>交易次数</span><strong>48</strong></div><div><span>总成交额</span><strong>$36.8K</strong></div></div></div>
           <div class="section-title"><h3>创作者工具</h3></div><div class="profile-card"><button class="menu-row" data-open="my-launches"><i class="ico" style="--icon:url('./assets/icons/lucide/rocket.svg')"></i><span>我的发射</span><i class="ico sm" style="--icon:url('./assets/icons/lucide/chevron-right.svg')"></i></button><button class="menu-row" data-open="activity"><i class="ico" style="--icon:url('./assets/icons/lucide/history.svg')"></i><span>交易与收入记录</span><i class="ico sm" style="--icon:url('./assets/icons/lucide/chevron-right.svg')"></i></button><button class="menu-row" data-toast="税费金库功能即将开放"><i class="ico" style="--icon:url('./assets/icons/lucide/badge-dollar-sign.svg')"></i><span>税费金库</span><i class="ico sm" style="--icon:url('./assets/icons/lucide/chevron-right.svg')"></i></button></div>
           <div class="section-title"><h3>偏好与安全</h3></div><div class="profile-card"><button class="menu-row"><i class="ico" style="--icon:url('./assets/icons/lucide/bell.svg')"></i><span>价格与迁移提醒</span><strong>开启</strong></button><button class="menu-row"><i class="ico" style="--icon:url('./assets/icons/lucide/shield-check.svg')"></i><span>防夹与滑点保护</span><strong>自动</strong></button><button class="menu-row" data-lang-toggle><i class="ico" style="--icon:url('./assets/icons/lucide/languages.svg')"></i><span>语言</span><strong data-lang-current>简体中文</strong></button></div>
-          <p class="footer-note">BitBT Launch 是非托管、无需许可的发射与交易界面。所有示例价格和交易仅用于 UI 原型展示，不构成投资建议。</p>
+          <p class="footer-note">BitBT PUMP 是非托管、无需许可的发射与交易界面。所有示例价格和交易仅用于 UI 原型展示，不构成投资建议。</p>
         </section>
 
         <nav class="bottom-nav visible" aria-label="发射器主导航"><button data-nav="discover" class="active"><i class="ico" style="--icon:url('./assets/icons/lucide/blocks.svg')"></i><span>市场</span></button><button data-nav="live"><i class="ico" style="--icon:url('./assets/icons/lucide/radio.svg')"></i><span>实时</span></button><button class="launch-button" data-nav="create-mode"><span><i class="ico" style="--icon:url('./assets/icons/lucide/rocket.svg')"></i></span><span>发射</span></button><button data-nav="rank"><i class="ico" style="--icon:url('./assets/icons/lucide/trending-up.svg')"></i><span>排行</span></button><button data-nav="profile"><i class="ico" style="--icon:url('./assets/icons/lucide/wallet-cards.svg')"></i><span>我的</span></button></nav>
@@ -417,6 +417,7 @@
   </div>
 </main>
     <script src="./assets/vendor/lightweight-charts-4.2.3.min.js"></script>
+    <script src="./launch-logo-upload.js"></script>
     <script src="./launchpad-live.js"></script>
     </body>
 </html>
