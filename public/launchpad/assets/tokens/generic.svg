@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Generic token placeholder">
+  <rect width="128" height="128" rx="40" fill="#E8ECE6"/>
+  <circle cx="64" cy="64" r="28" fill="none" stroke="#111311" stroke-width="7"/><path d="M64 48v32M48 64h32" stroke="#111311" stroke-width="7" stroke-linecap="round"/>
+</svg>

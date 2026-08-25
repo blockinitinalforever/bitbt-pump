@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="BitBull placeholder">
+  <rect width="128" height="128" rx="40" fill="#111311"/>
+  <path fill="#fff" d="M31 35c11 2 18 7 23 14 7-3 13-3 20 0 5-7 12-12 23-14-1 12-5 22-13 29 3 5 5 11 5 18 0 20-11 31-25 31S39 102 39 82c0-7 2-13 5-18-8-7-12-17-13-29z"/><path fill="#111311" d="M50 76h10v10H50zm18 0h10v10H68z"/>
+</svg>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Bitcoin placeholder">
+  <rect width="128" height="128" rx="40" fill="#F7931A"/>
+  <text x="64" y="88" fill="#fff" font-family="Arial,sans-serif" font-size="67" font-weight="700" text-anchor="middle">₿</text>
+</svg>

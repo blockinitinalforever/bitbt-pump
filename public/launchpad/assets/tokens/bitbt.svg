@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="BitBT placeholder">
+  <rect width="128" height="128" rx="40" fill="#111311"/>
+  <path fill="#fff" d="M36 22h19v18H36zm0 33h31c17 0 27 8 27 21 0 10-5 17-15 20 11 2 17 9 17 20 0 15-11 24-30 24H36V55zm19 0v17h11c7 0 11-3 11-8 0-6-4-9-11-9H55zm0 34v19h12c8 0 12-4 12-10 0-6-4-9-12-9H55z"/>
+</svg>
