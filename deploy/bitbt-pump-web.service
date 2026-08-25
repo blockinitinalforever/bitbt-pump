@@ -14,6 +14,7 @@ Environment=PORT=3003
 Environment=HOSTNAME=127.0.0.1
 Environment=BITBT_PUMP_API_URL=https://appbackend.bitbt.com
 Environment=NEXT_PUBLIC_PUMP_SIWE_DOMAIN=bitbt.fun
+EnvironmentFile=-/etc/bitbt-pump-web.env
 
 [Install]
 WantedBy=multi-user.target

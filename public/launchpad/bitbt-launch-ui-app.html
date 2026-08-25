@@ -324,7 +324,7 @@
           <div class="appbar"><button class="icon-btn" data-open="create-mode"><i class="ico" style="--icon:url('./assets/icons/lucide/chevron-left.svg')"></i></button><div><div class="eyebrow">CREATE / STEP 01</div><strong>代币资料</strong></div><span class="tag lime">1 / 4</span></div>
           <div class="stepper"><i class="current"></i><i></i><i></i><i></i></div>
           <div class="page-title"><h1>先填写代币资料。</h1><p>共 4 步，约 2 分钟。名称、符号和头像部署后不可修改。</p></div>
-          <div class="upload"><div class="upload-art" id="create-art">MB</div><div><strong>上传代币头像</strong><small>PNG / JPG / WEBP · 建议 1000×1000<br>最大 5MB</small><button class="secondary" style="padding:7px;margin-top:7px">选择文件</button></div></div>
+          <div class="upload"><div class="upload-art" id="create-art">MB</div><div><strong>上传代币头像</strong><small>PNG / JPG / WEBP · 建议 1000×1000<br>最大 5MB</small><input id="token-logo-file" type="file" accept="image/png,image/jpeg,image/webp" hidden><button class="secondary" data-launch-file type="button" style="padding:7px;margin-top:7px">选择文件</button><small data-launch-file-name>尚未选择文件</small></div></div>
           <div class="form-group"><label for="token-name">代币名称 <span>2–24 字符</span></label><input class="field" id="token-name" value="Live token" maxlength="24"></div>
           <div class="form-group"><label for="token-symbol">代币符号 <span>2–10 字符</span></label><input class="field" id="token-symbol" value="MOON" maxlength="10"></div>
           <div class="form-group"><label for="token-story">一句话故事 <span>0 / 160</span></label><textarea class="field" id="token-story">A moon-born bun powered by the BNB community.</textarea></div>
@@ -417,6 +417,7 @@
   </div>
 </main>
     <script src="./assets/vendor/lightweight-charts-4.2.3.min.js"></script>
+    <script src="./launch-logo-upload.js"></script>
     <script src="./launchpad-live.js"></script>
     </body>
 </html>

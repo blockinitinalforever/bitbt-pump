@@ -13,6 +13,7 @@ const ALLOWED = new Set([
   "v1/token/launch-fee",
   "v1/token/prepare-launch",
   "v1/token/launch",
+  "v1/upload/image",
 ]);
 
 async function forward(request: NextRequest, path: string[]) {
@@ -31,6 +32,8 @@ async function forward(request: NextRequest, path: string[]) {
   if (contentType) headers.set("content-type", contentType);
   const authorization = request.headers.get("authorization");
   if (authorization) headers.set("authorization", authorization);
+  const apiKey = process.env.BITBT_PUMP_API_KEY;
+  if (apiKey) headers.set("x-api-key", apiKey);
 
   try {
     const response = await fetch(upstream, {
