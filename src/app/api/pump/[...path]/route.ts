@@ -40,12 +40,15 @@ async function forward(request: NextRequest, path: string[]) {
   const apiKey = process.env.BITBT_PUMP_API_KEY;
   if (apiKey) headers.set("x-api-key", apiKey);
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
     const response = await fetch(upstream, {
       method: request.method,
       headers,
       body: request.method === "GET" ? undefined : await request.text(),
       cache: "no-store",
+      signal: controller.signal,
     });
     return new NextResponse(response.body, {
       status: response.status,
@@ -53,6 +56,8 @@ async function forward(request: NextRequest, path: string[]) {
     });
   } catch {
     return NextResponse.json({ success: false, error: "Pump service is temporarily unavailable" }, { status: 502, headers: { "cache-control": "no-store" } });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
