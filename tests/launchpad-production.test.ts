@@ -224,6 +224,13 @@ test("bridge contains provider-state and quote binding guards", () => {
   assert.equal(bridge.includes("Math.sin"), false);
 });
 
+test("production wallet bridge applies the fixed 0.05 Gwei policy and reports every tx state", () => {
+  for (const marker of ["PRIORITY_FEE_WEI = 50_000_000n", "maxPriorityFeePerGas", "maxFeePerGas", "eth_getBlockByNumber", 'status: "pending"', 'status: "failed"']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
+  assert.match(bridge, /status: ok \? "success" : "failed"/);
+  assert.match(bridge, /const send = async \(tx\)/);
+  assert.doesNotMatch(bridge, /launchTokenSingleFlight[\\s\\S]*eth_sendTransaction/);
+});
+
 test("live tokens use API logo URLs and the launch form uploads Logo to S3 before prepare", () => {
   assert.match(bridge, /logo_url \|\| token\?\.image_url \|\| token\?\.logo/);
   for (const marker of ["token-logo-file", "/api/pump/v1/upload/image", "dataset.launchLogoUrl", "logo_url", "已上传到 S3", "bitbt:launch-reset"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
