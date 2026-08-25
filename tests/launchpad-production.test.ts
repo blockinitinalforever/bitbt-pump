@@ -217,7 +217,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
 });
 
 test("bridge contains provider-state and quote binding guards", () => {
-  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
+  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
   assert.equal(bridge.includes("state.quote = response"), false);
   assert.equal(bridge.includes("Math.sin"), false);
 });
