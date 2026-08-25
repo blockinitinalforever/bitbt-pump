@@ -2,8 +2,9 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
+  window.setTimeout(() => $$('[data-panel="detail"] .actions [data-open="watchlist"]').forEach((node) => node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); toggleFavorite().catch((error) => toast(error.message)); }, true)), 0);
 
-  const state = { tokens: [], details: {}, selected: null, detail: null, trades: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false };
+  const state = { tokens: [], details: {}, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false };
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
   const text = (selector, value) => $$(selector).forEach((node) => { node.textContent = value == null || value === "" ? "—" : String(value); });
@@ -46,6 +47,48 @@
     [...panel.querySelectorAll(".rank-row")].forEach((node) => node.remove());
     const rows = [...state.tokens].sort((a, b) => number(b.progress_percent) - number(a.progress_percent)).slice(0, 10).map((token, index) => `<div class="rank-row"><span class="num">${String(index + 1).padStart(2, "0")}</span><img src="${assetImage(token)}" alt="${token.symbol || "Token"}"><div><strong>${token.symbol || token.token_name || "—"}</strong><small>${status(token)} · ${token.quote_token || "BNB"}</small></div><div class="rank-price"><strong>${pretty(token.current_price_quote || token.current_price_bnb)}</strong><span class="up">${number(token.progress_percent).toFixed(0)}%</span></div></div>`).join("");
     panel.querySelector(".rank-tabs")?.insertAdjacentHTML("afterend", rows || `<p class="footer-note">暂无真实 Pump 排行数据。</p>`);
+  };
+  const deviceId = () => { try { let id = localStorage.getItem("bitbt_pump_device"); if (!id) { id = crypto.randomUUID(); localStorage.setItem("bitbt_pump_device", id); } return id; } catch { return "pump-browser-device"; } };
+  const renderMyPanels = () => {
+    const launches = state.myLaunches;
+    const launchPanel = $('[data-panel="my-launches"]');
+    if (launchPanel) {
+      launchPanel.querySelectorAll(".launch-card, .summary-hero").forEach((node) => node.remove());
+      const cards = launches.map((launch) => `<div class="launch-card"><div class="launch-card-head"><img src="${assetImage(launch)}" alt="${launch.token_name || launch.symbol || "Token"}"><div><strong>${launch.token_name || launch.symbol || "—"} · ${launch.symbol || "—"}</strong><small>${status(launch)} · ${age(launch.submitted_at)}</small></div><span class="tag lime">${String(launch.status || "").toUpperCase()}</span></div><div class="card-metrics"><div><span>计价</span><strong>${launch.quote_token || "BNB"}</strong></div><div><span>地址</span><strong>${short(launch.contract_address)}</strong></div><div><span>网络</span><strong>${launch.chain_id || "bsc"}</strong></div></div></div>`).join("");
+      launchPanel.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">连接并验证钱包后显示真实发射记录。</p>`);
+    }
+    const activity = $('[data-panel="activity"]');
+    if (activity) {
+      activity.querySelectorAll(".activity-card").forEach((node) => node.remove());
+      const cards = state.history.map((tx) => `<div class="activity-card"><span class="activity-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${tx.tx_type === "pump_sell" ? "arrow-up-right" : tx.tx_type === "pump_buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><div><strong>${tx.tx_type || "交易"}</strong><small>${tx.from_token || "—"} → ${tx.to_token || "—"} · ${tx.status || "—"}</small></div><div class="right"><strong>${tx.tx_hash ? short(tx.tx_hash) : "—"}</strong><small>${age(tx.created_at)}</small></div></div>`).join("");
+      activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">暂无真实交易记录。</p>`);
+    }
+    const profile = $('[data-panel="profile"] .profile-card');
+    if (profile) { const values = profile.querySelectorAll(".card-metrics strong"); if (values.length >= 3) { values[0].textContent = String(launches.filter((item) => ["deployed", "migrated"].includes(item.status)).length); values[1].textContent = String(state.history.length); values[2].textContent = "链上记录"; } profile.querySelector("h2")?.replaceChildren(document.createTextNode(state.account ? short(state.account) : "请连接钱包")); }
+    const watchlist = $('[data-panel="watchlist"] .token-grid');
+    if (watchlist) { const favoriteAddresses = new Set(state.favorites.map((item) => String(item.contract_address || "").toLowerCase())); const cards = state.tokens.filter((token) => favoriteAddresses.has(tokenAddress(token).toLowerCase())).map(tokenCard).join(""); watchlist.innerHTML = cards || `<p class="footer-note">暂无自选代币。请在代币详情中点击收藏。</p>`; bindLiveTokenSelection(); }
+  };
+  const loadUserPanels = async () => {
+    if (!state.account) return;
+    const [launches, history, favorites] = await Promise.allSettled([
+      api(`v1/token/my-tokens?address=${encodeURIComponent(state.account)}`),
+      api(`v1/wallet/tx/history?address=${encodeURIComponent(state.account)}&chain_id=bsc&limit=100`),
+      api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`),
+    ]);
+    state.myLaunches = launches.status === "fulfilled" ? launches.value : [];
+    state.history = history.status === "fulfilled" ? history.value : [];
+    state.favorites = favorites.status === "fulfilled" ? favorites.value : [];
+    renderMyPanels();
+  };
+  const toggleFavorite = async () => {
+    if (!state.account || !state.selected) throw new Error("请先连接并验证钱包");
+    const token = state.selected;
+    const address = tokenAddress(token).toLowerCase();
+    const favorite = state.favorites.some((item) => String(item.contract_address || "").toLowerCase() === address);
+    await api("v1/market/favorites", { method: favorite ? "DELETE" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ device_id: deviceId(), symbol: token.symbol || token.token_name, chain_id: "bsc", contract_address: tokenAddress(token) }) });
+    state.favorites = favorite ? state.favorites.filter((item) => String(item.contract_address || "").toLowerCase() !== address) : [...state.favorites, { symbol: token.symbol, chain_id: "bsc", contract_address: tokenAddress(token) }];
+    renderMyPanels();
+    toast(favorite ? "已取消收藏" : "已加入自选");
   };
   const clearPrototype = () => {
     $$(".token-grid").forEach((node) => { node.innerHTML = `<p class="footer-note">正在读取真实 Pump 项目…</p>`; });
@@ -91,7 +134,7 @@
     const noncePayload = await api("v1/auth/siwe/nonce"); const domain = String(noncePayload.domain || "").toLowerCase(); if (domain !== "bitbt.fun") throw new Error("SIWE domain 不受信任");
     const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: 56\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
     const signature = await window.ethereum.request({ method: "personal_sign", params: [message, address] }); const verified = await api("v1/auth/siwe/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
-    sessionStorage.setItem("bitbt_pump_session", verified.token); state.account = String(verified.address || address).toLowerCase(); state.chainId = "0x38"; setLaunchAvailability(true); invalidateQuote(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = short(state.account); }); await assertProviderState(); await refreshBalances(); toast("钱包已连接"); return state.account;
+    sessionStorage.setItem("bitbt_pump_session", verified.token); state.account = String(verified.address || address).toLowerCase(); state.chainId = "0x38"; setLaunchAvailability(true); invalidateQuote(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = short(state.account); }); await assertProviderState(); await refreshBalances(); await loadUserPanels().catch(() => undefined); toast("钱包已连接"); return state.account;
   };
   const refreshBalances = async () => {
     if (!state.account || !state.detail || !window.ethereum) return;
