@@ -3,6 +3,7 @@ type PreparedLaunch = { launch: { id: string; token_name: string; symbol: string
 
 function isAddress(value: string): boolean { return /^0x[0-9a-fA-F]{40}$/.test(value); }
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+function isNonZeroAddress(value: string): boolean { return isAddress(value) && value.toLowerCase() !== ZERO_ADDRESS; }
 
 export const LAUNCH_METHOD = "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)";
 export const LAUNCH_SELECTOR = "187fdf81";
@@ -29,9 +30,9 @@ function abiString(value: string): string {
 
 export function assertPreparedLaunchBinding(prepared: PreparedLaunch, fee: LaunchFeeInfo, creator: string, input: { token_name: string; symbol: string; quote_token: string }, expectedQuoteTokenAddress: string | null): void {
   if (prepared.method !== LAUNCH_METHOD || prepared.chain_id !== "bsc" || fee.chain_id !== "bsc") throw new Error("Launch preparation method or chain is invalid");
-  if (!isAddress(creator) || !isAddress(prepared.factory_address) || !isAddress(fee.factory_address) || prepared.factory_address.toLowerCase() !== fee.factory_address.toLowerCase()) throw new Error("Launch factory binding is invalid");
-  if (!isAddress(fee.receive_address) || !isAddress(prepared.fee_recipient) || prepared.fee_recipient.toLowerCase() !== fee.receive_address.toLowerCase()) throw new Error("Launch fee recipient binding is invalid");
-  if (!/^0x[0-9a-fA-F]{64}$/.test(prepared.salt) || !isAddress(prepared.quote_token_address) || !isAddress(prepared.predicted_token_address) || !isAddress(prepared.curve_address)) throw new Error("Launch preparation addresses are invalid");
+  if (!isNonZeroAddress(creator) || !isNonZeroAddress(prepared.factory_address) || !isNonZeroAddress(fee.factory_address) || prepared.factory_address.toLowerCase() !== fee.factory_address.toLowerCase()) throw new Error("Launch factory binding is invalid");
+  if (!isNonZeroAddress(fee.receive_address) || !isNonZeroAddress(prepared.fee_recipient) || prepared.fee_recipient.toLowerCase() !== fee.receive_address.toLowerCase()) throw new Error("Launch fee recipient binding is invalid");
+  if (!/^0x[0-9a-fA-F]{64}$/.test(prepared.salt) || !isAddress(prepared.quote_token_address) || !isNonZeroAddress(prepared.predicted_token_address) || !isNonZeroAddress(prepared.curve_address)) throw new Error("Launch preparation addresses are invalid");
   if (!fee.fee_wei || !/^\d+$/.test(fee.fee_wei) || !/^\d+$/.test(prepared.fee_wei) || fee.fee_wei !== prepared.fee_wei || BigInt(prepared.fee_wei) <= 0n || BigInt(prepared.migration_threshold_wei) <= 0n) throw new Error("Launch preparation amounts are invalid");
   const expectedQuote = expectedQuoteTokenAddress || ZERO_ADDRESS;
   if (!isAddress(expectedQuote) || prepared.quote_token_address.toLowerCase() !== expectedQuote.toLowerCase()) throw new Error("Launch quote token binding is invalid");
@@ -39,7 +40,7 @@ export function assertPreparedLaunchBinding(prepared: PreparedLaunch, fee: Launc
 }
 
 export function encodeLaunchTokenData(prepared: PreparedLaunch): string {
-  if (prepared.method !== LAUNCH_METHOD || !/^0x[0-9a-fA-F]{64}$/.test(prepared.salt) || !isAddress(prepared.factory_address) || !isAddress(prepared.quote_token_address)) throw new Error("Launch preparation binding is invalid");
+  if (prepared.method !== LAUNCH_METHOD || !/^0x[0-9a-fA-F]{64}$/.test(prepared.salt) || !isNonZeroAddress(prepared.factory_address) || !isAddress(prepared.quote_token_address)) throw new Error("Launch preparation binding is invalid");
   const name = abiString(prepared.launch.token_name);
   const symbol = abiString(prepared.launch.symbol);
   const nameOffset = 160n;
