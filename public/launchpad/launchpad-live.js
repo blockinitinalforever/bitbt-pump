@@ -4,7 +4,7 @@
   if (!root) return;
   window.setTimeout(() => $$('[data-panel="detail"] .actions [data-open="watchlist"]').forEach((node) => node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); toggleFavorite().catch((error) => toast(error.message)); }, true)), 0);
 
-  const state = { tokens: [], details: {}, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false };
+  const state = { tokens: [], details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false };
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
   const text = (selector, value) => $$(selector).forEach((node) => { node.textContent = value == null || value === "" ? "—" : String(value); });
@@ -36,6 +36,12 @@
     $$(".token-grid").forEach((node) => { node.innerHTML = html || `<p class="footer-note">暂无真实 Pump 项目数据。</p>`; });
     bindLiveTokenSelection();
     renderRank();
+  };
+  const renderTradeConfig = () => {
+    const quote = String(state.detail?.quote_token || "BNB").toUpperCase();
+    const amounts = state.config?.pump?.quickAmountsByQuote?.[quote] || state.config?.pump?.quickAmounts || [];
+    const chips = [...amounts, "MAX"];
+    $$('[data-panel="trade"] [data-amount]').forEach((node, index) => { const amount = chips[index]; node.hidden = amount === undefined; if (amount !== undefined) { node.dataset.amount = amount; node.textContent = amount === "MAX" ? "MAX" : amount; } });
   };
   const renderLiveRows = () => {
     const rows = state.trades.slice(0, 12).map((trade) => `<div class="live-row"><span class="trade-type ${String(trade.trade_type).toLowerCase() === "buy" ? "buy" : "sell"}">${String(trade.trade_type || "TRADE").toUpperCase()}</span><div><p><b>${short(trade.trader)}</b></p><small>${pretty(trade.bnb_amount || trade.quote_amount)} BNB · ${pretty(trade.token_amount)} ${state.detail?.symbol || "TOKEN"}</small></div><small>${age(new Date((trade.timestamp > 1e12 ? trade.timestamp : trade.timestamp * 1000)).toISOString())}</small></div>`).join("");
@@ -149,7 +155,7 @@
   };
   const loadDetail = async (token) => {
     if (!tokenAddress(token)) return;
-    state.selected = token; const address = tokenAddress(token).toLowerCase(); state.detail = state.details[address] || await api(`v1/pump/detail?address=${encodeURIComponent(tokenAddress(token))}`); state.details[address] = state.detail; state.trades = await api(`v1/pump/trades?token_address=${encodeURIComponent(tokenAddress(token))}`); state.balances = { quote: null, token: null, gas: null }; renderSelected(); renderLiveRows(); drawCharts(); if (state.account) await refreshBalances();
+    state.selected = token; const address = tokenAddress(token).toLowerCase(); state.detail = state.details[address] || await api(`v1/pump/detail?address=${encodeURIComponent(tokenAddress(token))}`); state.details[address] = state.detail; state.trades = await api(`v1/pump/trades?token_address=${encodeURIComponent(tokenAddress(token))}`); state.balances = { quote: null, token: null, gas: null }; renderSelected(); renderTradeConfig(); renderLiveRows(); drawCharts(); if (state.account) await refreshBalances();
   };
   const drawCharts = () => {
     if (!window.LightweightCharts || !state.trades.length) return;
@@ -212,7 +218,7 @@
   const bind = () => { $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.dataset.walletBound = "1"; node.addEventListener("click", () => connectWallet().catch((error) => toast(error.message))); }); $$("[data-trade-side]").forEach((node) => node.addEventListener("click", () => applySide(node.dataset.tradeSide === "sell"))); const input = $("#trade-amount"); input?.addEventListener("input", () => { window.clearTimeout(input._quoteTimer); input._quoteTimer = window.setTimeout(() => updateQuote().catch((error) => toast(error.message)), 350); }); $("#trade-submit")?.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); executeTrade().catch((error) => toast(error.message)); }, true); $$('[data-launch-load], [data-launch-publish]').forEach((node) => { if (node.dataset.launchBound) return; node.dataset.launchBound = "1"; node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); launchToken().catch((error) => toast(error.message)); }, true); }); };
   const loadAllDetails = async () => { try { const details = await api("v1/pump/details"); state.details = Object.fromEntries(details.filter((detail) => detail.contract_address).map((detail) => [detail.contract_address.toLowerCase(), detail])); return details; } catch { state.details = {}; return []; } };
   const renderUnavailable = (error) => { clearPrototype(); state.tokens = []; state.details = {}; state.selected = null; state.detail = null; state.trades = []; const banner = $("[data-api-status]"); if (banner) banner.textContent = "实时 Pump 数据暂不可用"; toast(error.message); };
-  const load = async () => { try { state.tokens = await api("v1/pump/tokens"); await loadAllDetails(); renderTokens(); const first = state.tokens.find((token) => tokenAddress(token)); if (first) await loadDetail(first); } catch (error) { renderUnavailable(error); } };
+  const load = async () => { try { const [tokens, config] = await Promise.all([api("v1/pump/tokens"), api("v1/app/config").catch(() => null)]); state.tokens = tokens; state.config = config; await loadAllDetails(); renderTokens(); const first = state.tokens.find((token) => tokenAddress(token)); if (first) await loadDetail(first); } catch (error) { renderUnavailable(error); } };
   $$('[data-launch-quote]').forEach((node) => node.addEventListener("click", () => { state.launchQuote = String(node.dataset.launchQuote || "").toUpperCase(); invalidateLaunchSnapshot(); $$('[data-launch-quote]').forEach((choice) => choice.classList.toggle("active", choice === node)); }));
   $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select').forEach((node) => { node.addEventListener("input", invalidateLaunchSnapshot); node.addEventListener("change", invalidateLaunchSnapshot); });
   $$('[data-panel="create-economics"] .choice, [data-panel="create-tax"] .choice, [data-panel="create-mode"] [data-launch-mode]').forEach((node) => node.addEventListener("click", invalidateLaunchSnapshot));

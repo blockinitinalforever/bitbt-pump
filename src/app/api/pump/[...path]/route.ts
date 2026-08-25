@@ -4,6 +4,7 @@ const API_BASE = process.env.BITBT_PUMP_API_URL || "https://appbackend.bitbt.com
 const ALLOWED = new Set([
   "v1/auth/siwe/nonce",
   "v1/auth/siwe/verify",
+  "v1/app/config",
   "v1/pump/tokens",
   "v1/pump/detail",
   "v1/pump/details",
