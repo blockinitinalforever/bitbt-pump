@@ -4,7 +4,7 @@
   if (!root) return;
   window.setTimeout(() => $$('[data-panel="detail"] .actions [data-open="watchlist"]').forEach((node) => node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); toggleFavorite().catch((error) => toast(error.message)); }, true)), 0);
 
-  const state = { tokens: [], details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false, refreshPromise: null };
+  const state = { tokens: [], details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false, refreshPromise: null };
   const charts = new Map();
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
@@ -18,6 +18,7 @@
     const token = sessionStorage.getItem("bitbt_pump_session");
     const response = await fetch(`/api/pump/${path}`, { ...init, cache: "no-store", headers: { accept: "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}), ...(init?.headers || {}) } });
     const payload = await response.json();
+    if (response.status === 401) { resetProviderState("登录已过期，请重新连接钱包"); const error = new Error("登录已过期，请重新连接钱包"); error.code = "SESSION_EXPIRED"; throw error; }
     if (!response.ok || payload.data === undefined) throw new Error(payload.error || payload.message || `Pump API request failed (${response.status})`);
     return payload.data;
   };
@@ -145,9 +146,23 @@
   const setLaunchTerminal = (message) => { state.launchSnapshot = null; state.launchTerminal = true; clearLaunchReview(); const loadButton = $("[data-launch-load]"); if (loadButton) loadButton.textContent = message; };
   const resetLaunchFlow = () => { state.launchSnapshot = null; state.launchLogoUrl = ""; document.documentElement.dataset.launchLogoUrl = ""; state.launchTerminal = false; clearLaunchReview(); const art = $("#create-art"); if (art) { art.textContent = "MB"; art.style.backgroundImage = ""; } const fileName = $("[data-launch-file-name]"); if (fileName) fileName.textContent = "尚未选择文件"; const input = $("#token-logo-file"); if (input) input.value = ""; window.dispatchEvent(new CustomEvent("bitbt:launch-reset")); };
   const renderLaunchReview = (fee, prepared, description) => { text("[data-preview-name], [data-launch-review-name]", prepared.launch.token_name); text("[data-preview-ticker], [data-launch-review-quote]", prepared.launch.symbol); text("[data-preview-symbol]", prepared.launch.symbol.slice(0, 2).toUpperCase()); text("[data-launch-review-chain]", `BSC Chain · ${prepared.launch.quote_token}`); text("[data-launch-review-description]", description); text("[data-launch-review-quote-address]", prepared.quote_token_address); text("[data-launch-review-curve]", prepared.curve_address); text("[data-launch-review-threshold]", `${prepared.migration_threshold_wei} wei`); text("[data-launch-review-fee]", `${fee.fee_wei} wei`); text("[data-launch-review-recipient]", prepared.fee_recipient); text("[data-launch-review-factory]", prepared.factory_address); text("[data-launch-review-id]", prepared.launch.id); text("[data-launch-review-salt]", prepared.salt); text("[data-launch-review-predicted]", prepared.predicted_token_address); const loadButton = $("[data-launch-load]"); const publishButton = $("[data-launch-publish]"); if (loadButton) { loadButton.disabled = true; loadButton.setAttribute("disabled", ""); loadButton.textContent = "参数已加载"; } if (publishButton) { publishButton.disabled = false; publishButton.removeAttribute("disabled"); publishButton.textContent = "确认以上快照并发布代币"; } };
-  const resetProviderState = (message = "钱包状态已变化，请重新连接") => { sessionStorage.removeItem("bitbt_pump_session"); state.account = ""; state.chainId = ""; state.balances = { quote: null, token: null, gas: null }; setLaunchAvailability(false); invalidateQuote(); invalidateLaunchSnapshot(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = "连接钱包"; }); if (message) toast(message); };
+  const resetProviderState = (message = "钱包状态已变化，请重新连接") => { sessionStorage.removeItem("bitbt_pump_session"); state.account = ""; state.chainId = ""; state.sessionExpiresAt = 0; state.balances = { quote: null, token: null, gas: null }; setLaunchAvailability(false); invalidateQuote(); invalidateLaunchSnapshot(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = "连接钱包"; }); if (message) toast(message); };
   const assertProviderState = async () => { if (!window.ethereum || !state.account) throw new Error("请先连接并验证钱包"); const [accounts, chainId] = await Promise.all([window.ethereum.request({ method: "eth_accounts" }), window.ethereum.request({ method: "eth_chainId" })]); const account = String(accounts?.[0] || "").toLowerCase(); const normalizedChain = normalizeChainId(chainId); if (account !== state.account || normalizedChain !== "0x38") { resetProviderState(); throw new Error("钱包账户或网络已变化，请重新连接 BSC 钱包"); } state.chainId = normalizedChain; return { account, chainId: state.chainId }; };
-  const bindProviderEvents = () => { if (!window.ethereum?.on) return; window.ethereum.on("accountsChanged", () => resetProviderState()); window.ethereum.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); };
+  const revalidateSession = async () => {
+    if (!state.account || !sessionStorage.getItem("bitbt_pump_session")) return;
+    if (state.sessionExpiresAt && Date.now() >= state.sessionExpiresAt) { resetProviderState("登录已过期，请重新连接钱包"); return; }
+    try {
+      const session = await api("v1/auth/siwe/session");
+      const address = String(session.address || "").toLowerCase();
+      if (address !== state.account) { resetProviderState("钱包账户已变化，请重新连接"); return; }
+      state.sessionExpiresAt = Date.now() + Number(session.expires_in || 0) * 1000;
+      await assertProviderState();
+    } catch (error) {
+      if (error?.code === "SESSION_EXPIRED") return;
+      if (error?.message?.includes("钱包账户或网络已变化")) return;
+    }
+  };
+  const bindProviderEvents = () => { if (window.ethereum?.on) { window.ethereum.on("accountsChanged", () => resetProviderState()); window.ethereum.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); } window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
   const connectWallet = async () => {
     if (!window.ethereum) throw new Error("未检测到 EVM 钱包");
     const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }); const address = accounts?.[0]; if (!address) throw new Error("钱包未返回账户");
@@ -155,7 +170,7 @@
     const noncePayload = await api("v1/auth/siwe/nonce"); const domain = String(noncePayload.domain || "").toLowerCase(); if (domain !== "bitbt.fun") throw new Error("SIWE domain 不受信任");
     const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: 56\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
     const signature = await window.ethereum.request({ method: "personal_sign", params: [message, address] }); const verified = await api("v1/auth/siwe/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
-    sessionStorage.setItem("bitbt_pump_session", verified.token); state.account = String(verified.address || address).toLowerCase(); state.chainId = "0x38"; setLaunchAvailability(true); invalidateQuote(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = short(state.account); }); await assertProviderState(); await refreshBalances(); await loadUserPanels().catch(() => undefined); toast("钱包已连接"); return state.account;
+    sessionStorage.setItem("bitbt_pump_session", verified.token); state.account = String(verified.address || address).toLowerCase(); state.chainId = "0x38"; state.sessionExpiresAt = Date.now() + Number(verified.expires_in || 3600) * 1000; setLaunchAvailability(true); invalidateQuote(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = short(state.account); }); await assertProviderState(); await refreshBalances(); await loadUserPanels().catch(() => undefined); toast("钱包已连接"); return state.account;
   };
   const refreshBalances = async () => {
     if (!state.account || !state.detail || !window.ethereum) return;
