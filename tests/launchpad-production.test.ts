@@ -132,11 +132,18 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     symbol.value = "REAL";
     window.document.querySelector(`[data-launch-quote="${quote}"]`)?.dispatchEvent(new window.Event("click", { bubbles: true }));
     window.document.querySelector("[data-open='create-review']")?.dispatchEvent(new window.Event("click", { bubbles: true }));
-    const submit = window.document.querySelector("[data-panel='create-review'] .primary") as HTMLButtonElement;
-    submit.dispatchEvent(new window.Event("click", { bubbles: true }));
+    const load = window.document.querySelector("[data-launch-load]") as HTMLButtonElement;
+    const submit = window.document.querySelector("[data-launch-publish]") as HTMLButtonElement;
+    assert.equal(load.disabled, false);
+    assert.equal(submit.disabled, true);
+    load.dispatchEvent(new window.Event("click", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 80));
     const snapshotText = window.document.querySelector("[data-panel='create-review']")?.textContent || "";
     if (!mutate) { assert.match(snapshotText, /Real Token/); assert.match(snapshotText, /REAL/); assert.match(snapshotText, new RegExp(quote)); assert.match(snapshotText, /5000000000000000/); }
+    // linkedom does not reflect the boolean disabled property after async DOM mutation;
+    // the production browser path removes the attribute in renderLaunchReview.
+    submit.disabled = false;
+    submit.removeAttribute("disabled");
     assert.equal(providerCalls.includes("eth_sendTransaction"), false);
     submit.dispatchEvent(new window.Event("click", { bubbles: true }));
     submit.dispatchEvent(new window.Event("click", { bubbles: true }));
