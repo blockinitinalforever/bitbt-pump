@@ -46,3 +46,16 @@ test("launch runtime chain binding fails closed before broadcast", () => {
   assert.throws(() => assertBscRuntimeChain("0x1"), /BNB Chain/);
   assert.throws(() => assertBscRuntimeChain(undefined), /BNB Chain/);
 });
+
+test("launch preparation rejects zero creator, factory, recipient, predicted token, and curve addresses", () => {
+  const zero = "0x0000000000000000000000000000000000000000";
+  const invalid = [
+    () => assertPreparedLaunchBinding(prepared, fee, zero, { token_name: "My Token", symbol: "MTK", quote_token: "BNB" }, null),
+    () => assertPreparedLaunchBinding({ ...prepared, factory_address: zero }, fee, creator, { token_name: "My Token", symbol: "MTK", quote_token: "BNB" }, null),
+    () => assertPreparedLaunchBinding(prepared, { ...fee, receive_address: zero }, creator, { token_name: "My Token", symbol: "MTK", quote_token: "BNB" }, null),
+    () => assertPreparedLaunchBinding({ ...prepared, fee_recipient: zero }, fee, creator, { token_name: "My Token", symbol: "MTK", quote_token: "BNB" }, null),
+    () => assertPreparedLaunchBinding({ ...prepared, predicted_token_address: zero }, fee, creator, { token_name: "My Token", symbol: "MTK", quote_token: "BNB" }, null),
+    () => assertPreparedLaunchBinding({ ...prepared, curve_address: zero }, fee, creator, { token_name: "My Token", symbol: "MTK", quote_token: "BNB" }, null),
+  ];
+  invalid.forEach((run) => assert.throws(run, /invalid|binding/i));
+});

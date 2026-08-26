@@ -218,8 +218,8 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   for (const [index, mutation] of altered.entries()) assert.equal((await run("BNB", mutation)).sendCount, 0, `altered launch field ${index} was signed`);
 });
 
-test("bridge contains provider-state, session-expiry, and quote binding guards", () => {
-  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "revalidateSession", "visibilitychange", "sessionExpiresAt", "v1/auth/siwe/session", "SESSION_EXPIRED", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
+test("bridge contains provider-state, session-expiry, non-zero launch, and quote binding guards", () => {
+  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "revalidateSession", "visibilitychange", "sessionExpiresAt", "v1/auth/siwe/session", "SESSION_EXPIRED", "isNonZeroAddress", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
   assert.equal(bridge.includes("state.quote = response"), false);
   assert.equal(bridge.includes("Math.sin"), false);
 });
@@ -240,7 +240,7 @@ test("live tokens use API logo URLs and the launch form uploads Logo to S3 befor
 
 test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {
   for (const marker of ["setLaunchAvailability", "data-open=\"create-mode\"", "data-nav=\"create-mode\"", "data-launch-mode", "wallet-gated", "请先连接并验证钱包"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(html, /BitBT Ventures — AI &amp; Web3 Institutional Investment Venture Studio/);
+  assert.match(html, /BitBT Pump/);
   assert.doesNotMatch(html, /BitBT LAUNCH/);
   assert.equal((html.match(/class="connect-global"/g) || []).length, 1);
   assert.doesNotMatch(html, /class="connect"/);

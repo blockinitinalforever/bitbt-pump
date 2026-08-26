@@ -6,7 +6,7 @@ import { routing } from "@/i18n/routing";
 import "../globals.css";
 
 export const metadata: Metadata = {
-  title: "BitBT Ventures — AI & Web3 Institutional Investment & Venture Studio",
+  title: "BitBT Pump",
   description:
     "Building Long-Term Value for the Next Generation of AI & Web3 Innovation",
 };
