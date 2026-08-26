@@ -11,11 +11,15 @@ const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean; session?: { token: string; address: string; expiresIn?: number } };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
   const storage = new Map<string, string>();
+  if (options.session) {
+    storage.set("bitbt_pump_session", options.session.token);
+    storage.set("bitbt_pump_session_address", options.session.address.toLowerCase());
+  }
   const providerCalls: string[] = [];
   const providerTransactions: Array<Record<string, unknown>> = [];
   const providerEvents: Record<string, (value: unknown) => void> = {};
@@ -219,9 +223,24 @@ test("launch signing binds every prepare field and single-flights the wallet sen
 });
 
 test("bridge contains provider-state, session-expiry, non-zero launch, and quote binding guards", () => {
-  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "revalidateSession", "visibilitychange", "sessionExpiresAt", "v1/auth/siwe/session", "SESSION_EXPIRED", "isNonZeroAddress", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
+  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "restoreSession", "revalidateSession", "visibilitychange", "sessionExpiresAt", "bitbt_pump_session_address", "v1/auth/siwe/session", "SESSION_EXPIRED", "isNonZeroAddress", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
   assert.equal(bridge.includes("state.quote = response"), false);
   assert.equal(bridge.includes("Math.sin"), false);
+});
+
+test("a valid SIWE session restores the wallet label after a page refresh", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window, providerEvents } = await boot(response, { account, session: { token: "session", address: account } });
+  assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  providerEvents.accountsChanged?.([account]);
+  assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
 });
 
 test("production wallet bridge applies the fixed 0.05 Gwei policy and reports every tx state", () => {
