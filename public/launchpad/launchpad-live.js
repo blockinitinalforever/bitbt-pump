@@ -266,12 +266,13 @@
   const activate = (name) => { const target = root.querySelector(`[data-panel="${name}"]`); if (!target) return; $$("[data-panel]").forEach((panel) => panel.classList.toggle("active", panel === target)); target.classList.add("has-bottom-nav"); target.scrollTop = 0; };
   const assertLaunchBinding = (fee, prepared, address, name, symbol, quote) => {
     const isAddress = (value) => /^0x[0-9a-fA-F]{40}$/.test(String(value || ""));
+    const isNonZeroAddress = (value) => isAddress(value) && String(value).toLowerCase() !== ZERO_ADDRESS;
     const isUint = (value) => /^\d+$/.test(String(value || ""));
     const normalizedFeeChain = normalizeChainId(fee?.chain_id);
     const normalizedPreparedChain = normalizeChainId(prepared?.chain_id);
     const expectedQuote = quoteAddress(quote) || ZERO_ADDRESS;
-    if (!prepared?.launch?.id || !isAddress(address) || !isAddress(fee?.factory_address) || !isAddress(prepared?.factory_address) || prepared.factory_address.toLowerCase() !== fee.factory_address.toLowerCase()) throw new Error("发币准备工厂绑定无效");
-    if (!isAddress(fee.receive_address) || !isAddress(prepared.fee_recipient) || prepared.fee_recipient.toLowerCase() !== fee.receive_address.toLowerCase()) throw new Error("发币手续费接收地址绑定无效");
+    if (!prepared?.launch?.id || !isNonZeroAddress(address) || !isNonZeroAddress(fee?.factory_address) || !isNonZeroAddress(prepared?.factory_address) || prepared.factory_address.toLowerCase() !== fee.factory_address.toLowerCase()) throw new Error("发币准备工厂绑定无效");
+    if (!isNonZeroAddress(fee.receive_address) || !isNonZeroAddress(prepared.fee_recipient) || prepared.fee_recipient.toLowerCase() !== fee.receive_address.toLowerCase()) throw new Error("发币手续费接收地址绑定无效");
     if (normalizedFeeChain !== "0x38" || normalizedPreparedChain !== "0x38") throw new Error("发币准备网络无效");
     if (!isUint(fee.fee_wei) || !isUint(prepared.fee_wei) || fee.fee_wei !== prepared.fee_wei || BigInt(prepared.fee_wei) <= 0n || !isUint(prepared.migration_threshold_wei) || BigInt(prepared.migration_threshold_wei) <= 0n) throw new Error("发币准备金额无效");
     if (prepared.method !== "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" || !/^0x[0-9a-fA-F]{64}$/.test(String(prepared.salt || ""))) throw new Error("发币准备方法或随机盐无效");

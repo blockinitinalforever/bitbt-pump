@@ -218,8 +218,8 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   for (const [index, mutation] of altered.entries()) assert.equal((await run("BNB", mutation)).sendCount, 0, `altered launch field ${index} was signed`);
 });
 
-test("bridge contains provider-state, session-expiry, and quote binding guards", () => {
-  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "revalidateSession", "visibilitychange", "sessionExpiresAt", "v1/auth/siwe/session", "SESSION_EXPIRED", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
+test("bridge contains provider-state, session-expiry, non-zero launch, and quote binding guards", () => {
+  for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "revalidateSession", "visibilitychange", "sessionExpiresAt", "v1/auth/siwe/session", "SESSION_EXPIRED", "isNonZeroAddress", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
   assert.equal(bridge.includes("state.quote = response"), false);
   assert.equal(bridge.includes("Math.sin"), false);
 });
