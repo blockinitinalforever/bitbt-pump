@@ -7,6 +7,7 @@ import { parseHTML } from "linkedom";
 
 const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
+const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
@@ -255,6 +256,20 @@ test("live tokens use API logo URLs and the launch form uploads Logo to S3 befor
   for (const marker of ["token-logo-file", "/api/pump/v1/upload/image", "dataset.launchLogoUrl", "logo_url", "已上传到 S3", "bitbt:launch-reset"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(bridge, /dataset\.launchLogoUrl/);
   assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net data:/);
+});
+
+test("logo file chooser is enabled inside the production wallet iframe", () => {
+  assert.match(walletShell, /sandbox="allow-scripts allow-same-origin allow-forms"/);
+  assert.match(html, /id="token-logo-file" type="file"/);
+  assert.match(html, /data-launch-file/);
+});
+
+test("token filters sort the already-loaded list locally without another token-list request", () => {
+  for (const marker of ["data-token-filter=\"trending\"", "data-token-filter=\"latest\"", "data-token-filter=\"near-migration\"", "data-token-filter=\"dex\"", "data-token-filter=\"high-tax\""]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
+  assert.match(bridge, /const filteredTokens = \(\) =>/);
+  assert.match(bridge, /state\.tokenFilter/);
+  assert.match(bridge, /renderTokens\(\);/);
+  assert.doesNotMatch(bridge, /data-token-filter[\\s\\S]{0,1000}api\(/);
 });
 
 test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {

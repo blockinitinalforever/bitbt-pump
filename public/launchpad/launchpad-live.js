@@ -4,7 +4,7 @@
   if (!root) return;
   window.setTimeout(() => $$('[data-panel="detail"] .actions [data-open="watchlist"]').forEach((node) => node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); toggleFavorite().catch((error) => toast(error.message)); }, true)), 0);
 
-  const state = { tokens: [], details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false, refreshPromise: null };
+  const state = { tokens: [], tokenFilter: "trending", details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, busy: false, launchBusy: false, launchQuote: "BNB", launchLogoUrl: "", launchSnapshot: null, launchTerminal: false, refreshPromise: null };
   const SESSION_KEY = "bitbt_pump_session";
   const SESSION_ADDRESS_KEY = "bitbt_pump_session_address";
   const charts = new Map();
@@ -29,6 +29,20 @@
   const setLaunchAvailability = (enabled) => $$('[data-open="create-mode"], [data-nav="create-mode"], [data-launch-mode], .launch-now').forEach((node) => { node.classList.add("wallet-gated"); node.disabled = !enabled; node.setAttribute("aria-disabled", String(!enabled)); node.title = enabled ? "开始发币" : "请先连接并验证钱包"; });
   const tokenAddress = (token) => token?.contract_address || "";
   const status = (token) => String(token?.status || "").replaceAll("_", " ");
+  const tokenTaxPercent = (token) => {
+    const values = [token?.tax_percent, token?.buy_tax_percent, token?.sell_tax_percent, token?.tax_rate_percent, token?.transfer_tax_percent, token?.tax_bps == null ? null : Number(token.tax_bps) / 100];
+    return Math.max(0, ...values.map((value) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }));
+  };
+  const tokenIsMigrated = (token) => Boolean(token?.migrated) || ["migrated", "dex", "graduated"].includes(String(token?.status || "").toLowerCase());
+  const tokenCreatedAt = (token) => { const timestamp = Date.parse(String(token?.submitted_at || token?.created_at || "")); return Number.isFinite(timestamp) ? timestamp : 0; };
+  const filteredTokens = () => {
+    const tokens = [...state.tokens];
+    if (state.tokenFilter === "latest") return tokens.sort((a, b) => tokenCreatedAt(b) - tokenCreatedAt(a));
+    if (state.tokenFilter === "near-migration") return tokens.filter((token) => !tokenIsMigrated(token) && Number(token.progress_percent || 0) >= 70).sort((a, b) => Number(b.progress_percent || 0) - Number(a.progress_percent || 0));
+    if (state.tokenFilter === "dex") return tokens.filter(tokenIsMigrated).sort((a, b) => tokenCreatedAt(b) - tokenCreatedAt(a));
+    if (state.tokenFilter === "high-tax") return tokens.filter((token) => tokenTaxPercent(token) >= 5).sort((a, b) => tokenTaxPercent(b) - tokenTaxPercent(a));
+    return tokens.sort((a, b) => Number(b.progress_percent || 0) - Number(a.progress_percent || 0));
+  };
   const tokenCard = (token) => {
     const progress = Math.max(0, Math.min(100, number(token.progress_percent)));
     const address = tokenAddress(token);
@@ -36,7 +50,7 @@
     return `<button class="token-card" data-live-token="${address}" data-open="detail"><div class="token-head"><img class="token-logo" src="${image}" alt="${token.token_name || token.symbol || "Token"}"><div class="token-name"><strong>${token.token_name || token.symbol || "—"}</strong><small>${token.symbol || "—"} · ${status(token)} · ${age(token.submitted_at)}</small></div><span class="change up">${progress.toFixed(0)}%</span></div><div class="card-metrics"><div><span>价格</span><strong>${pretty(token.current_price_quote || token.current_price_bnb)}</strong></div><div><span>募资</span><strong>${pretty(token.total_raised_quote || token.total_raised_bnb)}</strong></div><div><span>进度</span><strong>${progress.toFixed(0)}%</strong></div></div><div class="curve"><i style="width:${progress}%"></i></div><div class="curve-label"><span>${token.quote_token || "BNB"}</span><span>${address ? short(address) : "地址待定"}</span></div></button>`;
   };
   const renderTokens = () => {
-    const html = state.tokens.filter((token) => tokenAddress(token)).map(tokenCard).join("");
+    const html = filteredTokens().filter((token) => tokenAddress(token)).map(tokenCard).join("");
     $$(".token-grid").forEach((node) => { node.innerHTML = html || `<p class="footer-note">暂无真实 Pump 项目数据。</p>`; });
     bindLiveTokenSelection();
     renderRank();
@@ -332,5 +346,6 @@
   $$('[data-launch-quote]').forEach((node) => node.addEventListener("click", () => { state.launchQuote = String(node.dataset.launchQuote || "").toUpperCase(); invalidateLaunchSnapshot(); $$('[data-launch-quote]').forEach((choice) => choice.classList.toggle("active", choice === node)); }));
   $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select').forEach((node) => { node.addEventListener("input", invalidateLaunchSnapshot); node.addEventListener("change", invalidateLaunchSnapshot); });
   $$('[data-panel="create-economics"] .choice, [data-panel="create-tax"] .choice, [data-panel="create-mode"] [data-launch-mode]').forEach((node) => node.addEventListener("click", invalidateLaunchSnapshot));
+  $$('[data-token-filter]').forEach((node) => node.addEventListener("click", () => { state.tokenFilter = node.dataset.tokenFilter || "trending"; $$('[data-token-filter]').forEach((filter) => filter.classList.toggle("active", filter === node)); renderTokens(); }));
   setLaunchAvailability(false); invalidateLaunchSnapshot(); clearPrototype(); bindProviderEvents(); bindNavigation(); bind(); void restoreSession(); void load(); window.setInterval(() => { if (document.visibilityState !== "hidden") void refreshLive(); }, 15000);
 })();
