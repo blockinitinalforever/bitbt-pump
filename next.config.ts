@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        { source: "/:locale/pump/:address", destination: "/launchpad/bitbt-wallet-ui.html" },
         { source: "/:locale/pump", destination: "/launchpad/bitbt-wallet-ui.html" },
         { source: "/:locale/bitbt-launch-ui-app.html", destination: "/launchpad/bitbt-launch-ui-app.html" },
         { source: "/:locale/launch-logo-upload.js", destination: "/launchpad/launch-logo-upload.js" },
