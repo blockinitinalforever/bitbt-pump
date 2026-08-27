@@ -287,3 +287,17 @@ test("Pump startup uses the batch details endpoint instead of an N+1 detail requ
   assert.match(bridge, /v1\/pump\/trades\?token_address/);
   assert.match(proxy, /v1\/pump\/details/);
 });
+
+test("Pump proxy hides wallet RPC credentials and protects uploads", () => {
+  assert.match(proxy, /delete payload\.data\.rpc/);
+  assert.match(proxy, /delete payload\.data\.rpcFallback/);
+  assert.match(proxy, /SIWE session required for image upload/);
+  assert.match(proxy, /request\.headers\.get\("authorization"\)\?\.startsWith\("Bearer "\)/);
+  assert.match(proxy, /export async function HEAD/);
+});
+
+test("prototype UI stays hidden until real-data cleanup has run", () => {
+  assert.match(html, /<body class="runtime-pending">/);
+  assert.match(html, /body\.runtime-pending #bitbt-launch\{visibility:hidden\}/);
+  assert.match(bridge, /clearPrototype\(\); document\.body\.classList\.remove\("runtime-pending"\)/);
+});
