@@ -288,6 +288,13 @@ test("Pump startup uses the batch details endpoint instead of an N+1 detail requ
   assert.match(proxy, /v1\/pump\/details/);
 });
 
+test("Pump polling refreshes selected trades every cycle but batches full market refreshes", () => {
+  assert.match(bridge, /refreshSelectedTrades/);
+  assert.match(bridge, /refreshCycle % 2 === 0 \? refreshLive\(\) : refreshSelectedTrades\(\)/);
+  assert.match(bridge, /loadDetail\(state\.selected, \{ refreshBalance: false \}\)/);
+  assert.match(bridge, /if \(!state\.trades\.length\).*charts\.delete\(selector\)/);
+});
+
 test("Pump proxy hides wallet RPC credentials and protects uploads", () => {
   assert.match(proxy, /delete payload\.data\.rpc/);
   assert.match(proxy, /delete payload\.data\.rpcFallback/);
