@@ -11,6 +11,7 @@ const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wall
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
+const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
 type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean; session?: { token: string; address: string; expiresIn?: number } };
 
@@ -262,6 +263,26 @@ test("logo file chooser is enabled inside the production wallet iframe", () => {
   assert.match(walletShell, /sandbox="allow-scripts allow-same-origin allow-forms"/);
   assert.match(html, /id="token-logo-file" type="file"/);
   assert.match(html, /data-launch-file/);
+});
+
+test("clicking the visible logo button opens the hidden native file input", () => {
+  const { window } = parseHTML(html);
+  const input = window.document.querySelector("#token-logo-file") as HTMLInputElement;
+  const button = window.document.querySelector("[data-launch-file]") as HTMLButtonElement;
+  let pickerOpens = 0;
+  input.click = () => { pickerOpens += 1; };
+  const context = { window, document: window.document, CustomEvent: window.CustomEvent, FileReader: class {}, sessionStorage: { getItem: () => null }, fetch: async () => ({ json: async () => ({}) }) };
+  Object.assign(window, context);
+  vm.runInNewContext(logoUpload, context);
+  button.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.equal(pickerOpens, 1);
+});
+
+test("every locale-relative Launchpad script has an executable public rewrite", () => {
+  for (const script of ["launch-logo-upload.js", "launchpad-live.js"]) {
+    assert.match(html, new RegExp(`<script src="\\./${script.replaceAll(".", "\\.")}">`));
+    assert.match(nextConfig, new RegExp(`/:locale/${script.replaceAll(".", "\\.")}`));
+  }
 });
 
 test("token filters sort the already-loaded list locally without another token-list request", () => {
