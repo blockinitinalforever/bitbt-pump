@@ -224,11 +224,12 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" } as const;
   type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string };
   const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" };
-  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false) => {
+  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false) => {
     const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient };
     const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenWithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address))" : prepared.method };
     let sendCount = 0;
     let prepareCount = 0;
+    let statusCount = 0;
     let prepareBody: Record<string, unknown> | undefined;
     const fetchUrls: string[] = [];
     const response = async (input: string, init?: RequestInit) => {
@@ -239,7 +240,8 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account } }) };
       if (url.includes("v1/token/launch-fee")) return { ok: true, json: async () => ({ data: fee }) };
       if (url.includes("v1/token/prepare-launch")) { prepareCount += 1; prepareBody = JSON.parse(String(init?.body || "{}")); return { ok: true, json: async () => ({ data: mutate ? mutate(quotePrepared) : quotePrepared }) }; }
-      if (url.includes("v1/token/launch")) return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) };
+      if (url.includes("v1/token/status")) { statusCount += 1; return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) }; }
+      if (url.includes("v1/token/launch")) return { ok: true, json: async () => ({ data: backgroundRetry ? { status: "deploying", rejection_reason: "Deploy tx sent (0xabc) pending confirmation" } : { status: "deployed", contract_address: predicted } }) };
       throw new Error(`unmocked ${url}`);
     };
     const { window, providerCalls, providerTransactions, historyPaths } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance });
@@ -275,7 +277,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       submit.disabled = false;
       submit.dispatchEvent(new window.Event("click", { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 80));
-      return { sendCount: providerCalls.filter((method) => method === "eth_sendTransaction").length, prepareCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
+      return { sendCount: providerCalls.filter((method) => method === "eth_sendTransaction").length, prepareCount, statusCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
     }
     submit.dispatchEvent(new window.Event("click", { bubbles: true }));
     if (!sendRejects) submit.dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -292,7 +294,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
     sendCount = providerCalls.filter((method) => method === "eth_sendTransaction").length;
-    return { sendCount, prepareCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
+    return { sendCount, prepareCount, statusCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
   };
   for (const quote of Object.keys(quoteAddresses) as Array<keyof typeof quoteAddresses>) {
     const result = await run(quote);
@@ -311,6 +313,10 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   assert.equal(taxed.sendCount, 1, "tax-token launch did not broadcast");
   assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient });
   assert.equal(String(taxed.providerTransactions[0]?.data).slice(0, 10), "0x4bec1297");
+  const taxedBackgroundRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true, true);
+  assert.equal(taxedBackgroundRetry.sendCount, 1, "tax-token retry flow rebroadcast the wallet transaction");
+  assert.equal(taxedBackgroundRetry.statusCount, 1, "tax-token retry flow did not reconcile through the status endpoint");
+  assert.equal(taxedBackgroundRetry.historyPaths.at(-1), `/en/pump/${predicted}`);
   const changed = await run("BNB", undefined, true);
   assert.equal(changed.sendCount, 0, "changed launch metadata was signed");
   assert.equal(changed.prepareCount, 2, "changed launch metadata did not require a fresh prepare response");
