@@ -29,7 +29,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const chartData: unknown[][] = [];
   const historyPaths: string[] = [];
   const clipboardWrites: string[] = [];
-  const location = { pathname: options.pathname || "/en/pump" };
+  const location = { origin: "https://bitbt.fun", pathname: options.pathname || "/en/pump", search: "", assign: (path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
   const history = { pushState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); }, replaceState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
   const navigator = { clipboard: { writeText: async (value: string) => { clipboardWrites.push(value); } } };
   const account = options.account || "";
@@ -116,9 +116,8 @@ test("token details use a canonical address URL and copy the full contract addre
   const fixture = { token_name: "Pepe", symbol: "PEPE", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "deployed", progress_percent: 0 };
   const response = async (input: string) => {
     const url = String(input);
-    if (url.includes("v1/pump/details")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/detail?")) return { ok: true, json: async () => ({ data: fixture }) };
     if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [fixture] }) };
-    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: fixture }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
@@ -134,6 +133,63 @@ test("token details use a canonical address URL and copy the full contract addre
   selected.window.document.querySelector(`[data-live-token="${token}"]`)?.dispatchEvent(new selected.window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(selected.historyPaths.at(-1), `/en/pump/${token}`, "selecting a token did not update the canonical URL");
+});
+
+test("detail and trade panels render only real API values, decimal K-lines, and formatted quote units", async () => {
+  const token = "0x5bae7612602aa6919246b056c2652f0922078888";
+  const curve = "0x2222222222222222222222222222222222222222";
+  const logo = "https://cdn.example.com/pepe.png";
+  const now = Math.floor(Date.now() / 1000);
+  const fixture = { token_name: "Pepe", symbol: "PEPE", creator_address: "0x3333333333333333333333333333333333333333", creator: "0x3333333333333333333333333333333333333333", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "deployed", submitted_at: new Date().toISOString(), logo_url: logo, progress_percent: 12, current_price_quote: "0.000000000000000305", total_raised_quote: "0.25", tokens_sold: "819672.131147540983606557" };
+  const trades = [
+    { trader: fixture.creator, trade_type: "buy", quote_amount: "0.1", token_amount: "327868.852459016393442622", timestamp: now - 60 },
+    { trader: "0x4444444444444444444444444444444444444444", trade_type: "sell", quote_amount: "0.05", token_amount: "163934.426229508196721311", timestamp: now },
+  ];
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/detail?")) return { ok: true, json: async () => ({ data: fixture }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: trades }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "q-real", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_quote: "0.01", fee_rate_percent: "1.000000%" } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const app = await boot(response, { pathname: `/en/pump/${token}` });
+  assert.equal(app.window.document.querySelector("[data-active-image]")?.getAttribute("src"), logo);
+  assert.match(app.window.document.querySelector("[data-active-price]")?.textContent || "", /0\.000000000000000305 BNB/);
+  assert.equal(app.window.document.querySelector("[data-active-trade-count]")?.textContent, "2");
+  assert.equal(app.window.document.querySelector("[data-active-volume]")?.textContent, "0.15 BNB");
+  assert.ok(app.chartData.flat().length > 0, "decimal trade amounts did not produce K-line candles");
+  assert.ok(app.chartData.flat().every((point) => Object.values(point as Record<string, unknown>).every((value) => typeof value !== "number" || Number.isFinite(value))));
+  for (const fake of ["$483K", "$35.2K", "6,062", "15.1%", "未发现高风险项"]) assert.equal((app.window.document.body.textContent || "").includes(fake), false, `prototype detail value leaked: ${fake}`);
+  app.window.document.querySelector("[data-share-token]")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(app.clipboardWrites.at(-1), `https://bitbt.fun/en/pump/${token}`);
+  const beforeIntervals = app.chartData.length;
+  app.window.document.querySelector('[data-chart-interval="60"]')?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  assert.ok(app.chartData.length > beforeIntervals, "K-line interval button did not redraw the chart");
+  const amount = app.window.document.querySelector("#trade-amount") as HTMLInputElement;
+  amount.value = "1";
+  amount.dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.equal(app.window.document.querySelector("[data-quote-output]")?.textContent, "1 PEPE");
+  assert.match(app.window.document.querySelector("[data-quote-fee]")?.textContent || "", /1\.000000% · 0\.01 BNB/);
+});
+
+test("a token without trades shows an explicit empty K-line instead of a permanent loading state", async () => {
+  const token = "0x1111111111111111111111111111111111111111";
+  const fixture = { token_name: "Empty", symbol: "EMPTY", contract_address: token, quote_token: "BNB", curve_address: "0x2222222222222222222222222222222222222222", status: "deployed", progress_percent: 0 };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/detail?")) return { ok: true, json: async () => ({ data: fixture }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response);
+  for (let attempt = 0; attempt < 20 && !/暂无真实成交/.test(window.document.querySelector("[data-chart-empty]")?.textContent || ""); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.match(window.document.querySelector("[data-chart-empty]")?.textContent || "", /暂无真实成交/);
 });
 
 test("zero, unsafe, and lower-than-policy minOut are rejected", async () => {
@@ -166,10 +222,11 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const curve = "0x5555555555555555555555555555555555555555";
   const fee = { fee_wei: "5000000000000000", receive_address: recipient, factory_address: factory, chain_id: "bsc" };
   const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" } as const;
-  type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string };
+  type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string };
   const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" };
-  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n) => {
-    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote }, quote_token_address: quoteAddresses[quote] };
+  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false) => {
+    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient };
+    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenWithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address))" : prepared.method };
     let sendCount = 0;
     let prepareCount = 0;
     let prepareBody: Record<string, unknown> | undefined;
@@ -191,6 +248,10 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     name.value = "Real Token";
     symbol.value = "REAL";
     (window.document.querySelector("#token-story") as HTMLTextAreaElement).value = "Fresh launch story";
+    if (taxMode) {
+      window.document.querySelector('[data-tax-mode="tax"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+      for (const [id, value] of [["buy-tax-rate", "3"], ["sell-tax-rate", "5"], ["funds-recipient-pct", "40"], ["burn-pct", "20"], ["holders-pct", "20"], ["liquidity-pct", "20"], ["min-dividend-balance", "100000"], ["tax-recipient-wallet", recipient]]) (window.document.querySelector(`#${id}`) as HTMLInputElement).value = value;
+    }
     window.document.querySelector(`[data-launch-quote="${quote}"]`)?.dispatchEvent(new window.Event("click", { bubbles: true }));
     window.document.querySelector("[data-open='create-review']")?.dispatchEvent(new window.Event("click", { bubbles: true }));
     const load = window.document.querySelector("[data-launch-load]") as HTMLButtonElement;
@@ -246,6 +307,10 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     for (let attempt = 0; attempt < 20 && result.historyPaths.at(-1) !== `/en/pump/${predicted}`; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(result.historyPaths.at(-1), `/en/pump/${predicted}`, `successful ${quote} launch did not open its canonical token URL; history=${result.historyPaths.join(",")} body=${result.body?.slice(-300)}`);
   }
+  const taxed = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true);
+  assert.equal(taxed.sendCount, 1, "tax-token launch did not broadcast");
+  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient });
+  assert.equal(String(taxed.providerTransactions[0]?.data).slice(0, 10), "0x4bec1297");
   const changed = await run("BNB", undefined, true);
   assert.equal(changed.sendCount, 0, "changed launch metadata was signed");
   assert.equal(changed.prepareCount, 2, "changed launch metadata did not require a fresh prepare response");
@@ -420,20 +485,23 @@ test("all launch entry points are wallet-gated until SIWE connection succeeds", 
   assert.doesNotMatch(html, /class="connect"/);
 });
 
-test("web launch exposes the App quote and metadata fields but disables unsupported on-chain promises", () => {
+test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configuration", () => {
   for (const quote of ["BNB", "USDT", "USDC", "GW"]) assert.match(html, new RegExp(`data-launch-quote="${quote}"`));
   for (const id of ["token-classification", "token-twitter", "token-telegram", "token-website", "token-discord"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const field of ["classification", "twitter", "telegram", "website", "discord", "launch_settings", "antisniper", "enable_tax", "request_platform_lp"]) assert.match(bridge, new RegExp(field));
   assert.match(html, /自定义联合曲线[\s\S]{0,300}开发中/);
-  assert.match(html, /税费代币 · 开发中/);
+  for (const id of ["buy-tax-rate", "sell-tax-rate", "funds-recipient-pct", "burn-pct", "holders-pct", "liquidity-pct", "min-dividend-balance", "tax-recipient-wallet"]) assert.match(html, new RegExp(`id="${id}"`));
+  for (const marker of ["launchTaxTokenWithQuotePaid", "0x4bec1297", "launchTaxConfig", "data-tax-mode", "data-tax-fields", "买入和卖出税率必须在 1%–10%", "税费分配比例合计必须为 100%", "发币准备方法与税费模式不匹配"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(html, /迁移 PancakeSwap 后对 Pair 买卖持续执行所选税率/);
   assert.match(html, /当前链上交易不包含初始买入/);
   assert.doesNotMatch(html, /预计获得 16\.84M MOON/);
 });
 
-test("Pump startup uses the batch details endpoint instead of an N+1 detail request", () => {
-  assert.match(bridge, /v1\/pump\/details/);
-  assert.match(bridge, /loadAllDetails/);
+test("Pump startup renders from the token list and loads detail only for the selected token", () => {
+  assert.doesNotMatch(bridge, /loadAllDetails/);
+  assert.doesNotMatch(bridge, /api\("v1\/pump\/details"\)/);
   assert.match(bridge, /state\.details\[address\]/);
+  assert.match(bridge, /v1\/pump\/detail\?address/);
   assert.match(bridge, /v1\/pump\/trades\?token_address/);
   assert.match(proxy, /v1\/pump\/details/);
 });

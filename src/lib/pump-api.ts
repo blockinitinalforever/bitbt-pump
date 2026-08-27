@@ -39,11 +39,15 @@ export type PumpToken = {
   quote_token: string;
   status: string;
   submitted_at?: string;
+  logo_url?: string | null;
   progress_percent: number;
   current_price_quote?: string;
   total_raised_quote?: string;
   current_price_bnb?: string;
   total_raised_bnb?: string;
+  tax_enabled?: boolean;
+  buy_tax_percent?: number | null;
+  sell_tax_percent?: number | null;
 };
 
 export type PumpDetail = {
@@ -54,6 +58,9 @@ export type PumpDetail = {
   curve_address: string;
   quote_token: string;
   quote_token_address?: string | null;
+  status?: string;
+  submitted_at?: string;
+  logo_url?: string | null;
   current_price_bnb: string;
   current_price_quote?: string;
   tokens_sold: string;
@@ -61,6 +68,9 @@ export type PumpDetail = {
   total_raised_quote?: string;
   progress_percent: number;
   migrated: boolean;
+  tax_enabled?: boolean;
+  buy_tax_percent?: number | null;
+  sell_tax_percent?: number | null;
 };
 
 export type PumpQuote = {
