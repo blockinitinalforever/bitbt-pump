@@ -43,6 +43,18 @@ test("production HTML boots with API failure without exposing prototype financia
   assert.match(body, /实时 Pump 数据暂不可用/);
 });
 
+test("global Pump API failures show actionable prompts instead of raw transport errors", async () => {
+  const scenarios = [
+    { response: async () => { throw new Error("Failed to fetch"); }, expected: "网络连接中断，请检查网络后重试" },
+    { response: async () => ({ ok: false, status: 429, text: async () => "<html>Too Many Requests</html>" }), expected: "操作过于频繁，请稍后重试" },
+    { response: async () => ({ ok: false, status: 502, text: async () => "<html>Bad Gateway</html>" }), expected: "服务暂时不可用，请稍后重试" },
+  ];
+  for (const scenario of scenarios) {
+    const { window } = await boot(scenario.response);
+    assert.equal(window.document.querySelector(".toast")?.textContent, scenario.expected);
+  }
+});
+
 test("wrong quote-token contract is rejected before any provider send", async () => {
   const token = "0x1111111111111111111111111111111111111111";
   const curve = "0x2222222222222222222222222222222222222222";
@@ -276,6 +288,64 @@ test("clicking the visible logo button opens the hidden native file input", () =
   vm.runInNewContext(logoUpload, context);
   button.dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.equal(pickerOpens, 1);
+});
+
+const exerciseLogoUpload = async (file: { name: string; size: number; type: string }, fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, session = "session") => {
+  const { window } = parseHTML(html);
+  const input = window.document.querySelector("#token-logo-file") as HTMLInputElement;
+  const toasts: string[] = [];
+  let reads = 0;
+  class MockFileReader {
+    result: string | null = null;
+    onload?: () => void;
+    onerror?: () => void;
+    onabort?: () => void;
+    readAsDataURL() { reads += 1; this.result = "data:image/png;base64,AA=="; queueMicrotask(() => this.onload?.()); }
+  }
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  window.addEventListener("bitbt:toast", (event) => toasts.push(String((event as CustomEvent).detail)));
+  const context = { window, document: window.document, CustomEvent: window.CustomEvent, FileReader: MockFileReader, AbortController, sessionStorage: { getItem: () => session || null }, fetch: fetchImpl, setTimeout, clearTimeout, queueMicrotask };
+  Object.assign(window, context);
+  vm.runInNewContext(logoUpload, context);
+  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  return { toasts, reads };
+};
+
+test("logo upload rejects files over 5MB locally without reading or sending them", async () => {
+  let fetches = 0;
+  const result = await exerciseLogoUpload({ name: "large.jpg", size: 5 * 1024 * 1024 + 1, type: "image/jpeg" }, async () => { fetches += 1; throw new Error("must not fetch"); });
+  assert.equal(result.reads, 0);
+  assert.equal(fetches, 0);
+  assert.deepEqual(result.toasts, ["图片不能超过 5MB，请压缩后重新选择"]);
+});
+
+test("logo upload rejects unsupported formats locally", async () => {
+  let fetches = 0;
+  const result = await exerciseLogoUpload({ name: "logo.gif", size: 100, type: "image/gif" }, async () => { fetches += 1; throw new Error("must not fetch"); });
+  assert.equal(result.reads, 0);
+  assert.equal(fetches, 0);
+  assert.deepEqual(result.toasts, ["图片格式无效，请选择 PNG、JPG 或 WEBP"]);
+});
+
+test("logo upload converts an HTML 413 response into a clear size prompt", async () => {
+  const result = await exerciseLogoUpload({ name: "logo.jpg", size: 1024, type: "image/jpeg" }, async () => ({ ok: false, status: 413, text: async () => "<html>Request Entity Too Large</html>" }));
+  assert.deepEqual(result.toasts, ["图片不能超过 5MB，请压缩后重新选择"]);
+});
+
+test("logo upload converts a network interruption into a retry prompt", async () => {
+  const result = await exerciseLogoUpload({ name: "logo.webp", size: 1024, type: "image/webp" }, async () => { throw new Error("Failed to fetch"); });
+  assert.deepEqual(result.toasts, ["网络连接中断，请检查网络后重试"]);
+});
+
+test("production upload limits and error responses stay aligned across browser, proxy, and nginx", () => {
+  const nginx = fs.readFileSync(path.join(root, "deploy/bitbt.fun.nginx.conf"), "utf8");
+  for (const marker of ["MAX_LOGO_BYTES = 5 * 1024 * 1024", "上传超时", "网络连接中断", "图片服务暂时不可用"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(proxy, /MAX_IMAGE_REQUEST_BYTES = 8 \* 1024 \* 1024/);
+  assert.match(nginx, /client_max_body_size 8m/);
+  assert.match(nginx, /error_page 413 = @payload_too_large/);
+  for (const marker of ["friendlyError", "SESSION_EXPIRED", "钱包中已有待处理请求", "操作过于频繁", "服务返回异常"]) assert.match(bridge, new RegExp(marker));
+  assert.doesNotMatch(bridge, /catch\(\(error\) => toast\(error\.message\)\)/);
 });
 
 test("every locale-relative Launchpad script has an executable public rewrite", () => {
