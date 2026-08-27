@@ -25,6 +25,9 @@ const ALLOWED = new Set([
 async function forward(request: NextRequest, path: string[]) {
   const key = path.join("/");
   if (!ALLOWED.has(key)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (key === "v1/upload/image" && !request.headers.get("authorization")?.startsWith("Bearer ")) {
+    return NextResponse.json({ success: false, error: "SIWE session required for image upload" }, { status: 401, headers: { "cache-control": "no-store" } });
+  }
 
   const upstream = new URL(`/api/${key}`, API_BASE);
   request.nextUrl.searchParams.forEach((value, name) => upstream.searchParams.set(name, value));
@@ -44,14 +47,25 @@ async function forward(request: NextRequest, path: string[]) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
+    const upstreamMethod = request.method === "HEAD" ? "GET" : request.method;
     const response = await fetch(upstream, {
-      method: request.method,
+      method: upstreamMethod,
       headers,
-      body: request.method === "GET" ? undefined : await request.text(),
+      body: upstreamMethod === "GET" ? undefined : await request.text(),
       cache: "no-store",
       signal: controller.signal,
     });
-    return new NextResponse(response.body, {
+    if (key === "v1/app/config" && response.ok) {
+      const payload = await response.json();
+      if (payload?.data && typeof payload.data === "object") {
+        delete payload.data.rpc;
+        delete payload.data.rpcFallback;
+      }
+      return request.method === "HEAD"
+        ? new NextResponse(null, { status: 200, headers: { "cache-control": "no-store" } })
+        : NextResponse.json(payload, { status: response.status, headers: { "cache-control": "no-store" } });
+    }
+    return new NextResponse(request.method === "HEAD" ? null : response.body, {
       status: response.status,
       headers: { "content-type": response.headers.get("content-type") || "application/json", "cache-control": "no-store" },
     });
@@ -67,5 +81,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  return forward(request, (await context.params).path);
+}
+
+export async function HEAD(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return forward(request, (await context.params).path);
 }

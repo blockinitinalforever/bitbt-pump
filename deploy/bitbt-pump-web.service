@@ -1,6 +1,7 @@
 [Unit]
 Description=BitBT Pump Web (Next.js)
-After=network.target bitbt-api.service
+After=network.target bitbt-wallet-api.service
+Wants=bitbt-wallet-api.service
 
 [Service]
 User=ubuntu
