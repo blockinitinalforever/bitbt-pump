@@ -2,6 +2,7 @@
 
 import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function ContactPage() {
@@ -9,6 +10,7 @@ export default function ContactPage() {
   const nav = useTranslations("nav");
   const footer = useTranslations("footer");
   const locale = useLocale();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -17,7 +19,7 @@ export default function ContactPage() {
 
   const switchLocale = () => {
     const newLocale = locale === "en" ? "zh" : "en";
-    window.location.href = `/${newLocale}/contact`;
+    router.push(`/${newLocale}/contact`);
   };
 
   const contactCards = [
