@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.amazonaws.com https://*.cloudfront.net data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <base href="/launchpad/">
   <title>BitBT Pump</title>
   <link rel="stylesheet" href="./assets/fonts/fonts.css">
   <style>
@@ -291,7 +292,7 @@
 
         <section class="screen" data-panel="detail">
           <div class="appbar"><button class="icon-btn" data-open="discover" aria-label="返回"><i class="ico" style="--icon:url('./assets/icons/lucide/chevron-left.svg')"></i></button><div class="actions"><button class="icon-btn" data-open="watchlist" aria-label="加入自选"><i class="ico" style="--icon:url('./assets/icons/lucide/star.svg')"></i></button><button class="icon-btn" data-toast="代币链接已复制" aria-label="分享代币"><i class="ico" style="--icon:url('./assets/icons/lucide/ellipsis.svg')"></i></button></div></div>
-          <div class="token-hero"><div class="token-identity"><img data-active-image src="./assets/tokens/cashcat.svg" alt="Current token"><div><h2><span data-active-symbol>LIVE TOKEN</span> <span class="tag lime">G</span></h2><p><span data-active-address>0x020b…18b4 · BNB CHAIN</span> <button class="icon-btn" style="display:inline-grid;width:20px;height:20px;vertical-align:middle"><i class="ico sm" style="--icon:url('./assets/icons/lucide/copy.svg')"></i></button></p></div></div><div class="token-price"><div><small>PRICE / USD</small><h1 data-active-price>$0.000721</h1><b class="up" data-active-change>+318.42%</b></div><div class="right"><small>市值</small><strong data-active-market>$721.08K</strong><br><small data-active-rank>排名 #1</small></div></div></div>
+          <div class="token-hero"><div class="token-identity"><img data-active-image src="./assets/tokens/cashcat.svg" alt="Current token"><div><h2><span data-active-symbol>LIVE TOKEN</span> <span class="tag lime">G</span></h2><p><span data-active-address>0x020b…18b4 · BNB CHAIN</span> <button class="icon-btn" data-copy-token-address type="button" aria-label="复制完整代币合约地址" title="复制完整代币合约地址" style="display:inline-grid;width:20px;height:20px;vertical-align:middle"><i class="ico sm" style="--icon:url('./assets/icons/lucide/copy.svg')"></i></button></p></div></div><div class="token-price"><div><small>PRICE / USD</small><h1 data-active-price>$0.000721</h1><b class="up" data-active-change>+318.42%</b></div><div class="right"><small>市值</small><strong data-active-market>$721.08K</strong><br><small data-active-rank>排名 #1</small></div></div></div>
           <div class="stats-grid"><div><span>24H VOL</span><strong>$483K</strong></div><div><span>LIQUIDITY</span><strong>$35.2K</strong></div><div><span>HOLDERS</span><strong>6,062</strong></div><div><span>TOP 10</span><strong>15.1%</strong></div></div>
           <div class="time-row"><button class="active">1M</button><button>5M</button><button>15M</button><button>1H</button><button>4H</button><button>1D</button></div>
           <div class="chart-wrap"><div class="chart-fallback">正在载入本地 K 线…</div><div class="chart" id="launch-kline"></div></div>

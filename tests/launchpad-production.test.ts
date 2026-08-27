@@ -7,13 +7,14 @@ import { parseHTML } from "linkedom";
 
 const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
+const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; session?: { token: string; address: string; expiresIn?: number } };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; session?: { token: string; address: string; expiresIn?: number } };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -26,14 +27,25 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const providerTransactions: Array<Record<string, unknown>> = [];
   const providerEvents: Record<string, (value: unknown) => void> = {};
   const chartData: unknown[][] = [];
+  const historyPaths: string[] = [];
+  const clipboardWrites: string[] = [];
+  const location = { pathname: options.pathname || "/en/pump" };
+  const history = { pushState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); }, replaceState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
+  const navigator = { clipboard: { writeText: async (value: string) => { clipboardWrites.push(value); } } };
   const account = options.account || "";
   let sendRejectsRemaining = options.sendRejects ?? 0;
-  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return "0xlaunch"; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
-  const context = { window, document: window.document, fetch: fetchImpl, ethereum, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history: { replaceState: () => undefined }, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
-  Object.assign(window, context, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), timeScale: () => ({ fitContent: () => undefined }) }) } });
+  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
+  Object.defineProperty(window, "location", { configurable: true, value: location });
+  Object.defineProperty(window, "history", { configurable: true, value: history });
+  const context = { window, document: window.document, fetch: fetchImpl, ethereum, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
+  const windowContext = { ...context };
+  delete windowContext.history;
+  delete windowContext.location;
+  delete windowContext.navigator;
+  Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), timeScale: () => ({ fitContent: () => undefined }) }) } });
   vm.runInNewContext(bridge, context);
   await new Promise((resolve) => setTimeout(resolve, 20));
-  return { window, providerCalls, providerEvents, chartData, providerTransactions };
+  return { window, providerCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites };
 };
 
 test("production HTML boots with API failure without exposing prototype financial data", async () => {
@@ -98,6 +110,32 @@ test("native BNB quote accepts API chain aliases and keeps exact zero-sentinel b
   assert.ok(chartData.flat().every((point) => Object.values(point as Record<string, unknown>).every((value) => typeof value !== "number" || Number.isFinite(value))));
 });
 
+test("token details use a canonical address URL and copy the full contract address", async () => {
+  const token = "0x5bae7612602aa6919246b056c2652f0922078888";
+  const curve = "0x2222222222222222222222222222222222222222";
+  const fixture = { token_name: "Pepe", symbol: "PEPE", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "deployed", progress_percent: 0 };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/details")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: fixture }) };
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+
+  const direct = await boot(response, { pathname: `/en/pump/${token}` });
+  assert.equal(direct.window.document.querySelector('[data-panel="detail"]')?.classList.contains("active"), true, "direct token URL did not restore the detail panel");
+  direct.window.document.querySelector("[data-copy-token-address]")?.dispatchEvent(new direct.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(direct.clipboardWrites, [token], "copy control did not write the complete contract address");
+
+  const selected = await boot(response, { pathname: "/en/pump" });
+  selected.window.document.querySelector(`[data-live-token="${token}"]`)?.dispatchEvent(new selected.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(selected.historyPaths.at(-1), `/en/pump/${token}`, "selecting a token did not update the canonical URL");
+});
+
 test("zero, unsafe, and lower-than-policy minOut are rejected", async () => {
   for (const [minOut, slippage] of [["0", 200], ["100", 10000], ["97", 200]] as const) {
     const token = "0x1111111111111111111111111111111111111111";
@@ -147,7 +185,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       if (url.includes("v1/token/launch")) return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) };
       throw new Error(`unmocked ${url}`);
     };
-    const { window, providerCalls, providerTransactions } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance });
+    const { window, providerCalls, providerTransactions, historyPaths } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance });
     const name = window.document.querySelector("#token-name") as HTMLInputElement;
     const symbol = window.document.querySelector("#token-symbol") as HTMLInputElement;
     name.value = "Real Token";
@@ -176,7 +214,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       submit.disabled = false;
       submit.dispatchEvent(new window.Event("click", { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 80));
-      return { sendCount: providerCalls.filter((method) => method === "eth_sendTransaction").length, prepareCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls };
+      return { sendCount: providerCalls.filter((method) => method === "eth_sendTransaction").length, prepareCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
     }
     submit.dispatchEvent(new window.Event("click", { bubbles: true }));
     if (!sendRejects) submit.dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -193,7 +231,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
     sendCount = providerCalls.filter((method) => method === "eth_sendTransaction").length;
-    return { sendCount, prepareCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls };
+    return { sendCount, prepareCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
   };
   for (const quote of Object.keys(quoteAddresses) as Array<keyof typeof quoteAddresses>) {
     const result = await run(quote);
@@ -205,6 +243,8 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     assert.equal(result.providerTransactions[0]?.value, "0x11c37937e08000");
     assert.equal(result.providerTransactions[0]?.gas, "0x249f00");
     assert.equal(result.providerTransactions[0]?.data?.toString().includes(quoteAddresses[quote].slice(2).toLowerCase()), true);
+    for (let attempt = 0; attempt < 20 && result.historyPaths.at(-1) !== `/en/pump/${predicted}`; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(result.historyPaths.at(-1), `/en/pump/${predicted}`, `successful ${quote} launch did not open its canonical token URL; history=${result.historyPaths.join(",")} body=${result.body?.slice(-300)}`);
   }
   const changed = await run("BNB", undefined, true);
   assert.equal(changed.sendCount, 0, "changed launch metadata was signed");
@@ -355,6 +395,9 @@ test("production upload limits and error responses stay aligned across browser, 
 });
 
 test("every locale-relative Launchpad script has an executable public rewrite", () => {
+  assert.match(nextConfig, /\/:locale\/pump\/:address/);
+  assert.match(shell, /src="\/launchpad\/bitbt-launch-ui-app\.html"/);
+  assert.match(html, /<base href="\/launchpad\/">/);
   for (const script of ["launch-logo-upload.js", "launchpad-live.js"]) {
     assert.match(html, new RegExp(`<script src="\\./${script.replaceAll(".", "\\.")}">`));
     assert.match(nextConfig, new RegExp(`/:locale/${script.replaceAll(".", "\\.")}`));
