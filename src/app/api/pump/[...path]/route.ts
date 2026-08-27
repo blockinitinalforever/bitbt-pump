@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE = process.env.BITBT_PUMP_API_URL || "https://appbackend.bitbt.com";
+const MAX_IMAGE_REQUEST_BYTES = 8 * 1024 * 1024;
 const ALLOWED = new Set([
   "v1/auth/siwe/nonce",
   "v1/auth/siwe/verify",
@@ -27,6 +28,12 @@ async function forward(request: NextRequest, path: string[]) {
   if (!ALLOWED.has(key)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (key === "v1/upload/image" && !request.headers.get("authorization")?.startsWith("Bearer ")) {
     return NextResponse.json({ success: false, error: "SIWE session required for image upload" }, { status: 401, headers: { "cache-control": "no-store" } });
+  }
+  if (key === "v1/upload/image") {
+    const contentLength = Number(request.headers.get("content-length") || "0");
+    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_REQUEST_BYTES) {
+      return NextResponse.json({ success: false, error: "Image too large (max 5MB)", code: "PAYLOAD_TOO_LARGE" }, { status: 413, headers: { "cache-control": "no-store" } });
+    }
   }
 
   const upstream = new URL(`/api/${key}`, API_BASE);
@@ -64,6 +71,16 @@ async function forward(request: NextRequest, path: string[]) {
       return request.method === "HEAD"
         ? new NextResponse(null, { status: 200, headers: { "cache-control": "no-store" } })
         : NextResponse.json(payload, { status: response.status, headers: { "cache-control": "no-store" } });
+    }
+    if (key === "v1/upload/image") {
+      const raw = await response.text();
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = { success: false, error: response.status === 413 ? "Image too large (max 5MB)" : "Image upload service returned an invalid response" };
+      }
+      return NextResponse.json(payload, { status: response.status, headers: { "cache-control": "no-store" } });
     }
     return new NextResponse(request.method === "HEAD" ? null : response.body, {
       status: response.status,
