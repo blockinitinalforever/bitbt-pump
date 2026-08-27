@@ -61,7 +61,7 @@ for PUMP_OLD_RELEASE in "${PUMP_OLD_RELEASES[@]}"; do
   case "$PUMP_RESOLVED_RELEASE" in
     "$PUMP_RELEASE_ROOT"/*)
       if [[ "$PUMP_RESOLVED_RELEASE" != "$PUMP_CURRENT_RELEASE" ]]; then
-        rm -rf -- "$PUMP_RESOLVED_RELEASE"
+        sudo rm -rf -- "$PUMP_RESOLVED_RELEASE"
       fi
       ;;
     *) echo "Refusing to remove unexpected path: $PUMP_RESOLVED_RELEASE" >&2; exit 1 ;;
