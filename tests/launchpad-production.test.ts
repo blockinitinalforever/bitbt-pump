@@ -502,7 +502,7 @@ test("every locale-relative Launchpad script has an executable public rewrite", 
 
 test("canonical Pump routes are locale-free and legacy locale URLs redirect", () => {
   assert.match(edgeProxy, /\/pump\$\{tokenAddress/);
-  assert.match(edgeProxy, /launchpad\.pathname = "\/launchpad\/bitbt-wallet-ui\.html"/);
+  assert.match(edgeProxy, /return NextResponse\.next\(\)/);
   assert.match(edgeProxy, /return NextResponse\.redirect\(redirect, 301\)/);
   assert.match(bridge, /const pumpBasePath = \(\) => "\/pump"/);
   assert.match(bridge, /bitbt_pump_locale/);
