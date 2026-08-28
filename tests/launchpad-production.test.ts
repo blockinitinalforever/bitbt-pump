@@ -519,10 +519,12 @@ test("Pump polling refreshes selected trades every cycle but batches full market
   assert.match(bridge, /if \(!state\.trades\.length\).*charts\.delete\(selector\)/);
 });
 
-test("Pump proxy hides wallet RPC credentials and protects uploads", () => {
+test("Pump proxy hides wallet RPC credentials and protects every write endpoint", () => {
   assert.match(proxy, /delete payload\.data\.rpc/);
   assert.match(proxy, /delete payload\.data\.rpcFallback/);
-  assert.match(proxy, /SIWE session required for image upload/);
+  assert.match(proxy, /SIWE_WRITE_ENDPOINTS/);
+  for (const endpoint of ["v1/upload/image", "v1/token/prepare-launch", "v1/token/launch"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
+  assert.match(proxy, /SIWE session required for this operation/);
   assert.match(proxy, /request\.headers\.get\("authorization"\)\?\.startsWith\("Bearer "\)/);
   assert.match(proxy, /export async function HEAD/);
 });
