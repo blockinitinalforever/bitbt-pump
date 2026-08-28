@@ -14,7 +14,7 @@ const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; session?: { token: string; address: string; expiresIn?: number } };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; session?: { token: string; address: string; expiresIn?: number } };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -34,7 +34,8 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const navigator = { clipboard: { writeText: async (value: string) => { clipboardWrites.push(value); } } };
   const account = options.account || "";
   let sendRejectsRemaining = options.sendRejects ?? 0;
-  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
+  let estimateRejectsRemaining = options.estimateRejects ?? 0;
+  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
   Object.defineProperty(window, "location", { configurable: true, value: location });
   Object.defineProperty(window, "history", { configurable: true, value: history });
   const context = { window, document: window.document, fetch: fetchImpl, ethereum, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
@@ -224,9 +225,10 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" } as const;
   type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string };
   const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" };
-  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false) => {
-    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient };
-    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenWithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address))" : prepared.method };
+  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0) => {
+    const curveMode = customCurve ? "custom" : "standard";
+    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient };
+    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: curveMode } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenWithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address))" : prepared.method };
     let sendCount = 0;
     let prepareCount = 0;
     let statusCount = 0;
@@ -244,9 +246,13 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       if (url.includes("v1/token/launch")) return { ok: true, json: async () => ({ data: backgroundRetry ? { status: "deploying", rejection_reason: "Deploy tx sent (0xabc) pending confirmation" } : { status: "deployed", contract_address: predicted } }) };
       throw new Error(`unmocked ${url}`);
     };
-    const { window, providerCalls, providerTransactions, historyPaths } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance });
+    const { window, providerCalls, providerTransactions, historyPaths } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance, estimateRejects });
     const name = window.document.querySelector("#token-name") as HTMLInputElement;
     const symbol = window.document.querySelector("#token-symbol") as HTMLInputElement;
+    if (customCurve) {
+      window.document.querySelector('[data-curve-mode="custom"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+      (window.document.querySelector("#migration-threshold-quote") as HTMLInputElement).value = quote === "BNB" ? "115" : "69000";
+    }
     name.value = "Real Token";
     symbol.value = "REAL";
     (window.document.querySelector("#token-story") as HTMLTextAreaElement).value = "Fresh launch story";
@@ -263,7 +269,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     load.dispatchEvent(new window.Event("click", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 80));
     const snapshotText = window.document.querySelector("[data-panel='create-review']")?.textContent || "";
-    if (!mutate) { assert.match(snapshotText, /Real Token/); assert.match(snapshotText, /REAL/); assert.match(snapshotText, /Fresh launch story/); assert.match(snapshotText, new RegExp(quote)); assert.match(snapshotText, /5000000000000000/); }
+    if (!mutate) { assert.match(snapshotText, /Real Token/); assert.match(snapshotText, /REAL/); assert.match(snapshotText, /Fresh launch story/); assert.match(snapshotText, new RegExp(quote)); assert.match(snapshotText, /0\.005 BNB/); }
     // linkedom does not reflect the boolean disabled property after async DOM mutation;
     // the production browser path removes the attribute in renderLaunchReview.
     submit.disabled = false;
@@ -280,9 +286,10 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       return { sendCount: providerCalls.filter((method) => method === "eth_sendTransaction").length, prepareCount, statusCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
     }
     submit.dispatchEvent(new window.Event("click", { bubbles: true }));
-    if (!sendRejects) submit.dispatchEvent(new window.Event("click", { bubbles: true }));
+    if (!sendRejects && !estimateRejects) submit.dispatchEvent(new window.Event("click", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 80));
     sendCount = providerCalls.filter((method) => method === "eth_sendTransaction").length;
+    if (estimateRejects) return { sendCount, prepareCount, statusCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
     if (sendRejects && retryAfterReject) {
       submit.disabled = false;
       submit.dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -302,7 +309,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     assert.equal(result.prepareCount, 1, `launch quote ${quote} was prepared more than once`);
     assert.equal(result.prepareBody?.quote_token, quote);
     assert.equal(result.prepareBody?.chain_id, "bsc");
-    assert.deepEqual(result.prepareBody?.launch_settings, { antisniper: true, enable_tax: false, request_platform_lp: false });
+    assert.deepEqual(result.prepareBody?.launch_settings, { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: "standard" });
     assert.equal(result.providerTransactions[0]?.value, "0x11c37937e08000");
     assert.equal(result.providerTransactions[0]?.gas, "0x249f00");
     assert.equal(result.providerTransactions[0]?.data?.toString().includes(quoteAddresses[quote].slice(2).toLowerCase()), true);
@@ -311,12 +318,19 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   }
   const taxed = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true);
   assert.equal(taxed.sendCount, 1, "tax-token launch did not broadcast");
-  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient });
+  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: "standard", buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient });
   assert.equal(String(taxed.providerTransactions[0]?.data).slice(0, 10), "0x4bec1297");
   const taxedBackgroundRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true, true);
   assert.equal(taxedBackgroundRetry.sendCount, 1, "tax-token retry flow rebroadcast the wallet transaction");
   assert.equal(taxedBackgroundRetry.statusCount, 1, "tax-token retry flow did not reconcile through the status endpoint");
   assert.equal(taxedBackgroundRetry.historyPaths.at(-1), `/en/pump/${predicted}`);
+  const custom = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, false, false, true);
+  assert.equal(custom.sendCount, 1, "custom-curve launch did not broadcast");
+  assert.equal(custom.prepareBody?.migration_threshold_quote, "115");
+  assert.equal((custom.prepareBody?.launch_settings as Record<string, unknown>)?.curve_mode, "custom");
+  const stale = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, false, false, false, 1);
+  assert.equal(stale.sendCount, 0, "stale Factory snapshot must not broadcast");
+  assert.equal(stale.prepareCount, 2, "stale Factory snapshot was not regenerated exactly once");
   const changed = await run("BNB", undefined, true);
   assert.equal(changed.sendCount, 0, "changed launch metadata was signed");
   assert.equal(changed.prepareCount, 2, "changed launch metadata did not require a fresh prepare response");
@@ -495,9 +509,11 @@ test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configur
   for (const quote of ["BNB", "USDT", "USDC", "GW"]) assert.match(html, new RegExp(`data-launch-quote="${quote}"`));
   for (const id of ["token-classification", "token-twitter", "token-telegram", "token-website", "token-discord"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const field of ["classification", "twitter", "telegram", "website", "discord", "launch_settings", "antisniper", "enable_tax", "request_platform_lp"]) assert.match(bridge, new RegExp(field));
-  assert.match(html, /自定义联合曲线[\s\S]{0,300}开发中/);
+  for (const mode of ["fair", "custom", "community"]) assert.match(html, new RegExp(`data-launch-mode="${mode}"`));
+  for (const marker of ["migration-threshold-quote", "data-custom-curve-fields", "data-curve-mode=\"custom\"", "标准目标的 50%–200%", "社区收益代币", "链上执行"]) assert.match(html, new RegExp(marker));
   for (const id of ["buy-tax-rate", "sell-tax-rate", "funds-recipient-pct", "burn-pct", "holders-pct", "liquidity-pct", "min-dividend-balance", "tax-recipient-wallet"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const marker of ["launchTaxTokenWithQuotePaid", "0x4bec1297", "launchTaxConfig", "data-tax-mode", "data-tax-fields", "买入和卖出税率必须在 1%–10%", "税费分配比例合计必须为 100%", "发币准备方法与税费模式不匹配"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const marker of ["launchCurveTarget", "migration_threshold_quote", "curve_mode", "setCurveMode", "setTaxMode", "链上 Factory 状态已变化，参数已自动更新"]) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(html, /迁移 PancakeSwap 后对 Pair 买卖持续执行所选税率/);
   assert.match(html, /当前链上交易不包含初始买入/);
   assert.doesNotMatch(html, /预计获得 16\.84M MOON/);
