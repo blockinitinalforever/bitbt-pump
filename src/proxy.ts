@@ -22,9 +22,11 @@ export default function proxy(request: NextRequest) {
       redirect.pathname = `/pump${tokenAddress ? `/${tokenAddress.toLowerCase()}` : ""}`;
       return NextResponse.redirect(redirect, 301);
     }
-    const launchpad = request.nextUrl.clone();
-    launchpad.pathname = "/launchpad/bitbt-wallet-ui.html";
-    return NextResponse.rewrite(launchpad);
+    // Skip locale middleware and let next.config's same-process rewrite serve
+    // the static launchpad. Rewriting an absolute cloned URL here makes Next
+    // proxy back to its HTTPS forwarded origin even though the local service
+    // listens on plain HTTP, which produces EPROTO in production.
+    return NextResponse.next();
   }
   if (host === "bitbt.fun" || host === "www.bitbt.fun") {
     if (request.nextUrl.pathname === "/") {
