@@ -12,9 +12,10 @@ const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wall
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
+const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; session?: { token: string; address: string; expiresIn?: number } };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number } };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -29,7 +30,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const chartData: unknown[][] = [];
   const historyPaths: string[] = [];
   const clipboardWrites: string[] = [];
-  const location = { origin: "https://bitbt.fun", pathname: options.pathname || "/en/pump", search: "", assign: (path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
+  const location = { origin: "https://bitbt.fun", pathname: options.pathname || "/pump", search: "", assign: (path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
   const history = { pushState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); }, replaceState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
   const navigator = { clipboard: { writeText: async (value: string) => { clipboardWrites.push(value); } } };
   const account = options.account || "";
@@ -38,6 +39,14 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
   Object.defineProperty(window, "location", { configurable: true, value: location });
   Object.defineProperty(window, "history", { configurable: true, value: history });
+  if (options.parentPathname) {
+    const parentLocation = { ...location, pathname: options.parentPathname };
+    const parentHistory = { pushState: (_state: unknown, _title: string, path: string) => { parentLocation.pathname = path.split("?", 1)[0]; historyPaths.push(path); }, replaceState: (_state: unknown, _title: string, path: string) => { parentLocation.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
+    Object.defineProperty(window, "parent", { configurable: true, value: { location: parentLocation, history: parentHistory, addEventListener: () => undefined } });
+    Object.defineProperty(window, "frameElement", { configurable: true, value: {} });
+  } else {
+    Object.defineProperty(window, "parent", { configurable: true, value: window });
+  }
   const context = { window, document: window.document, fetch: fetchImpl, ethereum, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   const windowContext = { ...context };
   delete windowContext.history;
@@ -124,16 +133,16 @@ test("token details use a canonical address URL and copy the full contract addre
     throw new Error(`unmocked ${url}`);
   };
 
-  const direct = await boot(response, { pathname: `/en/pump/${token}` });
+  const direct = await boot(response, { pathname: "/launchpad/bitbt-launch-ui-app.html", parentPathname: `/pump/${token}` });
   assert.equal(direct.window.document.querySelector('[data-panel="detail"]')?.classList.contains("active"), true, "direct token URL did not restore the detail panel");
   direct.window.document.querySelector("[data-copy-token-address]")?.dispatchEvent(new direct.window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(direct.clipboardWrites, [token], "copy control did not write the complete contract address");
 
-  const selected = await boot(response, { pathname: "/en/pump" });
+  const selected = await boot(response, { pathname: "/launchpad/bitbt-launch-ui-app.html", parentPathname: "/pump" });
   selected.window.document.querySelector(`[data-live-token="${token}"]`)?.dispatchEvent(new selected.window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(selected.historyPaths.at(-1), `/en/pump/${token}`, "selecting a token did not update the canonical URL");
+  assert.equal(selected.historyPaths.at(-1), `/pump/${token}`, "selecting a token did not update the parent canonical URL");
 });
 
 test("detail and trade panels render only real API values, decimal K-lines, and formatted quote units", async () => {
@@ -155,7 +164,7 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
     if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "q-real", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_quote: "0.01", fee_rate_percent: "1.000000%" } }) };
     throw new Error(`unmocked ${url}`);
   };
-  const app = await boot(response, { pathname: `/en/pump/${token}` });
+  const app = await boot(response, { pathname: "/launchpad/bitbt-launch-ui-app.html", parentPathname: `/pump/${token}` });
   assert.equal(app.window.document.querySelector("[data-active-image]")?.getAttribute("src"), logo);
   assert.match(app.window.document.querySelector("[data-active-price]")?.textContent || "", /0\.000000000000000305 BNB/);
   assert.equal(app.window.document.querySelector("[data-active-trade-count]")?.textContent, "2");
@@ -165,7 +174,7 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
   for (const fake of ["$483K", "$35.2K", "6,062", "15.1%", "未发现高风险项"]) assert.equal((app.window.document.body.textContent || "").includes(fake), false, `prototype detail value leaked: ${fake}`);
   app.window.document.querySelector("[data-share-token]")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(app.clipboardWrites.at(-1), `https://bitbt.fun/en/pump/${token}`);
+  assert.equal(app.clipboardWrites.at(-1), `https://bitbt.fun/pump/${token}`);
   const beforeIntervals = app.chartData.length;
   app.window.document.querySelector('[data-chart-interval="60"]')?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
   assert.ok(app.chartData.length > beforeIntervals, "K-line interval button did not redraw the chart");
@@ -313,8 +322,8 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     assert.equal(result.providerTransactions[0]?.value, "0x11c37937e08000");
     assert.equal(result.providerTransactions[0]?.gas, "0x249f00");
     assert.equal(result.providerTransactions[0]?.data?.toString().includes(quoteAddresses[quote].slice(2).toLowerCase()), true);
-    for (let attempt = 0; attempt < 20 && result.historyPaths.at(-1) !== `/en/pump/${predicted}`; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal(result.historyPaths.at(-1), `/en/pump/${predicted}`, `successful ${quote} launch did not open its canonical token URL; history=${result.historyPaths.join(",")} body=${result.body?.slice(-300)}`);
+    for (let attempt = 0; attempt < 20 && result.historyPaths.at(-1) !== `/pump/${predicted}`; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(result.historyPaths.at(-1), `/pump/${predicted}`, `successful ${quote} launch did not open its canonical token URL; history=${result.historyPaths.join(",")} body=${result.body?.slice(-300)}`);
   }
   const taxed = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true);
   assert.equal(taxed.sendCount, 1, "tax-token launch did not broadcast");
@@ -323,7 +332,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const taxedBackgroundRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true, true);
   assert.equal(taxedBackgroundRetry.sendCount, 1, "tax-token retry flow rebroadcast the wallet transaction");
   assert.equal(taxedBackgroundRetry.statusCount, 1, "tax-token retry flow did not reconcile through the status endpoint");
-  assert.equal(taxedBackgroundRetry.historyPaths.at(-1), `/en/pump/${predicted}`);
+  assert.equal(taxedBackgroundRetry.historyPaths.at(-1), `/pump/${predicted}`);
   const custom = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, false, false, true);
   assert.equal(custom.sendCount, 1, "custom-curve launch did not broadcast");
   assert.equal(custom.prepareBody?.migration_threshold_quote, "115");
@@ -480,6 +489,8 @@ test("production upload limits and error responses stay aligned across browser, 
 });
 
 test("every locale-relative Launchpad script has an executable public rewrite", () => {
+  assert.match(nextConfig, /source: "\/pump\/:address"/);
+  assert.match(nextConfig, /source: "\/pump"/);
   assert.match(nextConfig, /\/:locale\/pump\/:address/);
   assert.match(shell, /src="\/launchpad\/bitbt-launch-ui-app\.html"/);
   assert.match(html, /<base href="\/launchpad\/">/);
@@ -487,6 +498,15 @@ test("every locale-relative Launchpad script has an executable public rewrite", 
     assert.match(html, new RegExp(`<script src="\\./${script.replaceAll(".", "\\.")}">`));
     assert.match(nextConfig, new RegExp(`/:locale/${script.replaceAll(".", "\\.")}`));
   }
+});
+
+test("canonical Pump routes are locale-free and legacy locale URLs redirect", () => {
+  assert.match(edgeProxy, /\/pump\$\{tokenAddress/);
+  assert.match(edgeProxy, /launchpad\.pathname = "\/launchpad\/bitbt-wallet-ui\.html"/);
+  assert.match(edgeProxy, /return NextResponse\.redirect\(redirect, 301\)/);
+  assert.match(bridge, /const pumpBasePath = \(\) => "\/pump"/);
+  assert.match(bridge, /bitbt_pump_locale/);
+  assert.doesNotMatch(bridge, /`\/\$\{pumpLocale\(\)\}\/pump`/);
 });
 
 test("token filters sort the already-loaded list locally without another token-list request", () => {
