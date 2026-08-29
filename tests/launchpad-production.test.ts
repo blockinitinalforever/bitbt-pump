@@ -15,7 +15,7 @@ const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown> };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "binance" | "tokenpocket" | "eip6963" };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -48,7 +48,15 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   } else {
     Object.defineProperty(window, "parent", { configurable: true, value: window });
   }
-  const context = { window, document: window.document, fetch: fetchImpl, ethereum, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
+  for (const key of ["ethereum", "okxwallet", "BinanceChain", "binancew3w", "tokenpocket"] as const) Object.defineProperty(window, key, { configurable: true, writable: true, value: undefined });
+  const providerTarget = options.providerTarget || "ethereum";
+  const providerGlobals = providerTarget === "okxwallet" ? { okxwallet: ethereum }
+    : providerTarget === "binance" ? { BinanceChain: ethereum }
+      : providerTarget === "tokenpocket" ? { tokenpocket: { ethereum } }
+        : providerTarget === "eip6963" ? {}
+          : { ethereum };
+  if (providerTarget === "eip6963") window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "EIP Wallet", rdns: "wallet.example" }, provider: ethereum } })));
+  const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   const windowContext = { ...context };
   delete windowContext.history;
   delete windowContext.location;
@@ -507,6 +515,29 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
   providerEvents.accountsChanged?.([account]);
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+});
+
+test("OKX, TokenPocket, Binance Wallet, and EIP-6963 providers can complete SIWE without window.ethereum", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { nonce: "nonce-123", domain: "bitbt.fun" } }) };
+    if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+
+  for (const providerTarget of ["okxwallet", "tokenpocket", "binance", "eip6963"] as const) {
+    const app = await boot(response, { account, providerTarget });
+    assert.equal((app.window as Window & { ethereum?: unknown }).ethereum, undefined, `${providerTarget} test unexpectedly relied on window.ethereum`);
+    app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111", `${providerTarget} did not connect`);
+    for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `${providerTarget} did not use ${method}`);
+  }
 });
 
 test("wallet activity loads buy, sell, and create once and filters them locally", async () => {
