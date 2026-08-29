@@ -10,14 +10,17 @@
   const charts = new Map();
   const announcedProviders = [];
   const boundProviders = new Set();
-  const isEvmProvider = (provider) => Boolean(provider && typeof provider.request === "function");
+  let providerSelectionPromise = null;
+  const isEvmProvider = (provider) => { try { return Boolean(provider && typeof provider.request === "function"); } catch { return false; } };
+  const safeProviderInfo = (info) => { try { return { name: typeof info?.name === "string" ? info.name.slice(0, 80) : "EVM Wallet", rdns: typeof info?.rdns === "string" ? info.rdns.slice(0, 120) : "" }; } catch { return { name: "EVM Wallet", rdns: "" }; } };
   const providerIdentity = (provider, info = {}) => `${info.rdns || ""} ${info.name || ""} ${provider?.isOkxWallet ? "okx" : ""} ${provider?.isOKExWallet ? "okx" : ""} ${provider?.isBinance ? "binance" : ""} ${provider?.isBinanceWallet ? "binance" : ""} ${provider?.isTokenPocket ? "tokenpocket" : ""} ${provider?.isMetaMask ? "metamask" : ""}`.toLowerCase();
   const providerScore = (entry) => { const identity = providerIdentity(entry.provider, entry.info); if (/okx|okex/.test(identity)) return 500; if (/binance/.test(identity)) return 400; if (/tokenpocket|token pocket/.test(identity)) return 300; if (/metamask/.test(identity)) return 200; return 100; };
   const rememberProvider = (provider, info = {}, trustedDirect = false) => {
     if (!isEvmProvider(provider)) return;
+    const safeInfo = safeProviderInfo(info);
     const existing = announcedProviders.find((entry) => entry.provider === provider);
-    if (existing) { existing.info = { ...existing.info, ...info }; existing.trustedDirect ||= trustedDirect; }
-    else announcedProviders.push({ provider, info, trustedDirect });
+    if (existing) { existing.info = { ...existing.info, ...safeInfo }; existing.trustedDirect ||= trustedDirect; }
+    else announcedProviders.push({ provider, info: safeInfo, trustedDirect, userApproved: false });
   };
   const collectProviders = () => {
     rememberProvider(window.okxwallet?.ethereum || window.okxwallet, { name: "OKX Wallet", rdns: "com.okex.wallet" }, true);
@@ -27,7 +30,7 @@
     const injected = window.ethereum;
     if (Array.isArray(injected?.providers)) injected.providers.forEach((provider) => rememberProvider(provider, {}, true));
     rememberProvider(injected, {}, true);
-    return announcedProviders.filter((entry) => entry.trustedDirect && isEvmProvider(entry.provider)).sort((a, b) => providerScore(b) - providerScore(a));
+    return announcedProviders.filter((entry) => (entry.trustedDirect || entry.userApproved) && isEvmProvider(entry.provider)).sort((a, b) => providerScore(b) - providerScore(a));
   };
   const selectedProvider = () => {
     const preferred = collectProviders()[0]?.provider || null;
@@ -36,8 +39,32 @@
     state.provider = preferred;
     return state.provider;
   };
-  const isTrustedProvider = (provider) => { collectProviders(); return announcedProviders.some((entry) => entry.provider === provider && entry.trustedDirect); };
+  const isTrustedProvider = (provider) => { collectProviders(); return announcedProviders.some((entry) => entry.provider === provider && (entry.trustedDirect || entry.userApproved)); };
   const requestProviderAnnouncements = () => { try { window.dispatchEvent(new window.Event("eip6963:requestProvider")); } catch {} };
+  const chooseAnnouncedProvider = () => {
+    if (providerSelectionPromise) return providerSelectionPromise;
+    const choices = announcedProviders.filter((entry) => !entry.trustedDirect && !entry.userApproved && isEvmProvider(entry.provider));
+    if (!choices.length) return Promise.reject(new Error("未检测到 EVM 钱包"));
+    providerSelectionPromise = new Promise((resolve, reject) => {
+      const overlay = document.createElement("div"); overlay.className = "wallet-provider-overlay"; overlay.setAttribute("role", "dialog"); overlay.setAttribute("aria-modal", "true"); overlay.setAttribute("aria-label", "选择 EVM 钱包");
+      const panel = document.createElement("div"); panel.className = "wallet-provider-dialog";
+      const title = document.createElement("h2"); title.textContent = "选择钱包";
+      const note = document.createElement("p"); note.textContent = "请选择你当前正在使用的钱包。只有确认后，页面才会请求连接和签名。";
+      const list = document.createElement("div"); list.className = "wallet-provider-list";
+      const cleanup = () => { overlay.remove(); providerSelectionPromise = null; };
+      choices.forEach((entry, index) => {
+        const button = document.createElement("button"); button.type = "button"; button.dataset.eip6963Provider = String(index);
+        const name = document.createElement("strong"); name.textContent = entry.info.name || "EVM Wallet";
+        const rdns = document.createElement("small"); rdns.textContent = entry.info.rdns || "EIP-6963 Provider";
+        button.append(name, rdns);
+        button.addEventListener("click", () => { entry.userApproved = true; state.provider = entry.provider; cleanup(); resolve(entry.provider); });
+        list.appendChild(button);
+      });
+      const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "wallet-provider-cancel"; cancel.textContent = "取消"; cancel.addEventListener("click", () => { cleanup(); reject(new Error("已取消钱包连接")); });
+      panel.append(title, note, list, cancel); overlay.appendChild(panel); root.appendChild(overlay); list.querySelector("button")?.focus();
+    });
+    return providerSelectionPromise;
+  };
   const waitForProvider = async (timeout = 1500) => {
     const immediate = selectedProvider();
     if (immediate) return immediate;
@@ -47,7 +74,9 @@
       await new Promise((resolve) => window.setTimeout(resolve, 50));
       const provider = selectedProvider();
       if (provider) return provider;
+      if (Date.now() - started >= 250 && announcedProviders.some((entry) => !entry.trustedDirect && !entry.userApproved)) return chooseAnnouncedProvider();
     }
+    if (announcedProviders.some((entry) => !entry.trustedDirect && !entry.userApproved)) return chooseAnnouncedProvider();
     throw new Error("未检测到 EVM 钱包，请在 OKX、TokenPocket、Binance Wallet 或其他 EVM 钱包内打开");
   };
   window.addEventListener("eip6963:announceProvider", (event) => {

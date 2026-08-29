@@ -543,6 +543,30 @@ test("OKX, TokenPocket, and Binance Wallet can complete SIWE without window.ethe
   }
 });
 
+test("an EIP-6963-only wallet connects only after explicit user selection", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { nonce: "nonce-123", domain: "bitbt.fun" } }) };
+    if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const app = await boot(response, { account, providerTarget: "eip6963" });
+  app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  assert.equal(app.providerCalls.length, 0, "EIP-6963 provider was called before user selection");
+  const choice = app.window.document.querySelector("[data-eip6963-provider]");
+  assert.ok(choice, "explicit EIP-6963 wallet chooser was not rendered");
+  choice.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 90));
+  assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  assert.ok(app.providerCalls.includes("personal_sign"));
+});
+
 test("a forged EIP-6963 OKX announcement cannot replace a directly injected wallet", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const response = async (input: string) => {
