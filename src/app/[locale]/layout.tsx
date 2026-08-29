@@ -10,10 +10,15 @@ export const metadata: Metadata = {
   description:
     "Building Long-Term Value for the Next Generation of AI & Web3 Innovation",
   icons: {
-    icon: [{ url: "/icon.svg?v=20260829", type: "image/svg+xml" }],
-    shortcut: "/icon.svg?v=20260829",
-    apple: "/launchpad/assets/app-icons/pwa/bitbt-180.png?v=20260829",
+    icon: [
+      { url: "/launchpad/assets/app-icons/pwa/bitbt-32.png?v=20260829-2", type: "image/png", sizes: "32x32" },
+      { url: "/launchpad/assets/app-icons/pwa/bitbt-16.png?v=20260829-2", type: "image/png", sizes: "16x16" },
+      { url: "/icon.svg?v=20260829-2", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.ico?v=20260829-2",
+    apple: "/launchpad/assets/app-icons/pwa/bitbt-180.png?v=20260829-2",
   },
+  manifest: "/manifest.webmanifest?v=20260829-2",
 };
 
 export default async function LocaleLayout({

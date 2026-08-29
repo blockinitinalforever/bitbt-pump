@@ -7,9 +7,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.amazonaws.com https://*.cloudfront.net data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <base href="/launchpad/">
   <title>BitBT Pump</title>
-  <link rel="icon" type="image/svg+xml" href="/icon.svg?v=20260829">
-  <link rel="shortcut icon" href="/icon.svg?v=20260829">
-  <link rel="apple-touch-icon" sizes="180x180" href="./assets/app-icons/pwa/bitbt-180.png?v=20260829">
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/app-icons/pwa/bitbt-32.png?v=20260829-2">
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/app-icons/pwa/bitbt-16.png?v=20260829-2">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg?v=20260829-2">
+  <link rel="shortcut icon" href="/favicon.ico?v=20260829-2">
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/app-icons/pwa/bitbt-180.png?v=20260829-2">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260829-2">
   <link rel="stylesheet" href="./assets/fonts/fonts.css">
   <style>
     :root{color-scheme:light;--paper:#f1efe7;--surface:#fbfaf5;--ink:#0b0c0b;--muted:#72766f;--line:#d8d8cf;--lime:#b7ff3c;--cyan:#5be7ff;--red:#ff5a6d;--green:#0a9f63;--amber:#ffb62e;--logo:url('./assets/branding/bitbt-logo.svg');font-family:"Manrope","Noto Sans SC",sans-serif;background:var(--paper);color:var(--ink)}
@@ -28,7 +31,7 @@
     .brand-lockup p{margin-top:5px;font:11px/1.2 "IBM Plex Sans",sans-serif;letter-spacing:.13em;color:var(--muted)}
     .studio-meta{text-align:right;font:11px/1.45 "IBM Plex Sans",sans-serif;letter-spacing:.08em;text-transform:uppercase}
     .studio-meta b{display:inline-block;background:var(--lime);padding:3px 6px;border:1px solid var(--ink);margin-bottom:4px}
-    .official-contact-bar{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;padding:8px 14px;border-bottom:1px solid var(--ink);background:#101213;overflow-x:auto;scrollbar-width:none}.official-contact-bar::-webkit-scrollbar{display:none}.official-contact-bar a{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;min-height:32px;padding:6px 10px;border:1px solid #343738;border-radius:999px;color:#e2e4e0;text-decoration:none;font:10px/1.2 "IBM Plex Sans",sans-serif;white-space:nowrap;touch-action:manipulation}.official-contact-bar a:hover,.official-contact-bar a:focus-visible{border-color:var(--lime);color:var(--lime);outline:none}.official-contact-bar strong{font-weight:500;color:#8e928f}
+    .official-contact-footer{position:relative;z-index:1;border-top:1px solid var(--ink);background:#101213}.official-contact-bar{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;padding:8px 14px;overflow-x:auto;scrollbar-width:none}.official-contact-bar::-webkit-scrollbar{display:none}.official-contact-bar a{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;min-height:32px;padding:6px 10px;border:1px solid #343738;border-radius:999px;color:#e2e4e0;text-decoration:none;font:10px/1.2 "IBM Plex Sans",sans-serif;white-space:nowrap;touch-action:manipulation}.official-contact-bar a:hover,.official-contact-bar a:focus-visible{border-color:var(--lime);color:var(--lime);outline:none}.official-contact-bar strong{font-weight:500;color:#8e928f}
     .screen-switcher{position:relative;z-index:1;display:flex;gap:0;overflow:auto;border-bottom:1px solid var(--ink);scrollbar-width:none;background:#ebe9df}
     .screen-switcher::-webkit-scrollbar{display:none}
     .screen-switcher button{flex:0 0 auto;border:0;border-right:1px solid var(--line);background:transparent;padding:11px 14px;color:var(--muted);font-size:12px;white-space:nowrap}
@@ -229,7 +232,6 @@
     <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>BitBT Pump</h1><p>BITBT PUMP · MEME MARKETS, BUILT ON-CHAIN.</p></div></div>
     <div class="studio-actions"><button class="language-toggle" data-lang-toggle aria-label="切换语言"><i class="ico sm" style="--icon:url('./assets/icons/lucide/languages.svg')"></i><span data-lang-label>中文 / EN</span></button><button class="connect-global" data-toast="钱包连接仅用于签名">连接钱包</button></div>
   </header>
-  <nav class="official-contact-bar" data-global-official-contacts aria-label="BitBT 官方联系方式"><a href="https://bitbt.com" target="_blank" rel="noopener noreferrer"><i class="ico sm" style="--icon:url('./assets/icons/lucide/house.svg')"></i><span>官网</span><strong>bitbt.com</strong></a><a href="mailto:support@bitbt.com"><i class="ico sm" style="--icon:url('./assets/icons/lucide/send.svg')"></i><span>邮箱</span><strong>support@bitbt.com</strong></a><a href="https://t.me/BitBTVentures" target="_blank" rel="noopener noreferrer"><i class="ico sm" style="--icon:url('./assets/icons/lucide/message-circle.svg')"></i><span>Telegram</span><strong>@BitBTVentures</strong></a><a href="https://x.com/0xcryptolin" target="_blank" rel="noopener noreferrer"><i class="ico sm" style="--icon:url('./assets/icons/lucide/send.svg')"></i><span>X / Twitter</span><strong>@0xcryptolin</strong></a></nav>
   <nav class="screen-switcher" aria-label="发射器界面预览">
     <button data-open="discover" aria-pressed="true">发现市场</button><button data-open="live">实时链上</button><button data-open="rank">排行榜</button><button data-open="create-mode">创建代币</button><button data-open="profile">我的</button>
   </nav>
@@ -417,6 +419,7 @@
       <div class="rail-kicker">02 / Interaction Notes</div><div class="tape lime"><strong>FAIR-LAUNCH FIRST</strong><small>所有创建参数围绕联合曲线、迁移门槛和真实交易展开。</small></div><div class="tape black"><strong>DENSE, NOT NOISY</strong><small>数值使用等宽字体对齐；色彩只表达买卖、状态与强调。</small></div><div class="tape"><strong>CREATOR REVENUE</strong><small>支持标准代币、税费代币、创作者金库与持币分红配置。</small></div><div class="tape"><strong>NO WALLET CHROME</strong><small>钱包只在签名时出现，不占据产品导航与核心页面。</small></div>
     </aside>
   </div>
+  <footer class="official-contact-footer"><nav class="official-contact-bar" data-global-official-contacts aria-label="BitBT 官方联系方式"><a href="https://bitbt.com" target="_blank" rel="noopener noreferrer"><i class="ico sm" style="--icon:url('./assets/icons/lucide/house.svg')"></i><span>官网</span><strong>bitbt.com</strong></a><a href="mailto:support@bitbt.com"><i class="ico sm" style="--icon:url('./assets/icons/lucide/send.svg')"></i><span>邮箱</span><strong>support@bitbt.com</strong></a><a href="https://t.me/BitBTVentures" target="_blank" rel="noopener noreferrer"><i class="ico sm" style="--icon:url('./assets/icons/lucide/message-circle.svg')"></i><span>Telegram</span><strong>@BitBTVentures</strong></a><a href="https://x.com/0xcryptolin" target="_blank" rel="noopener noreferrer"><i class="ico sm" style="--icon:url('./assets/icons/lucide/send.svg')"></i><span>X / Twitter</span><strong>@0xcryptolin</strong></a></nav></footer>
 </main>
     <script src="./assets/vendor/lightweight-charts-4.2.3.min.js"></script>
     <script src="./launch-logo-upload.js"></script>
