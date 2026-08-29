@@ -2,7 +2,7 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
-  const state = { tokens: [], tokenFilter: "trending", tokenSearch: "", liveFilter: "all", rankFilter: "progress", myLaunchFilter: "all", historyFilter: "all", details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, chartInterval: 300, busy: false, launchBusy: false, launchQuote: "BNB", launchMode: "fair", curveMode: "standard", taxEnabled: false, launchLogoUrl: "", launchSnapshot: null, launchConfirmation: null, launchTerminal: false, refreshPromise: null };
+  const state = { tokens: [], tokenFilter: "trending", tokenSearch: "", liveFilter: "all", rankFilter: "progress", myLaunchFilter: "all", historyFilter: "all", details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], creatorRewards: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, chartInterval: 300, busy: false, launchBusy: false, launchQuote: "BNB", launchMode: "fair", curveMode: "standard", taxEnabled: false, launchLogoUrl: "", launchSnapshot: null, launchConfirmation: null, launchTerminal: false, refreshPromise: null };
   const SESSION_KEY = "bitbt_pump_session";
   const SESSION_ADDRESS_KEY = "bitbt_pump_session_address";
   const LOCALE_KEY = "bitbt_pump_locale";
@@ -141,7 +141,9 @@
   const renderMyPanels = () => {
     const launches = state.myLaunches;
     const visibleLaunches = launches.filter((launch) => state.myLaunchFilter === "all" || (state.myLaunchFilter === "migrated" ? tokenIsMigrated(launch) : !tokenIsMigrated(launch)));
-    const visibleHistory = state.history.filter((tx) => state.historyFilter === "all" || (state.historyFilter === "launch" ? /launch|create|deploy/i.test(String(tx.tx_type || "")) : tx.tx_type === state.historyFilter));
+    const activityType = (tx) => tx.activity_type || (tx.tx_type === "pump_buy" ? "buy" : tx.tx_type === "pump_sell" ? "sell" : /launch|create|deploy/i.test(String(tx.tx_type || "")) ? "create" : "");
+    const selectedActivityType = state.historyFilter === "pump_buy" ? "buy" : state.historyFilter === "pump_sell" ? "sell" : state.historyFilter === "launch" ? "create" : state.historyFilter;
+    const visibleHistory = state.history.filter((tx) => selectedActivityType === "all" || activityType(tx) === selectedActivityType);
     const launchPanel = $('[data-panel="my-launches"]');
     if (launchPanel) {
       launchPanel.querySelectorAll(".launch-card, .summary-hero").forEach((node) => node.remove());
@@ -153,12 +155,17 @@
     const activity = $('[data-panel="activity"]');
     if (activity) {
       activity.querySelectorAll(".activity-card").forEach((node) => node.remove());
-      const cards = visibleHistory.map((tx) => `<div class="activity-card"><span class="activity-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${tx.tx_type === "pump_sell" ? "arrow-up-right" : tx.tx_type === "pump_buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><div><strong>${tx.tx_type || "交易"}</strong><small>${tx.from_token || "—"} → ${tx.to_token || "—"} · ${tx.status || "—"}</small></div><div class="right"><strong>${tx.tx_hash ? short(tx.tx_hash) : "—"}</strong><small>${age(tx.created_at)}</small></div></div>`).join("");
+      const cards = visibleHistory.map((tx) => { const kind = activityType(tx); const label = kind === "buy" ? "买入" : kind === "sell" ? "卖出" : kind === "create" ? "创建代币" : "交易"; const amount = kind === "create" ? `${tx.symbol || tx.token_name || "—"} · ${short(tx.token_address)}` : `${decimal(tx.quote_amount)} ${tx.quote_token || "BNB"} · ${decimal(tx.token_amount)} ${tx.symbol || tx.token_name || "TOKEN"}`; const content = `<span class="activity-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${kind === "sell" ? "arrow-up-right" : kind === "buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><div><strong>${label} · ${tx.token_name || tx.symbol || "—"}</strong><small>${amount} · ${tx.status || "—"}</small></div><div class="right"><strong>${tx.tx_hash ? short(tx.tx_hash) : "—"}</strong><small>${age(tx.created_at)}</small></div>`; return tx.tx_hash ? `<a class="activity-card" href="https://bscscan.com/tx/${tx.tx_hash}" target="_blank" rel="noopener noreferrer">${content}</a>` : `<div class="activity-card">${content}</div>`; }).join("");
       activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">暂无真实交易记录。</p>`);
     }
     const profilePanel = $('[data-panel="profile"]');
     profilePanel?.querySelector("[data-profile-summary]")?.remove();
-    if (profilePanel) profilePanel.querySelector(".section-title")?.insertAdjacentHTML("beforebegin", `<div class="profile-card" data-profile-summary><div class="profile-head"><span class="profile-avatar">${state.account ? state.account.slice(2, 4).toUpperCase() : "—"}</span><div><h2>${state.account ? short(state.account) : "请连接钱包"}</h2><p>${state.account ? "BNB CHAIN · 实时数据" : "连接钱包后显示账户数据"}</p></div><span class="tag lime">PUMP</span></div><div class="card-metrics"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>交易次数</span><strong>${state.history.length}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div></div>`);
+    profilePanel?.querySelector("[data-reward-summary]")?.remove();
+    if (profilePanel) {
+      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("beforebegin", `<div class="profile-card" data-profile-summary><div class="profile-head"><span class="profile-avatar">${state.account ? state.account.slice(2, 4).toUpperCase() : "—"}</span><div><h2>${state.account ? short(state.account) : "请连接钱包"}</h2><p>${state.account ? "BNB CHAIN · 实时数据" : "连接钱包后显示账户数据"}</p></div><span class="tag lime">PUMP</span></div><div class="card-metrics"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>交易次数</span><strong>${state.history.length}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div></div>`);
+      const rewards = state.creatorRewards.map((reward) => `<div class="review-row"><span>${reward.quote_symbol || "BNB"} · ${reward.status === "accrued" ? "可签署凭证" : reward.status === "pending_contract_upgrade" ? "待曲线合约升级" : reward.status}</span><strong>${baseUnits(reward.amount_wei)} ${reward.quote_symbol || "BNB"}</strong></div>`).join("");
+      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("afterend", `<div class="profile-card" data-reward-summary><div class="section-title"><h3>创作者奖励账本</h3><span class="tag lime">API</span></div>${rewards || `<p class="footer-note">${state.account ? "暂无已记录的创作者奖励。" : "连接钱包后显示奖励账本。"}</p>`}<p class="footer-note">这里只展示后端真实累计；未执行链上兑付的金额不会标记为已到账。</p></div>`);
+    }
     const watchlist = $('[data-panel="watchlist"] .token-grid');
     if (watchlist) { const favoriteAddresses = new Set(state.favorites.map((item) => String(item.contract_address || "").toLowerCase())); const cards = state.tokens.filter((token) => favoriteAddresses.has(tokenAddress(token).toLowerCase())).map(tokenCard).join(""); watchlist.innerHTML = cards || `<p class="footer-note">暂无自选代币。请在代币详情中点击收藏。</p>`; bindLiveTokenSelection(); }
   };
@@ -168,13 +175,23 @@
   };
   const loadUserPanels = async () => {
     if (!state.account) { await loadFavorites(); return; }
-    const [launches, history, favorites] = await Promise.allSettled([
-      api(`v1/token/my-tokens?address=${encodeURIComponent(state.account)}`),
-      api(`v1/wallet/tx/history?address=${encodeURIComponent(state.account)}&chain_id=bsc&limit=100`),
+    const [activity, favorites] = await Promise.allSettled([
+      api(`v1/pump/wallet-activity?address=${encodeURIComponent(state.account)}&limit=500`),
       api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`),
     ]);
-    state.myLaunches = launches.status === "fulfilled" ? launches.value : [];
-    state.history = history.status === "fulfilled" ? history.value : [];
+    if (activity.status === "fulfilled") {
+      state.myLaunches = Array.isArray(activity.value?.launches) ? activity.value.launches : [];
+      state.history = Array.isArray(activity.value?.activity) ? activity.value.activity : [];
+      state.creatorRewards = Array.isArray(activity.value?.creator_rewards) ? activity.value.creator_rewards : [];
+    } else {
+      const [launches, history] = await Promise.allSettled([
+        api(`v1/token/my-tokens?address=${encodeURIComponent(state.account)}`),
+        api(`v1/wallet/tx/history?address=${encodeURIComponent(state.account)}&chain_id=bsc&limit=100`),
+      ]);
+      state.myLaunches = launches.status === "fulfilled" ? launches.value : [];
+      state.history = history.status === "fulfilled" ? history.value : [];
+      state.creatorRewards = [];
+    }
     state.favorites = favorites.status === "fulfilled" ? favorites.value : [];
     renderMyPanels();
   };
@@ -228,7 +245,9 @@
   const walletTokenBalance = (token) => rpc(token, `0x70a08231${addressWord(state.account)}`);
   const allowance = (token, owner, spender) => rpc(token, `0xdd62ed3e${addressWord(owner)}${addressWord(spender)}`);
   const send = async (tx) => { const fee = tx.fee || await getFeePolicy(); return window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: tx.from, to: tx.to, ...(tx.data ? { data: tx.data } : {}), ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), gas: `0x${tx.gas.toString(16)}`, maxPriorityFeePerGas: `0x${fee.maxPriorityFeePerGas.toString(16)}`, maxFeePerGas: `0x${fee.maxFeePerGas.toString(16)}` }] }); };
-  const waitReceipt = async (hash) => { for (let i = 0; i < 60; i += 1) { const receipt = await window.ethereum.request({ method: "eth_getTransactionReceipt", params: [hash] }); if (receipt?.status) return receipt; await new Promise((resolve) => window.setTimeout(resolve, 2000)); } throw new Error("交易回执超时，请到 BscScan 查询"); };
+  const receiptHasStatus = (receipt) => receipt != null && receipt.status !== undefined && receipt.status !== null;
+  const receiptSucceeded = (receipt) => receiptHasStatus(receipt) && [true, 1, "1", "0x1", "0x01"].includes(receipt.status);
+  const waitReceipt = async (hash) => { for (let i = 0; i < 60; i += 1) { try { const receipt = await window.ethereum.request({ method: "eth_getTransactionReceipt", params: [hash] }); if (receiptHasStatus(receipt)) return receipt; } catch {} await new Promise((resolve) => window.setTimeout(resolve, 2000)); } const error = new Error("交易已广播，但链上确认较慢，请稍后在交易记录或 BscScan 查看"); error.code = "TX_CONFIRMATION_PENDING"; throw error; };
   const report = (body) => api("v1/wallet/tx/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => undefined);
   const invalidateQuote = () => { state.quote = null; state.quoteKey = ""; text("[data-quote-output], [data-quote-min], [data-quote-route]", "—"); text("[data-quote-fee], [data-protocol-fee]", "等待报价"); text("[data-price-impact]", "API 未提供"); };
   const clearLaunchReview = () => { text("[data-preview-name], [data-preview-ticker], [data-launch-review-chain], [data-launch-review-name], [data-launch-review-mode], [data-launch-review-quote], [data-launch-review-quote-address], [data-launch-review-curve], [data-launch-review-threshold], [data-launch-review-fee], [data-launch-review-recipient], [data-launch-review-factory], [data-launch-review-id], [data-launch-review-salt], [data-launch-review-predicted], [data-launch-review-description]", "—"); text("[data-preview-symbol]", "—"); const publishButton = $("[data-launch-publish]"); if (publishButton) { publishButton.disabled = true; publishButton.setAttribute("disabled", ""); publishButton.textContent = state.launchTerminal ? "发币流程已结束" : "正在自动准备发币参数…"; } };
@@ -377,7 +396,7 @@
             await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, status: "pending", metadata: { spender: curve } });
             toast("授权交易已发送");
             const receipt = await waitReceipt(approval);
-            const ok = receipt.status === "0x1" || receipt.status === "0x01";
+            const ok = receiptSucceeded(receipt);
             await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, status: ok ? "success" : "failed", metadata: { spender: curve } });
             if (!ok) throw new Error("授权失败");
           } catch (error) {
@@ -392,14 +411,15 @@
       await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, to_token: state.side === "buy" ? state.detail.symbol : state.detail.quote_token, from_amount: amount, to_amount: formatUnits(output), status: "pending", metadata: { token_address: tokenAddress(state.selected), curve_address: curve } });
       toast("交易已广播，等待回执…");
       const receipt = await waitReceipt(hash);
-      const ok = receipt.status === "0x1" || receipt.status === "0x01";
+      const ok = receiptSucceeded(receipt);
       await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, to_token: state.side === "buy" ? state.detail.symbol : state.detail.quote_token, from_amount: amount, to_amount: formatUnits(output), status: ok ? "success" : "failed", metadata: { token_address: tokenAddress(state.selected), curve_address: curve } });
       mainStatusReported = true;
       if (!ok) throw new Error("交易回执失败");
       toast("交易已确认");
-      await loadDetail(state.selected);
+      await Promise.all([loadDetail(state.selected), loadUserPanels()]);
     } catch (error) {
-      if (hash && !mainStatusReported) await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", status: "failed", metadata: { error: error.message } });
+      if (hash && !mainStatusReported && error?.code !== "TX_CONFIRMATION_PENDING") await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", status: "failed", metadata: { error: error.message } });
+      if (hash) await loadUserPanels().catch(() => undefined);
       throw error;
     } finally { state.busy = false; }
   };
@@ -587,7 +607,7 @@
     let receipt;
     try { receipt = await waitReceipt(hash); }
     catch (error) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 未完成，请核对链上状态`); throw error; }
-    if (receipt.status !== "0x1" && receipt.status !== "0x01") { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 回执失败`); throw new Error("发币交易回执失败"); }
+    if (!receiptSucceeded(receipt)) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 回执失败`); throw new Error("发币交易回执失败"); }
 
     rememberLaunchConfirmation({ prepared, hash, name, symbol, quote, logoRequired: Boolean(logoSelectionKey), confirmedLogoUrl: "" }, "链上发币成功，正在保存 Logo 与项目信息");
     return confirmSuccessfulLaunch();

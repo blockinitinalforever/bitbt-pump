@@ -15,7 +15,7 @@ const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown> };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown> };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -458,9 +458,50 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
 });
 
-test("production wallet bridge applies the fixed 0.05 Gwei policy and reports every tx state", () => {
+test("wallet activity loads buy, sell, and create once and filters them locally", async () => {
+  const account = "0x5945f53249015dae01fbfb039f5a64af5cff5629";
+  const token = "0xb749f8fb754c583b0557cdedcd4b1c88df148888";
+  let activityRequests = 0;
+  const createdAt = new Date().toISOString();
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/pump/wallet-activity")) {
+      activityRequests += 1;
+      return { ok: true, json: async () => ({ data: {
+        activity: [
+          { activity_type: "buy", tx_type: "pump_buy", tx_hash: `0x${"7f".repeat(32)}`, token_address: token, token_name: "TROLL", symbol: "TROLL", quote_token: "BNB", quote_amount: "0.001", token_amount: "2518400.75094142798917018", status: "success", created_at: createdAt },
+          { activity_type: "sell", tx_type: "pump_sell", tx_hash: `0x${"8a".repeat(32)}`, token_address: token, token_name: "TROLL", symbol: "TROLL", quote_token: "BNB", quote_amount: "0.0005", token_amount: "1000", status: "success", created_at: createdAt },
+          { activity_type: "create", tx_type: "pump_launch", tx_hash: `0x${"9b".repeat(32)}`, token_address: token, token_name: "TROLL", symbol: "TROLL", quote_token: "BNB", status: "deployed", created_at: createdAt },
+        ],
+        launches: [{ id: "launch-1", token_name: "TROLL", symbol: "TROLL", contract_address: token, chain_id: "bsc", quote_token: "BNB", status: "deployed", submitted_at: createdAt }],
+        creator_rewards: [{ launch_id: "launch-1", token_address: token, quote_symbol: "BNB", status: "accrued", amount_wei: "1000000000000000" }],
+        summary: { total: 3, buys: 1, sells: 1, creates: 1 },
+      } }) };
+    }
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response, { account, session: { token: "session", address: account } });
+  for (let attempt = 0; attempt < 20 && window.document.querySelectorAll('[data-panel="activity"] .activity-card').length !== 3; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(activityRequests, 1);
+  assert.equal(window.document.querySelectorAll('[data-panel="activity"] .activity-card').length, 3);
+  assert.match(window.document.querySelector('[data-panel="activity"]')?.textContent || "", /买入 · TROLL/);
+  assert.match(window.document.querySelector('[data-panel="activity"]')?.textContent || "", /0\.001 BNB/);
+  assert.match(window.document.querySelector('[data-reward-summary]')?.textContent || "", /创作者奖励账本/);
+  assert.match(window.document.querySelector('[data-reward-summary]')?.textContent || "", /0\.001 BNB/);
+  window.document.querySelector('[data-history-filter="pump_buy"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.equal(window.document.querySelectorAll('[data-panel="activity"] .activity-card').length, 1);
+  assert.equal(activityRequests, 1, "local history filtering made an unnecessary API request");
+});
+
+test("production wallet bridge applies the fixed 0.05 Gwei policy and normalizes provider receipt states", () => {
   for (const marker of ["PRIORITY_FEE_WEI = 50_000_000n", "maxPriorityFeePerGas", "maxFeePerGas", "eth_getBlockByNumber", 'status: "pending"', 'status: "failed"']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
   assert.match(bridge, /status: ok \? "success" : "failed"/);
+  assert.match(bridge, /\[true, 1, "1", "0x1", "0x01"\]\.includes\(receipt\.status\)/);
+  assert.match(bridge, /receipt\.status !== undefined && receipt\.status !== null/);
   assert.match(bridge, /const send = async \(tx\)/);
   assert.doesNotMatch(bridge, /launchTokenSingleFlight[\\s\\S]*eth_sendTransaction/);
 });

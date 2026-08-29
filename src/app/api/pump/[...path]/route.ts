@@ -18,6 +18,7 @@ const ALLOWED = new Set([
   "v1/pump/buy-quote",
   "v1/pump/sell-quote",
   "v1/pump/trades",
+  "v1/pump/wallet-activity",
   "v1/wallet/tx/report",
   "v1/wallet/tx/history",
   "v1/market/favorites",
