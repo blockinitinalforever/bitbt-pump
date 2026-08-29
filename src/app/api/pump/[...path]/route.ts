@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE = process.env.BITBT_PUMP_API_URL || "https://appbackend.bitbt.com";
 const MAX_IMAGE_REQUEST_BYTES = 8 * 1024 * 1024;
-const SIWE_WRITE_ENDPOINTS = new Set([
+const SIWE_REQUIRED_ENDPOINTS = new Set([
   "v1/upload/image",
   "v1/token/prepare-launch",
   "v1/token/launch",
+  "v1/pump/wallet-activity",
 ]);
 const ALLOWED = new Set([
   "v1/auth/siwe/nonce",
@@ -32,7 +33,7 @@ const ALLOWED = new Set([
 async function forward(request: NextRequest, path: string[]) {
   const key = path.join("/");
   if (!ALLOWED.has(key)) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (SIWE_WRITE_ENDPOINTS.has(key) && !request.headers.get("authorization")?.startsWith("Bearer ")) {
+  if (SIWE_REQUIRED_ENDPOINTS.has(key) && !request.headers.get("authorization")?.startsWith("Bearer ")) {
     return NextResponse.json({ success: false, error: "SIWE session required for this operation" }, { status: 401, headers: { "cache-control": "no-store" } });
   }
   if (key === "v1/upload/image") {

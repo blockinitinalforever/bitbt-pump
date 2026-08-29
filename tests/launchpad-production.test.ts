@@ -472,10 +472,10 @@ test("wallet activity loads buy, sell, and create once and filters them locally"
         activity: [
           { activity_type: "buy", tx_type: "pump_buy", tx_hash: `0x${"7f".repeat(32)}`, token_address: token, token_name: "TROLL", symbol: "TROLL", quote_token: "BNB", quote_amount: "0.001", token_amount: "2518400.75094142798917018", status: "success", created_at: createdAt },
           { activity_type: "sell", tx_type: "pump_sell", tx_hash: `0x${"8a".repeat(32)}`, token_address: token, token_name: "TROLL", symbol: "TROLL", quote_token: "BNB", quote_amount: "0.0005", token_amount: "1000", status: "success", created_at: createdAt },
-          { activity_type: "create", tx_type: "pump_launch", tx_hash: `0x${"9b".repeat(32)}`, token_address: token, token_name: "TROLL", symbol: "TROLL", quote_token: "BNB", status: "deployed", created_at: createdAt },
+          { activity_type: "create", tx_type: "pump_launch", tx_hash: `0x${"9b".repeat(31)}\" onmouseover=\"alert(1)`, token_address: token, token_name: '\"><img data-wallet-xss src=x onerror=alert(1)>', symbol: "TROLL", quote_token: "BNB", status: "</small><script data-wallet-xss>alert(1)</script>", created_at: createdAt },
         ],
         launches: [{ id: "launch-1", token_name: "TROLL", symbol: "TROLL", contract_address: token, chain_id: "bsc", quote_token: "BNB", status: "deployed", submitted_at: createdAt }],
-        creator_rewards: [{ launch_id: "launch-1", token_address: token, quote_symbol: "BNB", status: "accrued", amount_wei: "1000000000000000" }],
+        creator_rewards: [{ launch_id: "launch-1", token_address: token, quote_symbol: '<img data-reward-xss src=x onerror=alert(1)>', status: "accrued", amount_wei: "1000000000000000" }],
         summary: { total: 3, buys: 1, sells: 1, creates: 1 },
       } }) };
     }
@@ -491,7 +491,10 @@ test("wallet activity loads buy, sell, and create once and filters them locally"
   assert.match(window.document.querySelector('[data-panel="activity"]')?.textContent || "", /买入 · TROLL/);
   assert.match(window.document.querySelector('[data-panel="activity"]')?.textContent || "", /0\.001 BNB/);
   assert.match(window.document.querySelector('[data-reward-summary]')?.textContent || "", /创作者奖励账本/);
-  assert.match(window.document.querySelector('[data-reward-summary]')?.textContent || "", /0\.001 BNB/);
+  assert.match(window.document.querySelector('[data-reward-summary]')?.textContent || "", /0\.001 <img data-reward-xss/);
+  assert.equal(window.document.querySelector("[data-wallet-xss]"), null, "wallet activity API fields created an executable element");
+  assert.equal(window.document.querySelector("[data-reward-xss]"), null, "reward API fields created an executable element");
+  assert.equal(window.document.querySelectorAll('[data-panel="activity"] a[href^="https://bscscan.com/tx/"]').length, 2, "invalid tx hash generated an explorer link");
   window.document.querySelector('[data-history-filter="pump_buy"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.equal(window.document.querySelectorAll('[data-panel="activity"] .activity-card').length, 1);
   assert.equal(activityRequests, 1, "local history filtering made an unnecessary API request");
@@ -715,7 +718,8 @@ test("Pump polling refreshes selected trades every cycle but batches full market
 test("Pump proxy hides wallet RPC credentials and protects every write endpoint", () => {
   assert.match(proxy, /delete payload\.data\.rpc/);
   assert.match(proxy, /delete payload\.data\.rpcFallback/);
-  assert.match(proxy, /SIWE_WRITE_ENDPOINTS/);
+  assert.match(proxy, /SIWE_REQUIRED_ENDPOINTS/);
+  assert.match(proxy, /SIWE_REQUIRED_ENDPOINTS = new Set\(\[[\s\S]*v1\/pump\/wallet-activity/);
   for (const endpoint of ["v1/upload/image", "v1/token/prepare-launch", "v1/token/launch"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   assert.match(proxy, /SIWE session required for this operation/);
   assert.match(proxy, /request\.headers\.get\("authorization"\)\?\.startsWith\("Bearer "\)/);
