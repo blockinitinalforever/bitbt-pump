@@ -15,7 +15,7 @@ const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -45,7 +45,10 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   if (options.parentPathname) {
     const parentLocation = { ...location, pathname: options.parentPathname };
     const parentHistory = { pushState: (_state: unknown, _title: string, path: string) => { parentLocation.pathname = path.split("?", 1)[0]; historyPaths.push(path); }, replaceState: (_state: unknown, _title: string, path: string) => { parentLocation.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
-    Object.defineProperty(window, "parent", { configurable: true, value: { location: parentLocation, history: parentHistory, addEventListener: () => undefined } });
+    const parentListeners: Record<string, Array<(event: unknown) => void>> = {};
+    const parentWindow = { location: parentLocation, history: parentHistory, parent: null as unknown, Event: window.Event, CustomEvent: window.CustomEvent, addEventListener: (name: string, listener: (event: unknown) => void) => { (parentListeners[name] ||= []).push(listener); }, dispatchEvent: (event: Event) => { for (const listener of parentListeners[event.type] || []) listener(event); return true; } };
+    parentWindow.parent = parentWindow;
+    Object.defineProperty(window, "parent", { configurable: true, value: parentWindow });
     Object.defineProperty(window, "frameElement", { configurable: true, value: {} });
   } else {
     Object.defineProperty(window, "parent", { configurable: true, value: window });
@@ -55,8 +58,9 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const providerGlobals = providerTarget === "okxwallet" ? { okxwallet: ethereum }
     : providerTarget === "binance" ? { BinanceChain: ethereum }
       : providerTarget === "tokenpocket" ? { tokenpocket: { ethereum } }
-        : providerTarget === "eip6963" ? {}
+        : providerTarget === "eip6963" || providerTarget === "parent-okxwallet" ? {}
           : { ethereum };
+  if (providerTarget === "parent-okxwallet") (window.parent as Window & { okxwallet?: unknown }).okxwallet = ethereum;
   if (providerTarget === "eip6963") window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "EIP Wallet", rdns: "wallet.example" }, provider: ethereum } })));
   if (options.maliciousAnnouncement) window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "OKX Wallet", rdns: "com.okex.wallet" }, provider: untrustedProvider } })));
   const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
@@ -541,6 +545,26 @@ test("OKX, TokenPocket, and Binance Wallet can complete SIWE without window.ethe
     assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111", `${providerTarget} did not connect`);
     for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `${providerTarget} did not use ${method}`);
   }
+});
+
+test("the iframe connects through an OKX provider injected only into its same-origin parent", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { nonce: "nonce-123", domain: "bitbt.fun" } }) };
+    if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const app = await boot(response, { account, providerTarget: "parent-okxwallet", parentPathname: "/launchpad/bitbt-wallet-ui.html" });
+  assert.equal((app.window as Window & { okxwallet?: unknown }).okxwallet, undefined, "OKX provider leaked into the iframe test window");
+  app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 90));
+  assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `parent OKX provider did not use ${method}`);
 });
 
 test("an EIP-6963-only wallet connects only after explicit user selection", async () => {
