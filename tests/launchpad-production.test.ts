@@ -36,9 +36,10 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const history = { pushState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); }, replaceState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
   const navigator = { clipboard: { writeText: async (value: string) => { clipboardWrites.push(value); } } };
   const account = options.account || "";
+  let currentChainId = options.chainId ?? "0x38";
   let sendRejectsRemaining = options.sendRejects ?? 0;
   let estimateRejectsRemaining = options.estimateRejects ?? 0;
-  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
+  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return currentChainId; if (method === "wallet_switchEthereumChain") { currentChainId = String(params?.[0]?.chainId || currentChainId); return null; } if (method === "personal_sign") return "0xsigned"; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
   const untrustedProvider = { request: async ({ method }: { method: string }) => { untrustedProviderCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return ["0x9999999999999999999999999999999999999999"]; if (method === "eth_chainId") return "0x38"; if (method === "wallet_switchEthereumChain") return null; if (method === "personal_sign") return "0xattacker"; throw new Error(`unexpected untrusted provider call: ${method}`); }, on: () => undefined };
   Object.defineProperty(window, "location", { configurable: true, value: location });
   Object.defineProperty(window, "history", { configurable: true, value: history });
@@ -524,7 +525,7 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
 });
 
-test("OKX, TokenPocket, and Binance Wallet can complete SIWE without window.ethereum", async () => {
+test("OKX, TokenPocket, and Binance Wallet connect on BSC without redundant switching and switch once from another chain", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const response = async (input: string) => {
     const url = String(input);
@@ -543,8 +544,16 @@ test("OKX, TokenPocket, and Binance Wallet can complete SIWE without window.ethe
     app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 80));
     assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111", `${providerTarget} did not connect`);
-    for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `${providerTarget} did not use ${method}`);
+    for (const method of ["eth_requestAccounts", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `${providerTarget} did not use ${method}`);
+    assert.equal(app.providerCalls.includes("wallet_switchEthereumChain"), false, `${providerTarget} redundantly switched an already-BSC wallet`);
   }
+
+  const switched = await boot(response, { account, providerTarget: "binance", chainId: "0x1" });
+  switched.window.document.querySelector(".connect-global")?.dispatchEvent(new switched.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(switched.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111", "Binance Wallet did not connect after switching to BSC");
+  assert.equal(switched.providerCalls.filter((method) => method === "wallet_switchEthereumChain").length, 1, "non-BSC wallet did not switch exactly once");
+  assert.ok(switched.providerCalls.filter((method) => method === "eth_chainId").length >= 2, "wallet chain was not confirmed after switching");
 });
 
 test("the iframe connects through an OKX provider injected only into its same-origin parent", async () => {
@@ -564,7 +573,8 @@ test("the iframe connects through an OKX provider injected only into its same-or
   app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 90));
   assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
-  for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `parent OKX provider did not use ${method}`);
+  for (const method of ["eth_requestAccounts", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `parent OKX provider did not use ${method}`);
+  assert.equal(app.providerCalls.includes("wallet_switchEthereumChain"), false, "parent OKX provider redundantly switched an already-BSC wallet");
 });
 
 test("an EIP-6963-only wallet connects only after explicit user selection", async () => {
@@ -852,19 +862,49 @@ test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configur
   assert.doesNotMatch(html, /预计获得 16\.84M MOON/);
 });
 
-test("Pump startup renders from the token list and loads detail only for the selected token", () => {
+test("Pump startup loads only selected detail and a stale response cannot replace a newer token", async () => {
   assert.doesNotMatch(bridge, /loadAllDetails/);
   assert.doesNotMatch(bridge, /api\("v1\/pump\/details"\)/);
   assert.match(bridge, /state\.details\[address\]/);
   assert.match(bridge, /v1\/pump\/detail\?address/);
   assert.match(bridge, /v1\/pump\/trades\?token_address/);
   assert.match(proxy, /v1\/pump\/details/);
+
+  const tokenA = "0x1111111111111111111111111111111111111111";
+  const tokenB = "0x2222222222222222222222222222222222222222";
+  const tokens = [
+    { token_name: "Alpha", symbol: "ALPHA", contract_address: tokenA, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1 },
+    { token_name: "Beta", symbol: "BETA", contract_address: tokenB, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 2 },
+  ];
+  let resolveAlpha: (value: unknown) => void = () => undefined;
+  const delayedAlpha = new Promise<unknown>((resolve) => { resolveAlpha = resolve; });
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: tokens }) };
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/detail") && url.toLowerCase().includes(tokenA)) return delayedAlpha;
+    if (url.includes("v1/pump/detail") && url.toLowerCase().includes(tokenB)) return { ok: true, json: async () => ({ data: { ...tokens[1], curve_address: "0x3333333333333333333333333333333333333333" } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response);
+  const beta = window.document.querySelector(`[data-live-token="${tokenB}"]`);
+  assert.ok(beta, "second token was not rendered while the first detail request was pending");
+  beta.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(window.document.querySelector("[data-active-symbol]")?.textContent, "BETA");
+  resolveAlpha({ ok: true, json: async () => ({ data: { ...tokens[0], curve_address: "0x4444444444444444444444444444444444444444" } }) });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(window.document.querySelector("[data-active-symbol]")?.textContent, "BETA", "stale Alpha detail replaced the newer Beta selection");
 });
 
 test("Pump polling refreshes selected trades every cycle but batches full market refreshes", () => {
   assert.match(bridge, /refreshSelectedTrades/);
   assert.match(bridge, /refreshCycle % 2 === 0 \? refreshLive\(\) : refreshSelectedTrades\(\)/);
-  assert.match(bridge, /loadDetail\(state\.selected, \{ refreshBalance: false \}\)/);
+  assert.match(bridge, /loadDetail\(freshToken, \{ refreshBalance: false, forceDetail: true, refreshTrades: false \}\)/);
+  assert.match(bridge, /requestSequence !== detailRequestSequence/);
   assert.match(bridge, /if \(!state\.trades\.length\).*charts\.delete\(selector\)/);
 });
 
