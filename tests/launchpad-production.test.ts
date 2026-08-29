@@ -404,10 +404,11 @@ test("production wallet bridge applies the fixed 0.05 Gwei policy and reports ev
   assert.doesNotMatch(bridge, /launchTokenSingleFlight[\\s\\S]*eth_sendTransaction/);
 });
 
-test("live tokens use API logo URLs and the launch form uploads Logo to S3 before prepare", () => {
+test("live tokens use API logo URLs and launch Logo upload is deferred until a successful receipt", () => {
   assert.match(bridge, /logo_url \|\| token\?\.image_url \|\| token\?\.logo/);
-  for (const marker of ["token-logo-file", "/api/pump/v1/upload/image", "dataset.launchLogoUrl", "logo_url", "已上传到 S3", "bitbt:launch-reset"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(bridge, /dataset\.launchLogoUrl/);
+  for (const marker of ["token-logo-file", "/api/pump/v1/upload/image", "dataset.launchLogoSelection", "bitbtUploadSelectedLaunchLogo", "发币成功后上传", "bitbt:launch-reset"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(bridge, /receipt\.status[\s\S]*bitbtUploadSelectedLaunchLogo[\s\S]*logo_url: confirmedLogoUrl/);
+  assert.doesNotMatch(bridge, /prepare-launch[\s\S]{0,700}logo_url/);
   assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net data:/);
 });
 
@@ -430,11 +431,13 @@ test("clicking the visible logo button opens the hidden native file input", () =
   assert.equal(pickerOpens, 1);
 });
 
-const exerciseLogoUpload = async (file: { name: string; size: number; type: string }, fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, session = "session") => {
+const exerciseLogoUpload = async (file: { name: string; size: number; type: string; lastModified?: number }, fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, session = "session", triggerUpload = false) => {
   const { window } = parseHTML(html);
   const input = window.document.querySelector("#token-logo-file") as HTMLInputElement;
   const toasts: string[] = [];
   let reads = 0;
+  let deferredUploadError = "";
+  let deferredUploadUrl = "";
   class MockFileReader {
     result: string | null = null;
     onload?: () => void;
@@ -449,8 +452,29 @@ const exerciseLogoUpload = async (file: { name: string; size: number; type: stri
   vm.runInNewContext(logoUpload, context);
   input.dispatchEvent(new window.Event("change", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
-  return { toasts, reads };
+  if (triggerUpload) {
+    try { deferredUploadUrl = await (window as typeof window & { bitbtUploadSelectedLaunchLogo?: () => Promise<string> }).bitbtUploadSelectedLaunchLogo?.() || ""; }
+    catch (error) { deferredUploadError = String((error as Error)?.message || error); }
+  }
+  return { toasts, reads, deferredUploadError, deferredUploadUrl, storedUrl: window.document.documentElement.dataset.launchLogoUrl || "" };
 };
+
+test("selecting a valid Logo only creates a local preview and does not upload", async () => {
+  let fetches = 0;
+  const result = await exerciseLogoUpload({ name: "logo.png", size: 1024, type: "image/png", lastModified: 1 }, async () => { fetches += 1; throw new Error("must not upload before receipt"); });
+  assert.equal(result.reads, 1);
+  assert.equal(fetches, 0);
+  assert.deepEqual(result.toasts, ["Logo 已选择，将在代币创建成功后上传"]);
+});
+
+test("the selected Logo uploads exactly once when the post-receipt hook runs", async () => {
+  let fetches = 0;
+  const url = "https://bucket.s3.ap-east-1.amazonaws.com/logos/token.png";
+  const result = await exerciseLogoUpload({ name: "logo.png", size: 1024, type: "image/png", lastModified: 1 }, async () => { fetches += 1; return { ok: true, status: 200, text: async () => JSON.stringify({ data: { url } }) }; }, "session", true);
+  assert.equal(fetches, 1);
+  assert.equal(result.deferredUploadUrl, url);
+  assert.equal(result.storedUrl, url);
+});
 
 test("logo upload rejects files over 5MB locally without reading or sending them", async () => {
   let fetches = 0;
@@ -469,13 +493,15 @@ test("logo upload rejects unsupported formats locally", async () => {
 });
 
 test("logo upload converts an HTML 413 response into a clear size prompt", async () => {
-  const result = await exerciseLogoUpload({ name: "logo.jpg", size: 1024, type: "image/jpeg" }, async () => ({ ok: false, status: 413, text: async () => "<html>Request Entity Too Large</html>" }));
-  assert.deepEqual(result.toasts, ["图片不能超过 5MB，请压缩后重新选择"]);
+  const result = await exerciseLogoUpload({ name: "logo.jpg", size: 1024, type: "image/jpeg" }, async () => ({ ok: false, status: 413, text: async () => "<html>Request Entity Too Large</html>" }), "session", true);
+  assert.deepEqual(result.toasts, ["Logo 已选择，将在代币创建成功后上传"]);
+  assert.equal(result.deferredUploadError, "图片不能超过 5MB，请压缩后重新选择");
 });
 
 test("logo upload converts a network interruption into a retry prompt", async () => {
-  const result = await exerciseLogoUpload({ name: "logo.webp", size: 1024, type: "image/webp" }, async () => { throw new Error("Failed to fetch"); });
-  assert.deepEqual(result.toasts, ["网络连接中断，请检查网络后重试"]);
+  const result = await exerciseLogoUpload({ name: "logo.webp", size: 1024, type: "image/webp" }, async () => { throw new Error("Failed to fetch"); }, "session", true);
+  assert.deepEqual(result.toasts, ["Logo 已选择，将在代币创建成功后上传"]);
+  assert.equal(result.deferredUploadError, "网络连接中断，请检查网络后重试");
 });
 
 test("production upload limits and error responses stay aligned across browser, proxy, and nginx", () => {

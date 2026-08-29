@@ -470,7 +470,7 @@
     }
     return prepared;
   };
-  const launchFormKey = () => `${state.launchLogoUrl}|` + $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select, [data-panel="create-economics"] .active, [data-panel="create-tax"] .active').map((node) => `${node.id || node.name || node.className}:${node.value || node.textContent || ""}`).join("|");
+  const launchFormKey = () => `${window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || ""}|` + $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select, [data-panel="create-economics"] .active, [data-panel="create-tax"] .active').map((node) => `${node.id || node.name || node.className}:${node.value || node.textContent || ""}`).join("|");
   const waitForLaunchFinality = async (launchId, initial) => {
     let result = initial;
     for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -486,25 +486,68 @@
   const launchTokenSingleFlight = async () => {
     if (state.launchTerminal) throw new Error("本次发币流程已结束，请刷新页面开始新的流程");
     const name = $("#token-name")?.value?.trim(); const symbol = $("#token-symbol")?.value?.trim().toUpperCase(); if (!name || !symbol) throw new Error("请填写代币名称和符号"); const address = state.account || await connectWallet(); await assertProviderState();
-    const quote = state.launchQuote; if (!quoteAddress(quote) && quote !== "BNB") throw new Error("不支持的发币计价资产"); const description = $("#token-story")?.value?.trim() || ""; const logoUrl = document.documentElement.dataset.launchLogoUrl || state.launchLogoUrl || ""; state.launchLogoUrl = logoUrl; const metadata = { classification: $("#token-classification")?.value?.trim() || "Meme", twitter: $("#token-twitter")?.value?.trim() || "", telegram: $("#token-telegram")?.value?.trim() || "", website: $("#token-website")?.value?.trim() || "", discord: $("#token-discord")?.value?.trim() || "" }; const tax = launchTaxConfig(); const formKey = launchFormKey(); const snapshotKey = `${address}|${name}|${symbol}|${quote}|${description}|${logoUrl}|${formKey}`; let snapshot = state.launchSnapshot;
+    const quote = state.launchQuote; if (!quoteAddress(quote) && quote !== "BNB") throw new Error("不支持的发币计价资产"); const description = $("#token-story")?.value?.trim() || ""; const logoSelectionKey = window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || ""; const metadata = { classification: $("#token-classification")?.value?.trim() || "Meme", twitter: $("#token-twitter")?.value?.trim() || "", telegram: $("#token-telegram")?.value?.trim() || "", website: $("#token-website")?.value?.trim() || "", discord: $("#token-discord")?.value?.trim() || "" }; const tax = launchTaxConfig(); const formKey = launchFormKey(); const snapshotKey = `${address}|${name}|${symbol}|${quote}|${description}|${logoSelectionKey}|${formKey}`; let snapshot = state.launchSnapshot;
     if (!snapshot || snapshot.key !== snapshotKey) {
       const fee = await api("v1/token/launch-fee");
       if (!/^0x[0-9a-fA-F]{40}$/.test(fee.factory_address) || !/^\d+$/.test(fee.fee_wei)) throw new Error("发币费用配置无效");
       const curveTarget = launchCurveTarget();
       const launchSettings = tax ? { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: state.curveMode, buy_tax_rate: tax.buy_tax_rate, sell_tax_rate: tax.sell_tax_rate, funds_recipient_pct: tax.funds_recipient_pct, burn_pct: tax.burn_pct, holders_pct: tax.holders_pct, liquidity_pct: tax.liquidity_pct, min_dividend_balance: tax.min_dividend_balance, recipient_wallet: tax.recipient } : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: state.curveMode };
-      const prepared = await api("v1/token/prepare-launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ creator_address: address, token_name: name, symbol, total_supply: "1000000000", decimals: 18, mintable: false, burnable: false, chain_id: "bsc", quote_token: quote, migration_threshold_quote: curveTarget || undefined, description: description || undefined, logo_url: logoUrl || undefined, classification: metadata.classification, twitter: metadata.twitter || undefined, telegram: metadata.telegram || undefined, website: metadata.website || undefined, discord: metadata.discord || undefined, launch_settings: launchSettings }) });
+      const prepared = await api("v1/token/prepare-launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ creator_address: address, token_name: name, symbol, total_supply: "1000000000", decimals: 18, mintable: false, burnable: false, chain_id: "bsc", quote_token: quote, migration_threshold_quote: curveTarget || undefined, description: description || undefined, classification: metadata.classification, twitter: metadata.twitter || undefined, telegram: metadata.telegram || undefined, website: metadata.website || undefined, discord: metadata.discord || undefined, launch_settings: launchSettings }) });
       assertLaunchBinding(fee, prepared, address, name, symbol, quote, tax);
-      snapshot = { key: snapshotKey, fee, prepared, address, name, symbol, quote, description, metadata, formKey, logoUrl, tax };
+      snapshot = { key: snapshotKey, fee, prepared, address, name, symbol, quote, description, metadata, formKey, logoSelectionKey, tax };
       state.launchSnapshot = snapshot;
       renderLaunchReview(fee, prepared, description);
       renderLaunchTaxReview(tax);
       toast("请核对当前发币快照，再次点击发布");
       return;
     }
-    const { fee, prepared } = snapshot; assertLaunchBinding(fee, prepared, address, name, symbol, quote, tax); if (snapshot.name !== name || snapshot.symbol !== symbol || snapshot.quote !== quote || snapshot.address !== address || snapshot.description !== description || snapshot.formKey !== formKey) { invalidateLaunchSnapshot(); throw new Error("发币确认快照已过期，请重新加载"); }
+    const { fee, prepared } = snapshot; assertLaunchBinding(fee, prepared, address, name, symbol, quote, tax); if (snapshot.name !== name || snapshot.symbol !== symbol || snapshot.quote !== quote || snapshot.address !== address || snapshot.description !== description || snapshot.formKey !== formKey || snapshot.logoSelectionKey !== logoSelectionKey) { invalidateLaunchSnapshot(); throw new Error("发币确认快照已过期，请重新加载"); }
     await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); await assertProviderState(); const accounts = await window.ethereum.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
     const launchData = encodeLaunch(prepared, tax); const launchValue = BigInt(fee.fee_wei); let preflight; try { preflight = await launchPreflight({ from: address, to: prepared.factory_address, data: launchData, value: launchValue }); } catch (error) { if (/发币参数与链上 Factory 不一致/.test(String(error?.message || ""))) { invalidateLaunchSnapshot(true); await launchTokenSingleFlight(); toast("链上 Factory 状态已变化，参数已自动更新，请重新核对后发布"); return; } throw error; }
-    let hash; try { hash = await send({ from: address, to: prepared.factory_address, data: launchData, value: launchValue, gas: preflight.gas, fee: preflight.fee }); } catch (error) { const code = Number(error?.code ?? error?.data?.originalError?.code); if (code === 4001) { state.launchTerminal = false; renderLaunchReview(fee, prepared, description); toast("钱包取消了交易，可以重新确认"); } else { setLaunchTerminal("交易状态未知，请先核对链上状态后再继续"); } throw error; } if (typeof hash !== "string" || !/^0x[0-9a-fA-F]+$/.test(hash)) { setLaunchTerminal("交易状态未知，请先核对链上状态后再继续"); throw new Error("钱包未返回可验证的发币交易哈希"); } setLaunchTerminal(`已广播 ${hash.slice(0, 10)}…，等待回执`); toast("发币交易已广播，等待回执…"); let receipt; try { receipt = await waitReceipt(hash); } catch (error) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 未完成，请核对链上状态`); throw error; } if (receipt.status !== "0x1" && receipt.status !== "0x01") { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 回执失败`); throw new Error("发币交易回执失败"); } let result = await api("v1/token/launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ launch_id: prepared.launch.id, deploy_tx_hash: hash }) }); if (!["deployed", "migrated"].includes(result.status)) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}…，正在核对后台状态`); result = await waitForLaunchFinality(prepared.launch.id, result); } const launchedAddress = result.contract_address || prepared.predicted_token_address; if (!/^0x[0-9a-fA-F]{40}$/.test(launchedAddress)) throw new Error("发币回执缺少有效代币地址"); state.launchTerminal = true; setTokenPath(launchedAddress, "push"); const launchedToken = { ...prepared.launch, ...result, contract_address: launchedAddress, token_name: name, symbol, quote_token: quote, status: result.status, curve_address: prepared.curve_address, quote_token_address: prepared.quote_token_address, progress_percent: 0, logo_url: snapshot.logoUrl }; const normalizedLaunchAddress = launchedAddress.toLowerCase(); state.tokens = [launchedToken, ...state.tokens.filter((token) => tokenAddress(token).toLowerCase() !== normalizedLaunchAddress)]; state.details[normalizedLaunchAddress] = launchedToken; renderTokens(); toast("发币完成，正在打开代币详情"); await openToken(launchedToken, { historyMode: null, fallbackDetail: launchedToken });
+    let hash;
+    try {
+      hash = await send({ from: address, to: prepared.factory_address, data: launchData, value: launchValue, gas: preflight.gas, fee: preflight.fee });
+    } catch (error) {
+      const code = Number(error?.code ?? error?.data?.originalError?.code);
+      if (code === 4001) { state.launchTerminal = false; renderLaunchReview(fee, prepared, description); toast("钱包取消了交易，可以重新确认"); }
+      else setLaunchTerminal("交易状态未知，请先核对链上状态后再继续");
+      throw error;
+    }
+    if (typeof hash !== "string" || !/^0x[0-9a-fA-F]+$/.test(hash)) { setLaunchTerminal("交易状态未知，请先核对链上状态后再继续"); throw new Error("钱包未返回可验证的发币交易哈希"); }
+    setLaunchTerminal(`已广播 ${hash.slice(0, 10)}…，等待回执`);
+    toast("发币交易已广播，等待回执…");
+    let receipt;
+    try { receipt = await waitReceipt(hash); }
+    catch (error) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 未完成，请核对链上状态`); throw error; }
+    if (receipt.status !== "0x1" && receipt.status !== "0x01") { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 回执失败`); throw new Error("发币交易回执失败"); }
+
+    setLaunchTerminal("链上发币成功，正在保存 Logo 与项目信息");
+    let confirmedLogoUrl = "";
+    let logoUploadError = null;
+    try { confirmedLogoUrl = await window.bitbtUploadSelectedLaunchLogo?.() || ""; }
+    catch (error) { logoUploadError = error; }
+
+    let result;
+    try {
+      result = await api("v1/token/launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ launch_id: prepared.launch.id, deploy_tx_hash: hash, logo_url: confirmedLogoUrl || undefined }) });
+      if (!["deployed", "migrated"].includes(result.status)) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}…，正在核对后台状态`); result = await waitForLaunchFinality(prepared.launch.id, result); }
+    } catch (error) {
+      setLaunchTerminal(`链上交易 ${hash.slice(0, 10)}… 已成功，后台确认待重试`);
+      throw error;
+    }
+    const launchedAddress = result.contract_address || prepared.predicted_token_address;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(launchedAddress)) throw new Error("发币回执缺少有效代币地址");
+    state.launchTerminal = true;
+    setTokenPath(launchedAddress, "push");
+    const launchedToken = { ...prepared.launch, ...result, contract_address: launchedAddress, token_name: name, symbol, quote_token: quote, status: result.status, curve_address: prepared.curve_address, quote_token_address: prepared.quote_token_address, progress_percent: 0, logo_url: result.logo_url || confirmedLogoUrl || null };
+    const normalizedLaunchAddress = launchedAddress.toLowerCase();
+    state.tokens = [launchedToken, ...state.tokens.filter((token) => tokenAddress(token).toLowerCase() !== normalizedLaunchAddress)];
+    state.details[normalizedLaunchAddress] = launchedToken;
+    renderTokens();
+    await openToken(launchedToken, { historyMode: null, fallbackDetail: launchedToken });
+    if (logoUploadError) toast(`代币已创建，但 Logo 未保存：${friendlyError(logoUploadError, "Logo 上传失败")}`, 7000);
+    else if (logoSelectionKey) toast("发币完成，Logo 已保存");
+    else toast("发币完成");
   };
   const launchToken = async () => { if (state.launchBusy) throw new Error("发币正在处理中，请等待当前交易完成"); state.launchBusy = true; try { return await launchTokenSingleFlight(); } finally { state.launchBusy = false; } };
   const bindLiveTokenSelection = () => $$("[data-live-token]").forEach((node) => { if (node.dataset.liveBound) return; node.dataset.liveBound = "1"; node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); const token = state.tokens.find((item) => tokenAddress(item).toLowerCase() === String(node.dataset.liveToken || "").toLowerCase()); if (token) openToken(token).catch((error) => toastError(error, "代币详情加载失败，请稍后重试")); }, true); });
