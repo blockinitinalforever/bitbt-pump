@@ -164,6 +164,12 @@
   const renderHolders = (address, payload) => {
     if (tokenAddress(state.selected).toLowerCase() !== String(address || "").toLowerCase()) return;
     const rows = Array.isArray(payload?.top_holders) ? payload.top_holders : [];
+    if (payload?.available === false) {
+      text("[data-holder-count]", "等待链上索引");
+      const list = $("[data-holder-list]");
+      if (list) list.innerHTML = `<p class="footer-note">该代币已上线，但持有人数据源尚未完成索引。请稍后刷新；这里不会展示推测数据。</p>`;
+      return;
+    }
     text("[data-holder-count]", payload?.holders_count ? `${Number(payload.holders_count).toLocaleString("en-US")} 位持有人` : "暂无可用持有人数据");
     const list = $("[data-holder-list]");
     if (!list) return;
