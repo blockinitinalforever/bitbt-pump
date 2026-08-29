@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        { source: "/favicon.ico", destination: "/launchpad/assets/app-icons/pwa/bitbt-32.png" },
         { source: "/pump/:address", destination: "/launchpad/bitbt-wallet-ui.html" },
         { source: "/pump", destination: "/launchpad/bitbt-wallet-ui.html" },
         { source: "/:locale/pump/:address", destination: "/launchpad/bitbt-wallet-ui.html" },

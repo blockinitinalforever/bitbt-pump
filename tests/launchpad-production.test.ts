@@ -483,15 +483,24 @@ test("logo file chooser is enabled inside the production wallet iframe", () => {
 test("Pump static shells expose the official Website favicon and contact channels", () => {
   const icon = fs.readFileSync(path.join(root, "src/app/icon.svg"), "utf8");
   const websiteIcon = fs.readFileSync(path.join(root, "../bitbt-website/src/app/icon.svg"), "utf8");
+  const manifest = fs.readFileSync(path.join(root, "src/app/manifest.ts"), "utf8");
   assert.equal(icon.trimEnd(), websiteIcon.trimEnd());
   for (const document of [shell, html]) {
-    assert.match(document, /rel="icon" type="image\/svg\+xml" href="\/icon\.svg\?v=20260829"/);
+    assert.match(document, /rel="icon" type="image\/png" sizes="32x32"/);
+    assert.match(document, /rel="icon" type="image\/png" sizes="16x16"/);
+    assert.match(document, /rel="icon" type="image\/svg\+xml" href="\/icon\.svg\?v=20260829-2"/);
+    assert.match(document, /rel="shortcut icon" href="\/favicon\.ico\?v=20260829-2"/);
     assert.match(document, /rel="apple-touch-icon"/);
+    assert.match(document, /rel="manifest" href="\/manifest\.webmanifest\?v=20260829-2"/);
   }
+  assert.match(nextConfig, /source: "\/favicon\.ico", destination: "\/launchpad\/assets\/app-icons\/pwa\/bitbt-32\.png"/);
+  for (const size of ["192x192", "512x512"]) assert.match(manifest, new RegExp(size));
   for (const marker of ["https://bitbt.com", "mailto:support@bitbt.com", "https://t.me/BitBTVentures", "https://x.com/0xcryptolin", "@BitBTVentures", "@0xcryptolin"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(html, /data-global-official-contacts/);
-  assert.ok(html.indexOf("data-global-official-contacts") < html.indexOf('class="screen-switcher"'), "official contacts must be global rather than scoped to one screen");
-  for (const marker of [".official-contact-bar{", "overflow-x:auto", "scroll-snap-type:x proximity", ".official-contact-bar strong{display:none}", "calc(100dvh - 155px)"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(html, /<footer class="official-contact-footer">/);
+  assert.ok(html.indexOf("data-global-official-contacts") > html.indexOf('class="workbench"'), "official contacts must be in the global footer below the interface");
+  assert.ok(html.indexOf("data-global-official-contacts") < html.indexOf("</main>"), "official contacts must remain inside the global application shell");
+  for (const marker of [".official-contact-footer{", ".official-contact-bar{", "overflow-x:auto", "scroll-snap-type:x proximity", ".official-contact-bar strong{display:none}", "calc(100dvh - 155px)"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("clicking the visible logo button opens the hidden native file input", () => {
