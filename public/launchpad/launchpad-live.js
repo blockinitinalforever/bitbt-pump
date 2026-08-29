@@ -15,6 +15,18 @@
   const safeProviderInfo = (info) => { try { return { name: typeof info?.name === "string" ? info.name.slice(0, 80) : "EVM Wallet", rdns: typeof info?.rdns === "string" ? info.rdns.slice(0, 120) : "" }; } catch { return { name: "EVM Wallet", rdns: "" }; } };
   const providerIdentity = (provider, info = {}) => `${info.rdns || ""} ${info.name || ""} ${provider?.isOkxWallet ? "okx" : ""} ${provider?.isOKExWallet ? "okx" : ""} ${provider?.isBinance ? "binance" : ""} ${provider?.isBinanceWallet ? "binance" : ""} ${provider?.isTokenPocket ? "tokenpocket" : ""} ${provider?.isMetaMask ? "metamask" : ""}`.toLowerCase();
   const providerScore = (entry) => { const identity = providerIdentity(entry.provider, entry.info); if (/okx|okex/.test(identity)) return 500; if (/binance/.test(identity)) return 400; if (/tokenpocket|token pocket/.test(identity)) return 300; if (/metamask/.test(identity)) return 200; return 100; };
+  const walletWindows = () => {
+    const windows = [window];
+    try {
+      let candidate = window.parent;
+      while (candidate && !windows.includes(candidate) && candidate.location?.origin === window.location.origin) {
+        windows.push(candidate);
+        if (!candidate.parent || candidate.parent === candidate) break;
+        candidate = candidate.parent;
+      }
+    } catch {}
+    return windows;
+  };
   const rememberProvider = (provider, info = {}, trustedDirect = false) => {
     if (!isEvmProvider(provider)) return;
     const safeInfo = safeProviderInfo(info);
@@ -23,13 +35,15 @@
     else announcedProviders.push({ provider, info: safeInfo, trustedDirect, userApproved: false });
   };
   const collectProviders = () => {
-    rememberProvider(window.okxwallet?.ethereum || window.okxwallet, { name: "OKX Wallet", rdns: "com.okex.wallet" }, true);
-    rememberProvider(window.BinanceChain, { name: "Binance Wallet", rdns: "com.binance.wallet" }, true);
-    rememberProvider(window.binancew3w?.ethereum || window.binancew3w, { name: "Binance Web3 Wallet", rdns: "com.binance.wallet" }, true);
-    rememberProvider(window.tokenpocket?.ethereum, { name: "TokenPocket", rdns: "pro.tokenpocket" }, true);
-    const injected = window.ethereum;
-    if (Array.isArray(injected?.providers)) injected.providers.forEach((provider) => rememberProvider(provider, {}, true));
-    rememberProvider(injected, {}, true);
+    walletWindows().forEach((walletWindow) => {
+      rememberProvider(walletWindow.okxwallet?.ethereum || walletWindow.okxwallet, { name: "OKX Wallet", rdns: "com.okex.wallet" }, true);
+      rememberProvider(walletWindow.BinanceChain, { name: "Binance Wallet", rdns: "com.binance.wallet" }, true);
+      rememberProvider(walletWindow.binancew3w?.ethereum || walletWindow.binancew3w, { name: "Binance Web3 Wallet", rdns: "com.binance.wallet" }, true);
+      rememberProvider(walletWindow.tokenpocket?.ethereum, { name: "TokenPocket", rdns: "pro.tokenpocket" }, true);
+      const injected = walletWindow.ethereum;
+      if (Array.isArray(injected?.providers)) injected.providers.forEach((provider) => rememberProvider(provider, {}, true));
+      rememberProvider(injected, {}, true);
+    });
     return announcedProviders.filter((entry) => (entry.trustedDirect || entry.userApproved) && isEvmProvider(entry.provider)).sort((a, b) => providerScore(b) - providerScore(a));
   };
   const selectedProvider = () => {
@@ -40,7 +54,7 @@
     return state.provider;
   };
   const isTrustedProvider = (provider) => { collectProviders(); return announcedProviders.some((entry) => entry.provider === provider && (entry.trustedDirect || entry.userApproved)); };
-  const requestProviderAnnouncements = () => { try { window.dispatchEvent(new window.Event("eip6963:requestProvider")); } catch {} };
+  const requestProviderAnnouncements = () => walletWindows().forEach((walletWindow) => { try { walletWindow.dispatchEvent(new walletWindow.Event("eip6963:requestProvider")); } catch {} });
   const chooseAnnouncedProvider = () => {
     if (providerSelectionPromise) return providerSelectionPromise;
     const choices = announcedProviders.filter((entry) => !entry.trustedDirect && !entry.userApproved && isEvmProvider(entry.provider));
@@ -79,10 +93,11 @@
     if (announcedProviders.some((entry) => !entry.trustedDirect && !entry.userApproved)) return chooseAnnouncedProvider();
     throw new Error("未检测到 EVM 钱包，请在 OKX、TokenPocket、Binance Wallet 或其他 EVM 钱包内打开");
   };
-  window.addEventListener("eip6963:announceProvider", (event) => {
+  const rememberAnnouncedProvider = (event) => {
     rememberProvider(event?.detail?.provider, event?.detail?.info || {}, false);
     if (!state.account) state.provider = collectProviders()[0]?.provider || null;
-  });
+  };
+  walletWindows().forEach((walletWindow) => walletWindow.addEventListener?.("eip6963:announceProvider", rememberAnnouncedProvider));
   requestProviderAnnouncements();
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
@@ -438,7 +453,7 @@
     }
   };
   const bindSelectedProviderEvents = (provider) => { if (!provider?.on || boundProviders.has(provider)) return; boundProviders.add(provider); provider.on("accountsChanged", (accounts) => { const next = String(accounts?.[0] || "").toLowerCase(); if (!next) { window.setTimeout(() => { void restoreSession(); }, 350); return; } if (state.account && next === state.account) return; resetProviderState(); }); provider.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); };
-  const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); window.addEventListener("eip6963:announceProvider", (event) => { if (isTrustedProvider(event?.detail?.provider)) bindSelectedProviderEvents(event.detail.provider); }); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
+  const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); walletWindows().forEach((walletWindow) => walletWindow.addEventListener?.("eip6963:announceProvider", (event) => { if (isTrustedProvider(event?.detail?.provider)) bindSelectedProviderEvents(event.detail.provider); })); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
   const connectWallet = async () => {
     const provider = await waitForProvider(); state.provider = provider; bindSelectedProviderEvents(provider);
     const accounts = await provider.request({ method: "eth_requestAccounts" }); const address = accounts?.[0]; if (!address) throw new Error("钱包未返回账户");
