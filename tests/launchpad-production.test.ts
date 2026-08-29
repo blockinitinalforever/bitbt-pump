@@ -486,6 +486,8 @@ test("Pump static shells expose the official Website favicon and contact channel
   const manifest = fs.readFileSync(path.join(root, "src/app/manifest.ts"), "utf8");
   assert.equal(icon.trimEnd(), websiteIcon.trimEnd());
   for (const document of [shell, html]) {
+    assert.match(document, /img-src 'self'/);
+    assert.match(document, /manifest-src 'self'/);
     assert.match(document, /rel="icon" type="image\/png" sizes="32x32"/);
     assert.match(document, /rel="icon" type="image\/png" sizes="16x16"/);
     assert.match(document, /rel="icon" type="image\/svg\+xml" href="\/icon\.svg\?v=20260829-2"/);
