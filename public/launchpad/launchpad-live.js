@@ -13,21 +13,21 @@
   const isEvmProvider = (provider) => Boolean(provider && typeof provider.request === "function");
   const providerIdentity = (provider, info = {}) => `${info.rdns || ""} ${info.name || ""} ${provider?.isOkxWallet ? "okx" : ""} ${provider?.isOKExWallet ? "okx" : ""} ${provider?.isBinance ? "binance" : ""} ${provider?.isBinanceWallet ? "binance" : ""} ${provider?.isTokenPocket ? "tokenpocket" : ""} ${provider?.isMetaMask ? "metamask" : ""}`.toLowerCase();
   const providerScore = (entry) => { const identity = providerIdentity(entry.provider, entry.info); if (/okx|okex/.test(identity)) return 500; if (/binance/.test(identity)) return 400; if (/tokenpocket|token pocket/.test(identity)) return 300; if (/metamask/.test(identity)) return 200; return 100; };
-  const rememberProvider = (provider, info = {}) => {
+  const rememberProvider = (provider, info = {}, trustedDirect = false) => {
     if (!isEvmProvider(provider)) return;
     const existing = announcedProviders.find((entry) => entry.provider === provider);
-    if (existing) existing.info = { ...existing.info, ...info };
-    else announcedProviders.push({ provider, info });
+    if (existing) { existing.info = { ...existing.info, ...info }; existing.trustedDirect ||= trustedDirect; }
+    else announcedProviders.push({ provider, info, trustedDirect });
   };
   const collectProviders = () => {
-    rememberProvider(window.okxwallet?.ethereum || window.okxwallet, { name: "OKX Wallet", rdns: "com.okex.wallet" });
-    rememberProvider(window.BinanceChain, { name: "Binance Wallet", rdns: "com.binance.wallet" });
-    rememberProvider(window.binancew3w?.ethereum || window.binancew3w, { name: "Binance Web3 Wallet", rdns: "com.binance.wallet" });
-    rememberProvider(window.tokenpocket?.ethereum, { name: "TokenPocket", rdns: "pro.tokenpocket" });
+    rememberProvider(window.okxwallet?.ethereum || window.okxwallet, { name: "OKX Wallet", rdns: "com.okex.wallet" }, true);
+    rememberProvider(window.BinanceChain, { name: "Binance Wallet", rdns: "com.binance.wallet" }, true);
+    rememberProvider(window.binancew3w?.ethereum || window.binancew3w, { name: "Binance Web3 Wallet", rdns: "com.binance.wallet" }, true);
+    rememberProvider(window.tokenpocket?.ethereum, { name: "TokenPocket", rdns: "pro.tokenpocket" }, true);
     const injected = window.ethereum;
-    if (Array.isArray(injected?.providers)) injected.providers.forEach((provider) => rememberProvider(provider));
-    rememberProvider(injected);
-    return announcedProviders.filter((entry) => isEvmProvider(entry.provider)).sort((a, b) => providerScore(b) - providerScore(a));
+    if (Array.isArray(injected?.providers)) injected.providers.forEach((provider) => rememberProvider(provider, {}, true));
+    rememberProvider(injected, {}, true);
+    return announcedProviders.filter((entry) => entry.trustedDirect && isEvmProvider(entry.provider)).sort((a, b) => providerScore(b) - providerScore(a));
   };
   const selectedProvider = () => {
     const preferred = collectProviders()[0]?.provider || null;
@@ -36,6 +36,7 @@
     state.provider = preferred;
     return state.provider;
   };
+  const isTrustedProvider = (provider) => { collectProviders(); return announcedProviders.some((entry) => entry.provider === provider && entry.trustedDirect); };
   const requestProviderAnnouncements = () => { try { window.dispatchEvent(new window.Event("eip6963:requestProvider")); } catch {} };
   const waitForProvider = async (timeout = 1500) => {
     const immediate = selectedProvider();
@@ -50,7 +51,7 @@
     throw new Error("未检测到 EVM 钱包，请在 OKX、TokenPocket、Binance Wallet 或其他 EVM 钱包内打开");
   };
   window.addEventListener("eip6963:announceProvider", (event) => {
-    rememberProvider(event?.detail?.provider, event?.detail?.info || {});
+    rememberProvider(event?.detail?.provider, event?.detail?.info || {}, false);
     if (!state.account) state.provider = collectProviders()[0]?.provider || null;
   });
   requestProviderAnnouncements();
@@ -408,7 +409,7 @@
     }
   };
   const bindSelectedProviderEvents = (provider) => { if (!provider?.on || boundProviders.has(provider)) return; boundProviders.add(provider); provider.on("accountsChanged", (accounts) => { const next = String(accounts?.[0] || "").toLowerCase(); if (!next) { window.setTimeout(() => { void restoreSession(); }, 350); return; } if (state.account && next === state.account) return; resetProviderState(); }); provider.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); };
-  const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); window.addEventListener("eip6963:announceProvider", (event) => bindSelectedProviderEvents(event?.detail?.provider)); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
+  const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); window.addEventListener("eip6963:announceProvider", (event) => { if (isTrustedProvider(event?.detail?.provider)) bindSelectedProviderEvents(event.detail.provider); }); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
   const connectWallet = async () => {
     const provider = await waitForProvider(); state.provider = provider; bindSelectedProviderEvents(provider);
     const accounts = await provider.request({ method: "eth_requestAccounts" }); const address = accounts?.[0]; if (!address) throw new Error("钱包未返回账户");

@@ -15,7 +15,7 @@ const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "binance" | "tokenpocket" | "eip6963" };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -26,6 +26,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   }
   if (options.pendingConfirmation) storage.set("bitbt_pump_pending_launch_confirmation", JSON.stringify(options.pendingConfirmation));
   const providerCalls: string[] = [];
+  const untrustedProviderCalls: string[] = [];
   const providerTransactions: Array<Record<string, unknown>> = [];
   const providerEvents: Record<string, (value: unknown) => void> = {};
   const chartData: unknown[][] = [];
@@ -38,6 +39,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   let sendRejectsRemaining = options.sendRejects ?? 0;
   let estimateRejectsRemaining = options.estimateRejects ?? 0;
   const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return options.chainId ?? "0x38"; if (method === "wallet_switchEthereumChain" || method === "personal_sign") return method === "personal_sign" ? "0xsigned" : null; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
+  const untrustedProvider = { request: async ({ method }: { method: string }) => { untrustedProviderCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return ["0x9999999999999999999999999999999999999999"]; if (method === "eth_chainId") return "0x38"; if (method === "wallet_switchEthereumChain") return null; if (method === "personal_sign") return "0xattacker"; throw new Error(`unexpected untrusted provider call: ${method}`); }, on: () => undefined };
   Object.defineProperty(window, "location", { configurable: true, value: location });
   Object.defineProperty(window, "history", { configurable: true, value: history });
   if (options.parentPathname) {
@@ -56,6 +58,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
         : providerTarget === "eip6963" ? {}
           : { ethereum };
   if (providerTarget === "eip6963") window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "EIP Wallet", rdns: "wallet.example" }, provider: ethereum } })));
+  if (options.maliciousAnnouncement) window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "OKX Wallet", rdns: "com.okex.wallet" }, provider: untrustedProvider } })));
   const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   const windowContext = { ...context };
   delete windowContext.history;
@@ -64,7 +67,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), timeScale: () => ({ fitContent: () => undefined }) }) } });
   vm.runInNewContext(bridge, context);
   await new Promise((resolve) => setTimeout(resolve, 20));
-  return { window, providerCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites, storage };
+  return { window, providerCalls, untrustedProviderCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites, storage };
 };
 
 test("production HTML boots with API failure without exposing prototype financial data", async () => {
@@ -517,7 +520,7 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
 });
 
-test("OKX, TokenPocket, Binance Wallet, and EIP-6963 providers can complete SIWE without window.ethereum", async () => {
+test("OKX, TokenPocket, and Binance Wallet can complete SIWE without window.ethereum", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const response = async (input: string) => {
     const url = String(input);
@@ -530,7 +533,7 @@ test("OKX, TokenPocket, Binance Wallet, and EIP-6963 providers can complete SIWE
     throw new Error(`unmocked ${url}`);
   };
 
-  for (const providerTarget of ["okxwallet", "tokenpocket", "binance", "eip6963"] as const) {
+  for (const providerTarget of ["okxwallet", "tokenpocket", "binance"] as const) {
     const app = await boot(response, { account, providerTarget });
     assert.equal((app.window as Window & { ethereum?: unknown }).ethereum, undefined, `${providerTarget} test unexpectedly relied on window.ethereum`);
     app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
@@ -538,6 +541,26 @@ test("OKX, TokenPocket, Binance Wallet, and EIP-6963 providers can complete SIWE
     assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111", `${providerTarget} did not connect`);
     for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `${providerTarget} did not use ${method}`);
   }
+});
+
+test("a forged EIP-6963 OKX announcement cannot replace a directly injected wallet", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { nonce: "nonce-123", domain: "bitbt.fun" } }) };
+    if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const app = await boot(response, { account, maliciousAnnouncement: true });
+  app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  assert.equal(app.untrustedProviderCalls.length, 0, "forged EIP-6963 provider received wallet requests");
+  assert.ok(app.providerCalls.includes("personal_sign"));
 });
 
 test("wallet activity loads buy, sell, and create once and filters them locally", async () => {
