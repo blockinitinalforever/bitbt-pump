@@ -391,6 +391,15 @@
     }
   };
   const normalizeChainId = (value) => { const normalized = String(value ?? "").trim().toLowerCase(); if (normalized === "0x38" || normalized === "56" || normalized === "bsc" || normalized === "bnb") return "0x38"; return ""; };
+  const ensureBscChain = async (provider) => {
+    let chainId = normalizeChainId(await provider.request({ method: "eth_chainId" }));
+    if (chainId !== "0x38") {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+      chainId = normalizeChainId(await provider.request({ method: "eth_chainId" }));
+    }
+    if (chainId !== "0x38") throw new Error("钱包未切换到 BSC，请在钱包中选择 BNB Smart Chain");
+    state.chainId = chainId;
+  };
   const rpc = (to, data) => selectedProvider().request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
   const walletNativeBalance = () => selectedProvider().request({ method: "eth_getBalance", params: [state.account, "latest"] }).then((value) => BigInt(value));
   const walletTokenBalance = (token) => rpc(token, `0x70a08231${addressWord(state.account)}`);
@@ -452,12 +461,12 @@
       if (error?.message?.includes("钱包账户或网络已变化")) return;
     }
   };
-  const bindSelectedProviderEvents = (provider) => { if (!provider?.on || boundProviders.has(provider)) return; boundProviders.add(provider); provider.on("accountsChanged", (accounts) => { const next = String(accounts?.[0] || "").toLowerCase(); if (!next) { window.setTimeout(() => { void restoreSession(); }, 350); return; } if (state.account && next === state.account) return; resetProviderState(); }); provider.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); };
+  const bindSelectedProviderEvents = (provider) => { if (!provider?.on || boundProviders.has(provider)) return; boundProviders.add(provider); provider.on("accountsChanged", (accounts) => { const next = String(accounts?.[0] || "").toLowerCase(); if (!next) { window.setTimeout(() => { void restoreSession(); }, 350); return; } if (state.account && next === state.account) return; resetProviderState(); }); provider.on("chainChanged", (value) => { const chainId = normalizeChainId(value); if (chainId === "0x38") { state.chainId = chainId; if (state.account && sessionStorage.getItem(SESSION_KEY)) { setLaunchAvailability(true); renderWalletState(); } return; } resetProviderState("网络已变化，请重新连接 BSC"); }); };
   const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); walletWindows().forEach((walletWindow) => walletWindow.addEventListener?.("eip6963:announceProvider", (event) => { if (isTrustedProvider(event?.detail?.provider)) bindSelectedProviderEvents(event.detail.provider); })); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
   const connectWallet = async () => {
     const provider = await waitForProvider(); state.provider = provider; bindSelectedProviderEvents(provider);
     const accounts = await provider.request({ method: "eth_requestAccounts" }); const address = accounts?.[0]; if (!address) throw new Error("钱包未返回账户");
-    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+    await ensureBscChain(provider);
     const noncePayload = await api("v1/auth/siwe/nonce"); const domain = String(noncePayload.domain || "").toLowerCase(); if (domain !== "bitbt.fun") throw new Error("SIWE domain 不受信任");
     const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: 56\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
     const signature = await provider.request({ method: "personal_sign", params: [message, address] }); const verified = await api("v1/auth/siwe/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
@@ -744,7 +753,7 @@
       return snapshot;
     }
     const { fee, prepared } = snapshot; assertLaunchBinding(fee, prepared, address, name, symbol, quote, tax); if (snapshot.name !== name || snapshot.symbol !== symbol || snapshot.quote !== quote || snapshot.address !== address || snapshot.description !== description || snapshot.formKey !== formKey || snapshot.logoSelectionKey !== logoSelectionKey) { invalidateLaunchSnapshot(); throw new Error("发币确认快照已过期，请重新加载"); }
-    const provider = selectedProvider(); await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); await assertProviderState(); const accounts = await provider.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
+    const provider = selectedProvider(); await ensureBscChain(provider); await assertProviderState(); const accounts = await provider.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
     const launchData = encodeLaunch(prepared, tax); const launchValue = BigInt(fee.fee_wei); let preflight; try { preflight = await launchPreflight({ from: address, to: prepared.factory_address, data: launchData, value: launchValue }); } catch (error) { if (/发币参数与链上 Factory 不一致/.test(String(error?.message || ""))) { invalidateLaunchSnapshot(true); await launchTokenSingleFlight(); toast("链上 Factory 状态已变化，参数已自动更新，请重新核对后发布"); return; } throw error; }
     let hash;
     try {
