@@ -2,10 +2,11 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
-  const state = { tokens: [], tokenFilter: "trending", tokenSearch: "", liveFilter: "all", rankFilter: "progress", myLaunchFilter: "all", historyFilter: "all", details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, chartInterval: 300, busy: false, launchBusy: false, launchQuote: "BNB", launchMode: "fair", curveMode: "standard", taxEnabled: false, launchLogoUrl: "", launchSnapshot: null, launchTerminal: false, refreshPromise: null };
+  const state = { tokens: [], tokenFilter: "trending", tokenSearch: "", liveFilter: "all", rankFilter: "progress", myLaunchFilter: "all", historyFilter: "all", details: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, chartInterval: 300, busy: false, launchBusy: false, launchQuote: "BNB", launchMode: "fair", curveMode: "standard", taxEnabled: false, launchLogoUrl: "", launchSnapshot: null, launchConfirmation: null, launchTerminal: false, refreshPromise: null };
   const SESSION_KEY = "bitbt_pump_session";
   const SESSION_ADDRESS_KEY = "bitbt_pump_session_address";
   const LOCALE_KEY = "bitbt_pump_locale";
+  const PENDING_LAUNCH_CONFIRMATION_KEY = "bitbt_pump_pending_launch_confirmation";
   const charts = new Map();
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
@@ -233,7 +234,7 @@
   const clearLaunchReview = () => { text("[data-preview-name], [data-preview-ticker], [data-launch-review-chain], [data-launch-review-name], [data-launch-review-mode], [data-launch-review-quote], [data-launch-review-quote-address], [data-launch-review-curve], [data-launch-review-threshold], [data-launch-review-fee], [data-launch-review-recipient], [data-launch-review-factory], [data-launch-review-id], [data-launch-review-salt], [data-launch-review-predicted], [data-launch-review-description]", "—"); text("[data-preview-symbol]", "—"); const loadButton = $("[data-launch-load]"); const publishButton = $("[data-launch-publish]"); if (loadButton) { loadButton.disabled = state.launchTerminal; loadButton.toggleAttribute("disabled", state.launchTerminal); loadButton.textContent = state.launchTerminal ? "发币流程已结束" : "加载并检查发币参数"; } if (publishButton) { publishButton.disabled = true; publishButton.setAttribute("disabled", ""); publishButton.textContent = "确认快照并发布代币"; } };
   const invalidateLaunchSnapshot = (force = false) => { if (state.launchBusy && !force) return; state.launchSnapshot = null; clearLaunchReview(); text("[data-launch-review-tax]", "—"); };
   const setLaunchTerminal = (message) => { state.launchSnapshot = null; state.launchTerminal = true; clearLaunchReview(); const loadButton = $("[data-launch-load]"); if (loadButton) loadButton.textContent = message; };
-  const resetLaunchFlow = () => { state.launchSnapshot = null; state.launchLogoUrl = ""; document.documentElement.dataset.launchLogoUrl = ""; state.launchTerminal = false; clearLaunchReview(); const art = $("#create-art"); if (art) { art.textContent = "MB"; art.style.backgroundImage = ""; } const fileName = $("[data-launch-file-name]"); if (fileName) fileName.textContent = "尚未选择文件"; const input = $("#token-logo-file"); if (input) input.value = ""; window.dispatchEvent(new CustomEvent("bitbt:launch-reset")); };
+  const resetLaunchFlow = () => { if (state.launchConfirmation) { toast("已有链上成功的发币结果等待保存，请先完成确认"); return; } state.launchSnapshot = null; state.launchLogoUrl = ""; document.documentElement.dataset.launchLogoUrl = ""; state.launchTerminal = false; clearLaunchReview(); const art = $("#create-art"); if (art) { art.textContent = "MB"; art.style.backgroundImage = ""; } const fileName = $("[data-launch-file-name]"); if (fileName) fileName.textContent = "尚未选择文件"; const input = $("#token-logo-file"); if (input) input.value = ""; window.dispatchEvent(new CustomEvent("bitbt:launch-reset")); };
   const renderLaunchReview = (fee, prepared, description) => { text("[data-preview-name], [data-launch-review-name]", prepared.launch.token_name); text("[data-preview-ticker], [data-launch-review-quote]", prepared.launch.symbol); text("[data-preview-symbol]", prepared.launch.symbol.slice(0, 2).toUpperCase()); text("[data-launch-review-chain]", `BSC Chain · ${prepared.launch.quote_token}`); text("[data-launch-review-description]", description); text("[data-launch-review-mode]", `${state.launchMode === "community" ? "社区收益 · " : ""}${state.curveMode === "custom" ? "自定义线性曲线" : "标准线性曲线"}`); text("[data-launch-review-quote-address]", prepared.quote_token_address); text("[data-launch-review-curve]", prepared.curve_address); text("[data-launch-review-threshold]", `${formatUnits(BigInt(prepared.migration_threshold_wei))} ${prepared.launch.quote_token}`); text("[data-launch-review-fee]", `${formatUnits(BigInt(fee.fee_wei))} BNB`); text("[data-launch-review-recipient]", prepared.fee_recipient); text("[data-launch-review-factory]", prepared.factory_address); text("[data-launch-review-id]", prepared.launch.id); text("[data-launch-review-salt]", prepared.salt); text("[data-launch-review-predicted]", prepared.predicted_token_address); const loadButton = $("[data-launch-load]"); const publishButton = $("[data-launch-publish]"); if (loadButton) { loadButton.disabled = true; loadButton.setAttribute("disabled", ""); loadButton.textContent = "参数已加载"; } if (publishButton) { publishButton.disabled = false; publishButton.removeAttribute("disabled"); publishButton.textContent = "确认以上快照并发布代币"; } };
   const renderLaunchTaxReview = (tax) => text("[data-launch-review-tax]", tax ? `买 ${tax.buy_tax_rate}% · 卖 ${tax.sell_tax_rate}% · 资金/销毁/分红/流动性 ${tax.funds_recipient_pct}/${tax.burn_pct}/${tax.holders_pct}/${tax.liquidity_pct}%` : "标准代币 · 无转账税");
   const resetProviderState = (message = "钱包状态已变化，请重新连接") => { sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_ADDRESS_KEY); state.account = ""; state.chainId = ""; state.sessionExpiresAt = 0; state.balances = { quote: null, token: null, gas: null }; setLaunchAvailability(false); invalidateQuote(); invalidateLaunchSnapshot(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = "连接钱包"; }); if (message) toast(message); };
@@ -483,7 +484,76 @@
     }
     throw new Error(result?.rejection_reason || "发币状态确认超时，请稍后在我的代币中查看");
   };
+  const persistLaunchConfirmation = () => {
+    try {
+      if (state.launchConfirmation) sessionStorage.setItem(PENDING_LAUNCH_CONFIRMATION_KEY, JSON.stringify(state.launchConfirmation));
+      else sessionStorage.removeItem(PENDING_LAUNCH_CONFIRMATION_KEY);
+    } catch {}
+  };
+  const renderLaunchConfirmationRetry = (message = "链上发币已成功，等待保存结果") => {
+    state.launchSnapshot = null;
+    state.launchTerminal = false;
+    clearLaunchReview();
+    const loadButton = $("[data-launch-load]");
+    const publishButton = $("[data-launch-publish]");
+    if (loadButton) { loadButton.disabled = true; loadButton.setAttribute("disabled", ""); loadButton.textContent = message; }
+    if (publishButton) { publishButton.disabled = false; publishButton.removeAttribute("disabled"); publishButton.textContent = "重试保存发币结果"; }
+  };
+  const rememberLaunchConfirmation = (pending, message) => {
+    state.launchConfirmation = pending;
+    persistLaunchConfirmation();
+    renderLaunchConfirmationRetry(message);
+  };
+  const restoreLaunchConfirmation = () => {
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(PENDING_LAUNCH_CONFIRMATION_KEY) || "null");
+      if (!pending || !/^0x[0-9a-fA-F]{64}$/.test(String(pending.hash || "")) || !pending.prepared?.launch?.id || !/^0x[0-9a-fA-F]{40}$/.test(String(pending.prepared?.predicted_token_address || ""))) throw new Error("invalid pending launch");
+      state.launchConfirmation = pending;
+      renderLaunchConfirmationRetry("检测到链上成功但尚未保存的发币结果");
+      toast("检测到待确认的发币结果，请点击重试保存", 7000);
+    } catch { sessionStorage.removeItem(PENDING_LAUNCH_CONFIRMATION_KEY); }
+  };
+  const clearLaunchConfirmation = () => { state.launchConfirmation = null; persistLaunchConfirmation(); };
+  const confirmSuccessfulLaunch = async () => {
+    const pending = state.launchConfirmation;
+    if (!pending) throw new Error("没有待确认的发币结果");
+    const { prepared, hash, name, symbol, quote } = pending;
+    if (pending.logoRequired && !pending.confirmedLogoUrl) {
+      const selectionKey = window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || "";
+      if (!selectionKey) { renderLaunchConfirmationRetry("链上发币已成功，请重新选择 Logo 后重试"); throw new Error("代币已创建，请重新选择 Logo 后点击重试保存"); }
+      try {
+        pending.confirmedLogoUrl = await window.bitbtUploadSelectedLaunchLogo?.() || "";
+        if (!pending.confirmedLogoUrl) throw new Error("Logo 上传未返回有效地址");
+        persistLaunchConfirmation();
+      } catch (error) {
+        renderLaunchConfirmationRetry("链上发币已成功，Logo 上传失败可重试");
+        throw error;
+      }
+    }
+    let result;
+    try {
+      result = await api("v1/token/launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ launch_id: prepared.launch.id, deploy_tx_hash: hash, logo_url: pending.confirmedLogoUrl || undefined }) });
+      if (!["deployed", "migrated"].includes(result.status)) result = await waitForLaunchFinality(prepared.launch.id, result);
+    } catch (error) {
+      renderLaunchConfirmationRetry(`链上交易 ${hash.slice(0, 10)}… 已成功，后台确认可重试`);
+      throw error;
+    }
+    const launchedAddress = result.contract_address || prepared.predicted_token_address;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(launchedAddress)) { renderLaunchConfirmationRetry("链上发币已成功，返回地址异常可重试"); throw new Error("发币回执缺少有效代币地址"); }
+    const launchedToken = { ...prepared.launch, ...result, contract_address: launchedAddress, token_name: name, symbol, quote_token: quote, status: result.status, curve_address: prepared.curve_address, quote_token_address: prepared.quote_token_address, progress_percent: 0, logo_url: result.logo_url || pending.confirmedLogoUrl || null };
+    const normalizedLaunchAddress = launchedAddress.toLowerCase();
+    state.tokens = [launchedToken, ...state.tokens.filter((token) => tokenAddress(token).toLowerCase() !== normalizedLaunchAddress)];
+    state.details[normalizedLaunchAddress] = launchedToken;
+    clearLaunchConfirmation();
+    state.launchTerminal = true;
+    setTokenPath(launchedAddress, "push");
+    renderTokens();
+    await openToken(launchedToken, { historyMode: null, fallbackDetail: launchedToken });
+    toast(pending.logoRequired ? "发币完成，Logo 已保存" : "发币完成");
+    return result;
+  };
   const launchTokenSingleFlight = async () => {
+    if (state.launchConfirmation) return confirmSuccessfulLaunch();
     if (state.launchTerminal) throw new Error("本次发币流程已结束，请刷新页面开始新的流程");
     const name = $("#token-name")?.value?.trim(); const symbol = $("#token-symbol")?.value?.trim().toUpperCase(); if (!name || !symbol) throw new Error("请填写代币名称和符号"); const address = state.account || await connectWallet(); await assertProviderState();
     const quote = state.launchQuote; if (!quoteAddress(quote) && quote !== "BNB") throw new Error("不支持的发币计价资产"); const description = $("#token-story")?.value?.trim() || ""; const logoSelectionKey = window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || ""; const metadata = { classification: $("#token-classification")?.value?.trim() || "Meme", twitter: $("#token-twitter")?.value?.trim() || "", telegram: $("#token-telegram")?.value?.trim() || "", website: $("#token-website")?.value?.trim() || "", discord: $("#token-discord")?.value?.trim() || "" }; const tax = launchTaxConfig(); const formKey = launchFormKey(); const snapshotKey = `${address}|${name}|${symbol}|${quote}|${description}|${logoSelectionKey}|${formKey}`; let snapshot = state.launchSnapshot;
@@ -521,33 +591,8 @@
     catch (error) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 未完成，请核对链上状态`); throw error; }
     if (receipt.status !== "0x1" && receipt.status !== "0x01") { setLaunchTerminal(`交易 ${hash.slice(0, 10)}… 回执失败`); throw new Error("发币交易回执失败"); }
 
-    setLaunchTerminal("链上发币成功，正在保存 Logo 与项目信息");
-    let confirmedLogoUrl = "";
-    let logoUploadError = null;
-    try { confirmedLogoUrl = await window.bitbtUploadSelectedLaunchLogo?.() || ""; }
-    catch (error) { logoUploadError = error; }
-
-    let result;
-    try {
-      result = await api("v1/token/launch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ launch_id: prepared.launch.id, deploy_tx_hash: hash, logo_url: confirmedLogoUrl || undefined }) });
-      if (!["deployed", "migrated"].includes(result.status)) { setLaunchTerminal(`交易 ${hash.slice(0, 10)}…，正在核对后台状态`); result = await waitForLaunchFinality(prepared.launch.id, result); }
-    } catch (error) {
-      setLaunchTerminal(`链上交易 ${hash.slice(0, 10)}… 已成功，后台确认待重试`);
-      throw error;
-    }
-    const launchedAddress = result.contract_address || prepared.predicted_token_address;
-    if (!/^0x[0-9a-fA-F]{40}$/.test(launchedAddress)) throw new Error("发币回执缺少有效代币地址");
-    state.launchTerminal = true;
-    setTokenPath(launchedAddress, "push");
-    const launchedToken = { ...prepared.launch, ...result, contract_address: launchedAddress, token_name: name, symbol, quote_token: quote, status: result.status, curve_address: prepared.curve_address, quote_token_address: prepared.quote_token_address, progress_percent: 0, logo_url: result.logo_url || confirmedLogoUrl || null };
-    const normalizedLaunchAddress = launchedAddress.toLowerCase();
-    state.tokens = [launchedToken, ...state.tokens.filter((token) => tokenAddress(token).toLowerCase() !== normalizedLaunchAddress)];
-    state.details[normalizedLaunchAddress] = launchedToken;
-    renderTokens();
-    await openToken(launchedToken, { historyMode: null, fallbackDetail: launchedToken });
-    if (logoUploadError) toast(`代币已创建，但 Logo 未保存：${friendlyError(logoUploadError, "Logo 上传失败")}`, 7000);
-    else if (logoSelectionKey) toast("发币完成，Logo 已保存");
-    else toast("发币完成");
+    rememberLaunchConfirmation({ prepared, hash, name, symbol, quote, logoRequired: Boolean(logoSelectionKey), confirmedLogoUrl: "" }, "链上发币成功，正在保存 Logo 与项目信息");
+    return confirmSuccessfulLaunch();
   };
   const launchToken = async () => { if (state.launchBusy) throw new Error("发币正在处理中，请等待当前交易完成"); state.launchBusy = true; try { return await launchTokenSingleFlight(); } finally { state.launchBusy = false; } };
   const bindLiveTokenSelection = () => $$("[data-live-token]").forEach((node) => { if (node.dataset.liveBound) return; node.dataset.liveBound = "1"; node.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); const token = state.tokens.find((item) => tokenAddress(item).toLowerCase() === String(node.dataset.liveToken || "").toLowerCase()); if (token) openToken(token).catch((error) => toastError(error, "代币详情加载失败，请稍后重试")); }, true); });
@@ -575,5 +620,5 @@
   $$('[data-history-filter]').forEach((node) => node.addEventListener("click", () => { state.historyFilter = node.dataset.historyFilter || "all"; $$('[data-history-filter]').forEach((filter) => filter.classList.toggle("active", filter === node)); renderMyPanels(); }));
   routeWindow.addEventListener("popstate", () => { const address = routeTokenAddress(); if (address) { void openTokenAddress(address, { historyMode: null }).catch((error) => toastError(error, "代币详情恢复失败")); return; } const discover = $('[data-panel="discover"]'); if (discover) { $$('[data-panel]').forEach((panel) => panel.classList.toggle("active", panel === discover)); discover.classList.add("has-bottom-nav"); discover.scrollTop = 0; } });
   let refreshCycle = 0;
-  setLaunchAvailability(false); invalidateLaunchSnapshot(); clearPrototype(); document.body.classList.remove("runtime-pending"); renderMyPanels(); bindProviderEvents(); bindNavigation(); bind(); void restoreSession(); void load(); void loadFavorites(); window.setInterval(() => { if (document.visibilityState === "hidden") return; refreshCycle += 1; void (refreshCycle % 2 === 0 ? refreshLive() : refreshSelectedTrades()); }, 15000);
+  setLaunchAvailability(false); invalidateLaunchSnapshot(); clearPrototype(); document.body.classList.remove("runtime-pending"); renderMyPanels(); bindProviderEvents(); bindNavigation(); bind(); restoreLaunchConfirmation(); void restoreSession(); void load(); void loadFavorites(); window.setInterval(() => { if (document.visibilityState === "hidden") return; refreshCycle += 1; void (refreshCycle % 2 === 0 ? refreshLive() : refreshSelectedTrades()); }, 15000);
 })();
