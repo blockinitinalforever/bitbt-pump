@@ -11,17 +11,17 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#08090a",
     icons: [
       {
-        src: "/launchpad/assets/app-icons/pwa/bitbt-192.png?v=20260829-2",
+        src: "/launchpad/assets/app-icons/pwa/bitbt-192.png?v=20260829-3",
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/launchpad/assets/app-icons/pwa/bitbt-512.png?v=20260829-2",
+        src: "/launchpad/assets/app-icons/pwa/bitbt-512.png?v=20260829-3",
         sizes: "512x512",
         type: "image/png",
       },
       {
-        src: "/launchpad/assets/app-icons/pwa/bitbt-maskable-512.png?v=20260829-2",
+        src: "/launchpad/assets/app-icons/pwa/bitbt-maskable-512.png?v=20260829-3",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
