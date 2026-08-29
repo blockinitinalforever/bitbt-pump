@@ -237,7 +237,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" };
   const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0, confirmFailures = 0, logoUploadFailures = 0, confirmFailureMode: "500" | "timeout" = "500") => {
     const curveMode = customCurve ? "custom" : "standard";
-    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient };
+    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account };
     const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: curveMode } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenWithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address))" : prepared.method };
     let sendCount = 0;
     let prepareCount = 0;
@@ -283,16 +283,15 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     (window.document.querySelector("#token-story") as HTMLTextAreaElement).value = "Fresh launch story";
     if (taxMode) {
       window.document.querySelector('[data-tax-mode="tax"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
-      for (const [id, value] of [["buy-tax-rate", "3"], ["sell-tax-rate", "5"], ["funds-recipient-pct", "40"], ["burn-pct", "20"], ["holders-pct", "20"], ["liquidity-pct", "20"], ["min-dividend-balance", "100000"], ["tax-recipient-wallet", recipient]]) (window.document.querySelector(`#${id}`) as HTMLInputElement).value = value;
+      assert.equal((window.document.querySelector("#buy-tax-rate") as HTMLInputElement).value, "5");
+      assert.equal((window.document.querySelector("#sell-tax-rate") as HTMLInputElement).value, "5");
     }
     window.document.querySelector(`[data-launch-quote="${quote}"]`)?.dispatchEvent(new window.Event("click", { bubbles: true }));
     window.document.querySelector("[data-open='create-review']")?.dispatchEvent(new window.Event("click", { bubbles: true }));
-    const load = window.document.querySelector("[data-launch-load]") as HTMLButtonElement;
     const submit = window.document.querySelector("[data-launch-publish]") as HTMLButtonElement;
-    assert.equal(load.disabled, false);
     assert.equal(submit.disabled, true);
-    load.dispatchEvent(new window.Event("click", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 80));
+    if (taxMode) assert.equal((window.document.querySelector("#tax-recipient-wallet") as HTMLInputElement).value, account);
     const snapshotText = window.document.querySelector("[data-panel='create-review']")?.textContent || "";
     if (!mutate) { assert.match(snapshotText, /Real Token/); assert.match(snapshotText, /REAL/); assert.match(snapshotText, /Fresh launch story/); assert.match(snapshotText, new RegExp(quote)); assert.match(snapshotText, /0\.005 BNB/); }
     // linkedom does not reflect the boolean disabled property after async DOM mutation;
@@ -343,7 +342,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   }
   const taxed = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true);
   assert.equal(taxed.sendCount, 1, "tax-token launch did not broadcast");
-  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: "standard", buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient });
+  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: "standard", buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account });
   assert.equal(String(taxed.providerTransactions[0]?.data).slice(0, 10), "0x4bec1297");
   const taxedBackgroundRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true, true);
   assert.equal(taxedBackgroundRetry.sendCount, 1, "tax-token retry flow rebroadcast the wallet transaction");
@@ -623,6 +622,9 @@ test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configur
   for (const id of ["buy-tax-rate", "sell-tax-rate", "funds-recipient-pct", "burn-pct", "holders-pct", "liquidity-pct", "min-dividend-balance", "tax-recipient-wallet"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const marker of ["launchTaxTokenWithQuotePaid", "0x4bec1297", "launchTaxConfig", "data-tax-mode", "data-tax-fields", "买入和卖出税率必须在 1%–10%", "税费分配比例合计必须为 100%", "发币准备方法与税费模式不匹配"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const marker of ["launchCurveTarget", "migration_threshold_quote", "curve_mode", "setCurveMode", "setTaxMode", "链上 Factory 状态已变化，参数已自动更新"]) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const marker of ["autoPrepareLaunch", "正在自动准备发币参数", "发币参数已自动准备", '"#buy-tax-rate": "5"', '"#sell-tax-rate": "5"', '"#tax-recipient-wallet": state.account']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(html, /data-launch-load/);
+  assert.match(html, /默认使用当前 Owner（连接钱包）地址；这是可编辑的默认值/);
   assert.match(html, /迁移 PancakeSwap 后对 Pair 买卖持续执行所选税率/);
   assert.match(html, /当前链上交易不包含初始买入/);
   assert.doesNotMatch(html, /预计获得 16\.84M MOON/);
