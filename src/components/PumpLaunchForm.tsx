@@ -8,7 +8,7 @@ import {
   type PrepareLaunchInput,
 } from "@/lib/pump-api";
 import PumpWalletConnect from "@/components/PumpWalletConnect";
-import { getQuoteTokenAddress, isAddress } from "@/lib/pump-chain";
+import { getQuoteTokenAddress, isAddress, switchToBsc } from "@/lib/pump-chain";
 import {
   assertBscRuntimeChain,
   assertPreparedLaunchBinding,
@@ -88,10 +88,7 @@ export default function PumpLaunchForm({ zh }: { zh: boolean }) {
       const currentFee = fee || (await pumpLaunchApi.fee());
       if (!isAddress(currentFee.factory_address))
         throw new Error("Launch fee configuration is unavailable");
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0x38" }],
-      });
+      await switchToBsc(provider);
       assertBscRuntimeChain(await provider.request({ method: "eth_chainId" }));
       const input: PrepareLaunchInput = {
         creator_address: address,

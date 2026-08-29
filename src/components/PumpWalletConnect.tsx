@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getInjectedEvmProvider } from "@/lib/evm-provider";
+import { switchToBsc } from "@/lib/pump-chain";
 function buildSiweMessage(domain: string, address: string, nonce: string) {
   return `${domain} wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://${domain}\nVersion: 1\nChain ID: 56\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
 }
@@ -56,9 +57,7 @@ export default function PumpWalletConnect({ compact = false, onConnected }: { co
       const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
       const address = accounts?.[0];
       if (!address) throw new Error("No wallet account returned");
-      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
-      const chainId = await provider.request({ method: "eth_chainId" });
-      if (String(chainId).toLowerCase() !== "0x38") throw new Error("Wallet is not connected to BNB Chain");
+      await switchToBsc(provider);
       const nonceResponse = await fetch("/api/pump/v1/auth/siwe/nonce", { cache: "no-store" });
       const noncePayload = await nonceResponse.json();
       const { nonce, domain } = noncePayload.data || {};

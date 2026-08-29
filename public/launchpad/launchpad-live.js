@@ -13,51 +13,22 @@
   let providerSelectionPromise = null;
   const isEvmProvider = (provider) => { try { return Boolean(provider && typeof provider.request === "function"); } catch { return false; } };
   const safeProviderInfo = (info) => { try { return { name: typeof info?.name === "string" ? info.name.slice(0, 80) : "EVM Wallet", rdns: typeof info?.rdns === "string" ? info.rdns.slice(0, 120) : "" }; } catch { return { name: "EVM Wallet", rdns: "" }; } };
-  const providerIdentity = (provider, info = {}) => `${info.rdns || ""} ${info.name || ""} ${provider?.isOkxWallet ? "okx" : ""} ${provider?.isOKExWallet ? "okx" : ""} ${provider?.isBinance ? "binance" : ""} ${provider?.isBinanceWallet ? "binance" : ""} ${provider?.isTokenPocket ? "tokenpocket" : ""} ${provider?.isMetaMask ? "metamask" : ""}`.toLowerCase();
-  const providerScore = (entry) => { const identity = providerIdentity(entry.provider, entry.info); if (/okx|okex/.test(identity)) return 500; if (/binance/.test(identity)) return 400; if (/tokenpocket|token pocket/.test(identity)) return 300; if (/metamask/.test(identity)) return 200; return 100; };
-  const walletWindows = () => {
-    const windows = [window];
-    try {
-      let candidate = window.parent;
-      while (candidate && !windows.includes(candidate) && candidate.location?.origin === window.location.origin) {
-        windows.push(candidate);
-        if (!candidate.parent || candidate.parent === candidate) break;
-        candidate = candidate.parent;
-      }
-    } catch {}
-    return windows;
-  };
-  const rememberProvider = (provider, info = {}, trustedDirect = false) => {
+  const rememberProvider = (provider, info = {}) => {
     if (!isEvmProvider(provider)) return;
     const safeInfo = safeProviderInfo(info);
     const existing = announcedProviders.find((entry) => entry.provider === provider);
-    if (existing) { existing.info = { ...existing.info, ...safeInfo }; existing.trustedDirect ||= trustedDirect; }
-    else announcedProviders.push({ provider, info: safeInfo, trustedDirect, userApproved: false });
-  };
-  const collectProviders = () => {
-    walletWindows().forEach((walletWindow) => {
-      rememberProvider(walletWindow.okxwallet?.ethereum || walletWindow.okxwallet, { name: "OKX Wallet", rdns: "com.okex.wallet" }, true);
-      rememberProvider(walletWindow.BinanceChain, { name: "Binance Wallet", rdns: "com.binance.wallet" }, true);
-      rememberProvider(walletWindow.binancew3w?.ethereum || walletWindow.binancew3w, { name: "Binance Web3 Wallet", rdns: "com.binance.wallet" }, true);
-      rememberProvider(walletWindow.tokenpocket?.ethereum, { name: "TokenPocket", rdns: "pro.tokenpocket" }, true);
-      const injected = walletWindow.ethereum;
-      if (Array.isArray(injected?.providers)) injected.providers.forEach((provider) => rememberProvider(provider, {}, true));
-      rememberProvider(injected, {}, true);
-    });
-    return announcedProviders.filter((entry) => (entry.trustedDirect || entry.userApproved) && isEvmProvider(entry.provider)).sort((a, b) => providerScore(b) - providerScore(a));
+    if (existing) existing.info = { ...existing.info, ...safeInfo };
+    else announcedProviders.push({ provider, info: safeInfo, userApproved: false });
   };
   const selectedProvider = () => {
-    const preferred = collectProviders()[0]?.provider || null;
-    if (!state.account && preferred) state.provider = preferred;
     if (isEvmProvider(state.provider)) return state.provider;
-    state.provider = preferred;
+    if (isEvmProvider(window.ethereum)) state.provider = window.ethereum;
     return state.provider;
   };
-  const isTrustedProvider = (provider) => { collectProviders(); return announcedProviders.some((entry) => entry.provider === provider && (entry.trustedDirect || entry.userApproved)); };
-  const requestProviderAnnouncements = () => walletWindows().forEach((walletWindow) => { try { walletWindow.dispatchEvent(new walletWindow.Event("eip6963:requestProvider")); } catch {} });
+  const requestProviderAnnouncements = () => { try { window.dispatchEvent(new window.Event("eip6963:requestProvider")); } catch {} };
   const chooseAnnouncedProvider = () => {
     if (providerSelectionPromise) return providerSelectionPromise;
-    const choices = announcedProviders.filter((entry) => !entry.trustedDirect && !entry.userApproved && isEvmProvider(entry.provider));
+    const choices = announcedProviders.filter((entry) => isEvmProvider(entry.provider));
     if (!choices.length) return Promise.reject(new Error("未检测到 EVM 钱包"));
     providerSelectionPromise = new Promise((resolve, reject) => {
       const overlay = document.createElement("div"); overlay.className = "wallet-provider-overlay"; overlay.setAttribute("role", "dialog"); overlay.setAttribute("aria-modal", "true"); overlay.setAttribute("aria-label", "选择 EVM 钱包");
@@ -80,24 +51,22 @@
     return providerSelectionPromise;
   };
   const waitForProvider = async (timeout = 1500) => {
-    const immediate = selectedProvider();
-    if (immediate) return immediate;
+    if (isEvmProvider(state.provider)) return state.provider;
     requestProviderAnnouncements();
     const started = Date.now();
     while (Date.now() - started < timeout) {
       await new Promise((resolve) => window.setTimeout(resolve, 50));
-      const provider = selectedProvider();
-      if (provider) return provider;
-      if (Date.now() - started >= 250 && announcedProviders.some((entry) => !entry.trustedDirect && !entry.userApproved)) return chooseAnnouncedProvider();
+      if (Date.now() - started >= 250 && announcedProviders.length) return chooseAnnouncedProvider();
+      if (Date.now() - started >= 250 && isEvmProvider(window.ethereum)) return (state.provider = window.ethereum);
     }
-    if (announcedProviders.some((entry) => !entry.trustedDirect && !entry.userApproved)) return chooseAnnouncedProvider();
-    throw new Error("未检测到 EVM 钱包，请在 OKX、TokenPocket、Binance Wallet 或其他 EVM 钱包内打开");
+    if (announcedProviders.length) return chooseAnnouncedProvider();
+    if (isEvmProvider(window.ethereum)) return (state.provider = window.ethereum);
+    throw new Error("未检测到 EVM 钱包，请在支持 EIP-6963/EIP-1193 的钱包内打开");
   };
   const rememberAnnouncedProvider = (event) => {
-    rememberProvider(event?.detail?.provider, event?.detail?.info || {}, false);
-    if (!state.account) state.provider = collectProviders()[0]?.provider || null;
+    rememberProvider(event?.detail?.provider, event?.detail?.info || {});
   };
-  walletWindows().forEach((walletWindow) => walletWindow.addEventListener?.("eip6963:announceProvider", rememberAnnouncedProvider));
+  window.addEventListener?.("eip6963:announceProvider", rememberAnnouncedProvider);
   requestProviderAnnouncements();
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
@@ -391,6 +360,17 @@
     }
   };
   const normalizeChainId = (value) => { const normalized = String(value ?? "").trim().toLowerCase(); if (normalized === "0x38" || normalized === "56" || normalized === "bsc" || normalized === "bnb") return "0x38"; return ""; };
+  const ensureBscChain = async (provider) => {
+    if (!isEvmProvider(provider)) throw new Error("未检测到可用的 EVM 钱包");
+    let chainId = normalizeChainId(await provider.request({ method: "eth_chainId" }));
+    if (chainId !== "0x38") {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+      chainId = normalizeChainId(await provider.request({ method: "eth_chainId" }));
+    }
+    if (chainId !== "0x38") throw new Error("钱包未切换到 BSC，请在钱包中选择 BNB Smart Chain");
+    state.chainId = chainId;
+    return chainId;
+  };
   const rpc = (to, data) => selectedProvider().request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
   const walletNativeBalance = () => selectedProvider().request({ method: "eth_getBalance", params: [state.account, "latest"] }).then((value) => BigInt(value));
   const walletTokenBalance = (token) => rpc(token, `0x70a08231${addressWord(state.account)}`);
@@ -452,12 +432,32 @@
       if (error?.message?.includes("钱包账户或网络已变化")) return;
     }
   };
-  const bindSelectedProviderEvents = (provider) => { if (!provider?.on || boundProviders.has(provider)) return; boundProviders.add(provider); provider.on("accountsChanged", (accounts) => { const next = String(accounts?.[0] || "").toLowerCase(); if (!next) { window.setTimeout(() => { void restoreSession(); }, 350); return; } if (state.account && next === state.account) return; resetProviderState(); }); provider.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); };
-  const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); walletWindows().forEach((walletWindow) => walletWindow.addEventListener?.("eip6963:announceProvider", (event) => { if (isTrustedProvider(event?.detail?.provider)) bindSelectedProviderEvents(event.detail.provider); })); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
+  const bindSelectedProviderEvents = (provider) => {
+    if (!provider?.on || boundProviders.has(provider)) return;
+    boundProviders.add(provider);
+    provider.on("accountsChanged", (accounts) => {
+      const next = String(accounts?.[0] || "").toLowerCase();
+      if (state.account && next === state.account) return;
+      resetProviderState(next ? "钱包账户已变化，请重新连接" : "钱包已断开，请重新连接");
+    });
+    provider.on("chainChanged", (value) => {
+      const chainId = normalizeChainId(value);
+      if (chainId === "0x38") {
+        state.chainId = chainId;
+        if (state.account && sessionStorage.getItem(SESSION_KEY)) {
+          setLaunchAvailability(true);
+          renderWalletState();
+        }
+        return;
+      }
+      resetProviderState("网络已变化，请重新连接 BSC");
+    });
+  };
+  const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
   const connectWallet = async () => {
     const provider = await waitForProvider(); state.provider = provider; bindSelectedProviderEvents(provider);
     const accounts = await provider.request({ method: "eth_requestAccounts" }); const address = accounts?.[0]; if (!address) throw new Error("钱包未返回账户");
-    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+    await ensureBscChain(provider);
     const noncePayload = await api("v1/auth/siwe/nonce"); const domain = String(noncePayload.domain || "").toLowerCase(); if (domain !== "bitbt.fun") throw new Error("SIWE domain 不受信任");
     const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: 56\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
     const signature = await provider.request({ method: "personal_sign", params: [message, address] }); const verified = await api("v1/auth/siwe/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
@@ -744,7 +744,7 @@
       return snapshot;
     }
     const { fee, prepared } = snapshot; assertLaunchBinding(fee, prepared, address, name, symbol, quote, tax); if (snapshot.name !== name || snapshot.symbol !== symbol || snapshot.quote !== quote || snapshot.address !== address || snapshot.description !== description || snapshot.formKey !== formKey || snapshot.logoSelectionKey !== logoSelectionKey) { invalidateLaunchSnapshot(); throw new Error("发币确认快照已过期，请重新加载"); }
-    const provider = selectedProvider(); await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); await assertProviderState(); const accounts = await provider.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
+    const provider = selectedProvider(); await ensureBscChain(provider); await assertProviderState(); const accounts = await provider.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
     const launchData = encodeLaunch(prepared, tax); const launchValue = BigInt(fee.fee_wei); let preflight; try { preflight = await launchPreflight({ from: address, to: prepared.factory_address, data: launchData, value: launchValue }); } catch (error) { if (/发币参数与链上 Factory 不一致/.test(String(error?.message || ""))) { invalidateLaunchSnapshot(true); await launchTokenSingleFlight(); toast("链上 Factory 状态已变化，参数已自动更新，请重新核对后发布"); return; } throw error; }
     let hash;
     try {

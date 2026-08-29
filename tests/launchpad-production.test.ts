@@ -8,14 +8,13 @@ import { parseHTML } from "linkedom";
 const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
 const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
-const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -55,13 +54,13 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   }
   for (const key of ["ethereum", "okxwallet", "BinanceChain", "binancew3w", "tokenpocket"] as const) Object.defineProperty(window, key, { configurable: true, writable: true, value: undefined });
   const providerTarget = options.providerTarget || "ethereum";
-  const providerGlobals = providerTarget === "okxwallet" ? { okxwallet: ethereum }
-    : providerTarget === "binance" ? { BinanceChain: ethereum }
-      : providerTarget === "tokenpocket" ? { tokenpocket: { ethereum } }
-        : providerTarget === "eip6963" || providerTarget === "parent-okxwallet" ? {}
-          : { ethereum };
-  if (providerTarget === "parent-okxwallet") (window.parent as Window & { okxwallet?: unknown }).okxwallet = ethereum;
-  if (providerTarget === "eip6963") window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "EIP Wallet", rdns: "wallet.example" }, provider: ethereum } })));
+  const providerGlobals = providerTarget === "ethereum" ? { ethereum } : {};
+  const providerInfo = providerTarget === "okxwallet" ? { name: "OKX Wallet", rdns: "com.okex.wallet" }
+    : providerTarget === "binance" ? { name: "Binance Wallet", rdns: "com.binance.wallet" }
+      : providerTarget === "tokenpocket" ? { name: "TokenPocket", rdns: "pro.tokenpocket" }
+        : providerTarget === "eip6963" ? { name: "EIP Wallet", rdns: "wallet.example" }
+          : null;
+  if (providerInfo) window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: providerInfo, provider: ethereum } })));
   if (options.maliciousAnnouncement) window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "OKX Wallet", rdns: "com.okex.wallet" }, provider: untrustedProvider } })));
   const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   const windowContext = { ...context };
@@ -333,7 +332,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       }
       throw new Error(`unmocked ${url}`);
     };
-    const { window, providerCalls, providerTransactions, historyPaths } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance, estimateRejects });
+    const { window, providerCalls, providerEvents, providerTransactions, historyPaths, storage } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance, estimateRejects });
     if (logoUploadFailures > 0) {
       (window as typeof window & { bitbtLaunchLogoSelectionKey?: () => string }).bitbtLaunchLogoSelectionKey = () => "selected-logo";
       (window as typeof window & { bitbtUploadSelectedLaunchLogo?: () => Promise<string> }).bitbtUploadSelectedLaunchLogo = async () => { logoUploadCount += 1; if (logoUploadCount <= logoUploadFailures) throw new Error("Logo upload timed out"); return "https://bucket.s3.ap-east-1.amazonaws.com/logos/retried.png"; };
@@ -365,6 +364,10 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     submit.disabled = false;
     submit.removeAttribute("disabled");
     assert.equal(providerCalls.includes("eth_sendTransaction"), false);
+    providerEvents.chainChanged?.("0x38");
+    assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111", "same-BSC chain event cleared the connected wallet during launch review");
+    assert.equal(storage.get("bitbt_pump_session"), "session", "same-BSC chain event cleared the SIWE session during launch review");
+    assert.equal(submit.hasAttribute("disabled"), false, "same-BSC chain event disabled a prepared launch snapshot");
     if (changeAfterLoad) {
       const story = window.document.querySelector("#token-story") as HTMLTextAreaElement;
       story.value = "Changed after review";
@@ -403,6 +406,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     assert.equal(result.providerTransactions[0]?.value, "0x11c37937e08000");
     assert.equal(result.providerTransactions[0]?.gas, "0x249f00");
     assert.equal(result.providerTransactions[0]?.data?.toString().includes(quoteAddresses[quote].slice(2).toLowerCase()), true);
+    assert.equal(result.providerCalls.includes("wallet_switchEthereumChain"), false, "an already-BSC wallet was asked to switch chains again");
     for (let attempt = 0; attempt < 20 && result.historyPaths.at(-1) !== `/pump/${predicted}`; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(result.historyPaths.at(-1), `/pump/${predicted}`, `successful ${quote} launch did not open its canonical token URL; history=${result.historyPaths.join(",")} body=${result.body?.slice(-300)}`);
   }
@@ -509,7 +513,7 @@ test("bridge contains provider-state, session-expiry, non-zero launch, and quote
   assert.equal(bridge.includes("Math.sin"), false);
 });
 
-test("a valid SIWE session restores the wallet label after a page refresh", async () => {
+test("a valid SIWE session survives same-BSC events and fails closed on a real network change", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const response = async (input: string) => {
     const url = String(input);
@@ -518,10 +522,16 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
-  const { window, providerEvents } = await boot(response, { account, session: { token: "session", address: account } });
+  const { window, providerEvents, storage } = await boot(response, { account, session: { token: "session", address: account } });
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
   providerEvents.accountsChanged?.([account]);
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  providerEvents.chainChanged?.("0x38");
+  assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  assert.equal(storage.get("bitbt_pump_session"), "session");
+  providerEvents.chainChanged?.("0x1");
+  assert.equal(window.document.querySelector(".connect-global")?.textContent, "连接钱包");
+  assert.equal(storage.has("bitbt_pump_session"), false);
 });
 
 test("OKX, TokenPocket, and Binance Wallet can complete SIWE without window.ethereum", async () => {
@@ -541,30 +551,22 @@ test("OKX, TokenPocket, and Binance Wallet can complete SIWE without window.ethe
     const app = await boot(response, { account, providerTarget });
     assert.equal((app.window as Window & { ethereum?: unknown }).ethereum, undefined, `${providerTarget} test unexpectedly relied on window.ethereum`);
     app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 320));
+    const choice = app.window.document.querySelector("[data-eip6963-provider]");
+    assert.ok(choice, `${providerTarget} did not announce through EIP-6963`);
+    choice.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 90));
     assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111", `${providerTarget} did not connect`);
-    for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `${providerTarget} did not use ${method}`);
+    for (const method of ["eth_requestAccounts", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `${providerTarget} did not use ${method}`);
+    assert.equal(app.providerCalls.includes("wallet_switchEthereumChain"), false, `${providerTarget} was already on BSC and should not receive a redundant switch request`);
   }
 });
 
-test("the iframe connects through an OKX provider injected only into its same-origin parent", async () => {
-  const account = "0x1111111111111111111111111111111111111111";
-  const response = async (input: string) => {
-    const url = String(input);
-    if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { nonce: "nonce-123", domain: "bitbt.fun" } }) };
-    if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
-    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
-    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
-    throw new Error(`unmocked ${url}`);
-  };
-  const app = await boot(response, { account, providerTarget: "parent-okxwallet", parentPathname: "/launchpad/bitbt-wallet-ui.html" });
-  assert.equal((app.window as Window & { okxwallet?: unknown }).okxwallet, undefined, "OKX provider leaked into the iframe test window");
-  app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
-  await new Promise((resolve) => setTimeout(resolve, 90));
-  assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
-  for (const method of ["eth_requestAccounts", "wallet_switchEthereumChain", "personal_sign", "eth_accounts", "eth_chainId"]) assert.ok(app.providerCalls.includes(method), `parent OKX provider did not use ${method}`);
+test("canonical Pump routes render the wallet app at the top level instead of an iframe shell", () => {
+  for (const route of ["/pump", "/pump/:address", "/:locale/pump", "/:locale/pump/:address"]) {
+    assert.match(nextConfig, new RegExp(`source: "${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}", destination: "/launchpad/bitbt-launch-ui-app\\.html"`));
+  }
+  assert.doesNotMatch(nextConfig, /destination: "\/launchpad\/bitbt-wallet-ui\.html"/);
 });
 
 test("an EIP-6963-only wallet connects only after explicit user selection", async () => {
@@ -671,8 +673,8 @@ test("live tokens use API logo URLs and launch Logo upload is deferred until a s
   assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net data:/);
 });
 
-test("logo file chooser is enabled inside the production wallet iframe", () => {
-  assert.match(walletShell, /sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"/);
+test("logo file chooser is enabled inside the production wallet app", () => {
+  assert.doesNotMatch(nextConfig, /destination: "\/launchpad\/bitbt-wallet-ui\.html"/);
   assert.match(html, /id="token-logo-file" type="file"/);
   assert.match(html, /data-launch-file/);
 });
@@ -802,7 +804,8 @@ test("every locale-relative Launchpad script has an executable public rewrite", 
   assert.match(nextConfig, /source: "\/pump\/:address"/);
   assert.match(nextConfig, /source: "\/pump"/);
   assert.match(nextConfig, /\/:locale\/pump\/:address/);
-  assert.match(shell, /src="\/launchpad\/bitbt-launch-ui-app\.html"/);
+  assert.match(shell, /http-equiv="refresh" content="0;url=\/pump"/);
+  assert.doesNotMatch(shell, /<iframe/);
   assert.match(html, /<base href="\/launchpad\/">/);
   for (const script of ["launch-logo-upload.js", "launchpad-live.js"]) {
     assert.match(html, new RegExp(`<script src="\\./${script.replaceAll(".", "\\.")}">`));

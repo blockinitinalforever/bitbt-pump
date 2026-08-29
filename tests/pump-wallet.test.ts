@@ -23,10 +23,27 @@ test("mock EIP-1193 wallet signs, broadcasts and confirms a 0.05 BNB buy budget"
   const receipt = await waitForReceipt(wallet, hash);
   assert.equal(hash, HASH);
   assert.equal(receiptSucceeded(receipt), true);
+  assert.equal(calls.some((call) => call.method === "wallet_switchEthereumChain"), false);
   const transaction = calls.find((call) => call.method === "eth_sendTransaction")?.params?.[0] as Record<string, string>;
   assert.equal(transaction.value, "0xb1a2bc2ec50000");
   assert.equal(transaction.maxPriorityFeePerGas, "0x2faf080");
   assert.equal(transaction.maxFeePerGas, "0x7a308480");
+});
+
+test("BSC switching is requested exactly once only when the wallet is on another chain", async () => {
+  const calls: string[] = [];
+  let chainId = "0x1";
+  const wallet: EvmWallet = { request: async ({ method, params }) => {
+    calls.push(method);
+    if (method === "eth_chainId") return chainId;
+    if (method === "wallet_switchEthereumChain") {
+      chainId = String((params?.[0] as { chainId?: string })?.chainId || "");
+      return null;
+    }
+    throw new Error(`Unexpected wallet method: ${method}`);
+  } };
+  assert.equal(await switchToBsc(wallet), "0x38");
+  assert.deepEqual(calls, ["eth_chainId", "wallet_switchEthereumChain", "eth_chainId"]);
 });
 
 test("mock wallet exposes a failed receipt as a failed trade", () => {

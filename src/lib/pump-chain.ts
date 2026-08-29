@@ -124,8 +124,11 @@ export function readUint256(result: unknown): bigint {
 }
 
 export async function switchToBsc(wallet: EvmWallet): Promise<string> {
-  await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BSC_CHAIN_ID }] });
-  const chainId = await wallet.request({ method: "eth_chainId" });
+  let chainId = await wallet.request({ method: "eth_chainId" });
+  if (String(chainId).toLowerCase() !== BSC_CHAIN_ID) {
+    await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BSC_CHAIN_ID }] });
+    chainId = await wallet.request({ method: "eth_chainId" });
+  }
   if (String(chainId).toLowerCase() !== BSC_CHAIN_ID) throw new Error("Wallet is not connected to BNB Chain");
   return BSC_CHAIN_ID;
 }

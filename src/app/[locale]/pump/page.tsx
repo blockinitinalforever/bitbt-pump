@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function PumpPage() {
-  redirect("/launchpad/bitbt-wallet-ui.html");
+  redirect("/launchpad/bitbt-launch-ui-app.html");
 }
