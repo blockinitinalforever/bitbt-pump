@@ -123,6 +123,12 @@ test("discovery, full-market on-chain stream, rankings, and holders use real API
   assert.match(window.document.querySelector('[data-detail-panel="holders"]')?.textContent || "", /12\.50%/);
 });
 
+test("holder provider indexing delay is rendered as an honest non-fatal state", () => {
+  assert.match(bridge, /payload\?\.available === false/);
+  assert.match(bridge, /等待链上索引/);
+  assert.match(bridge, /不会展示推测数据/);
+});
+
 test("wrong quote-token contract is rejected before any provider send", async () => {
   const token = "0x1111111111111111111111111111111111111111";
   const curve = "0x2222222222222222222222222222222222222222";
