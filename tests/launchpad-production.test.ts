@@ -15,7 +15,7 @@ const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number } };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: string; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown> };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -24,6 +24,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
     storage.set("bitbt_pump_session", options.session.token);
     storage.set("bitbt_pump_session_address", options.session.address.toLowerCase());
   }
+  if (options.pendingConfirmation) storage.set("bitbt_pump_pending_launch_confirmation", JSON.stringify(options.pendingConfirmation));
   const providerCalls: string[] = [];
   const providerTransactions: Array<Record<string, unknown>> = [];
   const providerEvents: Record<string, (value: unknown) => void> = {};
@@ -55,7 +56,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), timeScale: () => ({ fitContent: () => undefined }) }) } });
   vm.runInNewContext(bridge, context);
   await new Promise((resolve) => setTimeout(resolve, 20));
-  return { window, providerCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites };
+  return { window, providerCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites, storage };
 };
 
 test("production HTML boots with API failure without exposing prototype financial data", async () => {
@@ -234,14 +235,17 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" } as const;
   type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string };
   const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" };
-  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0) => {
+  const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0, confirmFailures = 0, logoUploadFailures = 0, confirmFailureMode: "500" | "timeout" = "500") => {
     const curveMode = customCurve ? "custom" : "standard";
     const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, buy_tax_rate: "3", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: recipient };
     const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: curveMode } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenWithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address))" : prepared.method };
     let sendCount = 0;
     let prepareCount = 0;
     let statusCount = 0;
+    let confirmCount = 0;
+    let logoUploadCount = 0;
     let prepareBody: Record<string, unknown> | undefined;
+    let confirmBody: Record<string, unknown> | undefined;
     const fetchUrls: string[] = [];
     const response = async (input: string, init?: RequestInit) => {
       const url = String(input);
@@ -252,10 +256,22 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       if (url.includes("v1/token/launch-fee")) return { ok: true, json: async () => ({ data: fee }) };
       if (url.includes("v1/token/prepare-launch")) { prepareCount += 1; prepareBody = JSON.parse(String(init?.body || "{}")); return { ok: true, json: async () => ({ data: mutate ? mutate(quotePrepared) : quotePrepared }) }; }
       if (url.includes("v1/token/status")) { statusCount += 1; return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) }; }
-      if (url.includes("v1/token/launch")) return { ok: true, json: async () => ({ data: backgroundRetry ? { status: "deploying", rejection_reason: "Deploy tx sent (0xabc) pending confirmation" } : { status: "deployed", contract_address: predicted } }) };
+      if (url.includes("v1/token/launch")) {
+        confirmCount += 1;
+        confirmBody = JSON.parse(String(init?.body || "{}"));
+        if (confirmCount <= confirmFailures) {
+          if (confirmFailureMode === "timeout") throw new Error("Request timed out");
+          return { ok: false, status: 500, json: async () => ({ error: "Temporary confirmation failure" }) };
+        }
+        return { ok: true, json: async () => ({ data: backgroundRetry ? { status: "deploying", rejection_reason: "Deploy tx sent (0xabc) pending confirmation" } : { status: "deployed", contract_address: predicted, logo_url: confirmBody?.logo_url || null } }) };
+      }
       throw new Error(`unmocked ${url}`);
     };
     const { window, providerCalls, providerTransactions, historyPaths } = await boot(response, { account, receiptStatus, sendRejects, sendErrorCode, nullHash, nativeBalance, estimateRejects });
+    if (logoUploadFailures > 0) {
+      (window as typeof window & { bitbtLaunchLogoSelectionKey?: () => string }).bitbtLaunchLogoSelectionKey = () => "selected-logo";
+      (window as typeof window & { bitbtUploadSelectedLaunchLogo?: () => Promise<string> }).bitbtUploadSelectedLaunchLogo = async () => { logoUploadCount += 1; if (logoUploadCount <= logoUploadFailures) throw new Error("Logo upload timed out"); return "https://bucket.s3.ap-east-1.amazonaws.com/logos/retried.png"; };
+    }
     const name = window.document.querySelector("#token-name") as HTMLInputElement;
     const symbol = window.document.querySelector("#token-symbol") as HTMLInputElement;
     if (customCurve) {
@@ -310,7 +326,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
     sendCount = providerCalls.filter((method) => method === "eth_sendTransaction").length;
-    return { sendCount, prepareCount, statusCount, providerCalls, providerTransactions, prepareBody, body: window.document.body.textContent, fetchUrls, historyPaths };
+    return { sendCount, prepareCount, statusCount, confirmCount, logoUploadCount, providerCalls, providerTransactions, prepareBody, confirmBody, body: window.document.body.textContent, fetchUrls, historyPaths };
   };
   for (const quote of Object.keys(quoteAddresses) as Array<keyof typeof quoteAddresses>) {
     const result = await run(quote);
@@ -340,6 +356,17 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const stale = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, false, false, false, 1);
   assert.equal(stale.sendCount, 0, "stale Factory snapshot must not broadcast");
   assert.equal(stale.prepareCount, 2, "stale Factory snapshot was not regenerated exactly once");
+  for (const failureMode of ["500", "timeout"] as const) {
+    const confirmationRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, false, false, false, 0, 1, 0, failureMode);
+    assert.equal(confirmationRetry.sendCount, 1, `${failureMode} confirmation retry rebroadcast the wallet transaction`);
+    assert.equal(confirmationRetry.confirmCount, 2, `${failureMode} confirmation failure did not retry exactly once`);
+    assert.equal(confirmationRetry.historyPaths.at(-1), `/pump/${predicted}`);
+  }
+  const logoRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, false, false, false, 0, 0, 1);
+  assert.equal(logoRetry.sendCount, 1, "Logo retry rebroadcast the wallet transaction");
+  assert.equal(logoRetry.logoUploadCount, 2, "Logo upload failure was not retried exactly once");
+  assert.equal(logoRetry.confirmCount, 1, "launch confirmation ran before Logo upload recovered");
+  assert.equal(logoRetry.confirmBody?.logo_url, "https://bucket.s3.ap-east-1.amazonaws.com/logos/retried.png");
   const changed = await run("BNB", undefined, true);
   assert.equal(changed.sendCount, 0, "changed launch metadata was signed");
   assert.equal(changed.prepareCount, 2, "changed launch metadata did not require a fresh prepare response");
@@ -376,6 +403,41 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   for (const [index, mutation] of altered.entries()) assert.equal((await run("BNB", mutation)).sendCount, 0, `altered launch field ${index} was signed`);
 });
 
+test("a persisted successful receipt retries confirmation after refresh without rebroadcasting", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const predicted = "0x4444444444444444444444444444444444444444";
+  const curve = "0x5555555555555555555555555555555555555555";
+  const pendingConfirmation = {
+    hash: `0x${"ab".repeat(32)}`,
+    name: "Recovered Token",
+    symbol: "REC",
+    quote: "BNB",
+    logoRequired: false,
+    confirmedLogoUrl: "",
+    prepared: { launch: { id: "launch-recovery", token_name: "Recovered Token", symbol: "REC", creator_address: account, quote_token: "BNB" }, predicted_token_address: predicted, curve_address: curve, quote_token_address: "0x0000000000000000000000000000000000000000" },
+  };
+  let confirms = 0;
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/token/launch")) { confirms += 1; return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) }; }
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...pendingConfirmation.prepared.launch, status: "deployed", contract_address: predicted, curve_address: curve, quote_token_address: null } }) };
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window, providerCalls, historyPaths, storage } = await boot(response, { account, session: { token: "session", address: account }, pendingConfirmation });
+  const retry = window.document.querySelector("[data-launch-publish]") as HTMLButtonElement;
+  assert.equal(retry.textContent, "重试保存发币结果");
+  retry.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(confirms, 1);
+  assert.equal(providerCalls.includes("eth_sendTransaction"), false);
+  assert.equal(historyPaths.at(-1), `/pump/${predicted}`);
+  assert.equal(storage.has("bitbt_pump_pending_launch_confirmation"), false);
+});
+
 test("bridge contains provider-state, session-expiry, non-zero launch, and quote binding guards", () => {
   for (const marker of ["accountsChanged", "chainChanged", "assertProviderState", "restoreSession", "revalidateSession", "visibilitychange", "sessionExpiresAt", "bitbt_pump_session_address", "v1/auth/siwe/session", "SESSION_EXPIRED", "isNonZeroAddress", "normalizeChainId", "quoteTokenAddress", "quoteId", "expiresAt", "minOut", "state.busy", "launchBusy", "launchTerminal", "launchFormKey", "assertLaunchBinding", "4001", "交易状态未知", "data-wallet-label], .connect-global, .connect", "disabled", "renderUnavailable"]) assert.match(bridge, new RegExp(marker));
   assert.equal(bridge.includes("state.quote = response"), false);
@@ -404,10 +466,12 @@ test("production wallet bridge applies the fixed 0.05 Gwei policy and reports ev
   assert.doesNotMatch(bridge, /launchTokenSingleFlight[\\s\\S]*eth_sendTransaction/);
 });
 
-test("live tokens use API logo URLs and the launch form uploads Logo to S3 before prepare", () => {
+test("live tokens use API logo URLs and launch Logo upload is deferred until a successful receipt", () => {
   assert.match(bridge, /logo_url \|\| token\?\.image_url \|\| token\?\.logo/);
-  for (const marker of ["token-logo-file", "/api/pump/v1/upload/image", "dataset.launchLogoUrl", "logo_url", "已上传到 S3", "bitbt:launch-reset"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(bridge, /dataset\.launchLogoUrl/);
+  for (const marker of ["token-logo-file", "/api/pump/v1/upload/image", "dataset.launchLogoSelection", "bitbtUploadSelectedLaunchLogo", "发币成功后上传", "bitbt:launch-reset"]) assert.match(logoUpload, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(bridge, /receipt\.status[\s\S]*rememberLaunchConfirmation/);
+  assert.match(bridge, /const confirmSuccessfulLaunch[\s\S]*bitbtUploadSelectedLaunchLogo[\s\S]*logo_url: pending\.confirmedLogoUrl/);
+  assert.doesNotMatch(bridge, /prepare-launch[\s\S]{0,700}logo_url/);
   assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net data:/);
 });
 
@@ -430,11 +494,13 @@ test("clicking the visible logo button opens the hidden native file input", () =
   assert.equal(pickerOpens, 1);
 });
 
-const exerciseLogoUpload = async (file: { name: string; size: number; type: string }, fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, session = "session") => {
+const exerciseLogoUpload = async (file: { name: string; size: number; type: string; lastModified?: number }, fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, session = "session", triggerUpload = false) => {
   const { window } = parseHTML(html);
   const input = window.document.querySelector("#token-logo-file") as HTMLInputElement;
   const toasts: string[] = [];
   let reads = 0;
+  let deferredUploadError = "";
+  let deferredUploadUrl = "";
   class MockFileReader {
     result: string | null = null;
     onload?: () => void;
@@ -449,8 +515,29 @@ const exerciseLogoUpload = async (file: { name: string; size: number; type: stri
   vm.runInNewContext(logoUpload, context);
   input.dispatchEvent(new window.Event("change", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
-  return { toasts, reads };
+  if (triggerUpload) {
+    try { deferredUploadUrl = await (window as typeof window & { bitbtUploadSelectedLaunchLogo?: () => Promise<string> }).bitbtUploadSelectedLaunchLogo?.() || ""; }
+    catch (error) { deferredUploadError = String((error as Error)?.message || error); }
+  }
+  return { toasts, reads, deferredUploadError, deferredUploadUrl, storedUrl: window.document.documentElement.dataset.launchLogoUrl || "" };
 };
+
+test("selecting a valid Logo only creates a local preview and does not upload", async () => {
+  let fetches = 0;
+  const result = await exerciseLogoUpload({ name: "logo.png", size: 1024, type: "image/png", lastModified: 1 }, async () => { fetches += 1; throw new Error("must not upload before receipt"); });
+  assert.equal(result.reads, 1);
+  assert.equal(fetches, 0);
+  assert.deepEqual(result.toasts, ["Logo 已选择，将在代币创建成功后上传"]);
+});
+
+test("the selected Logo uploads exactly once when the post-receipt hook runs", async () => {
+  let fetches = 0;
+  const url = "https://bucket.s3.ap-east-1.amazonaws.com/logos/token.png";
+  const result = await exerciseLogoUpload({ name: "logo.png", size: 1024, type: "image/png", lastModified: 1 }, async () => { fetches += 1; return { ok: true, status: 200, text: async () => JSON.stringify({ data: { url } }) }; }, "session", true);
+  assert.equal(fetches, 1);
+  assert.equal(result.deferredUploadUrl, url);
+  assert.equal(result.storedUrl, url);
+});
 
 test("logo upload rejects files over 5MB locally without reading or sending them", async () => {
   let fetches = 0;
@@ -469,13 +556,15 @@ test("logo upload rejects unsupported formats locally", async () => {
 });
 
 test("logo upload converts an HTML 413 response into a clear size prompt", async () => {
-  const result = await exerciseLogoUpload({ name: "logo.jpg", size: 1024, type: "image/jpeg" }, async () => ({ ok: false, status: 413, text: async () => "<html>Request Entity Too Large</html>" }));
-  assert.deepEqual(result.toasts, ["图片不能超过 5MB，请压缩后重新选择"]);
+  const result = await exerciseLogoUpload({ name: "logo.jpg", size: 1024, type: "image/jpeg" }, async () => ({ ok: false, status: 413, text: async () => "<html>Request Entity Too Large</html>" }), "session", true);
+  assert.deepEqual(result.toasts, ["Logo 已选择，将在代币创建成功后上传"]);
+  assert.equal(result.deferredUploadError, "图片不能超过 5MB，请压缩后重新选择");
 });
 
 test("logo upload converts a network interruption into a retry prompt", async () => {
-  const result = await exerciseLogoUpload({ name: "logo.webp", size: 1024, type: "image/webp" }, async () => { throw new Error("Failed to fetch"); });
-  assert.deepEqual(result.toasts, ["网络连接中断，请检查网络后重试"]);
+  const result = await exerciseLogoUpload({ name: "logo.webp", size: 1024, type: "image/webp" }, async () => { throw new Error("Failed to fetch"); }, "session", true);
+  assert.deepEqual(result.toasts, ["Logo 已选择，将在代币创建成功后上传"]);
+  assert.equal(result.deferredUploadError, "网络连接中断，请检查网络后重试");
 });
 
 test("production upload limits and error responses stay aligned across browser, proxy, and nginx", () => {
