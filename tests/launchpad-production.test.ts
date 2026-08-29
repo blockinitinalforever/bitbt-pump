@@ -78,6 +78,51 @@ test("global Pump API failures show actionable prompts instead of raw transport 
   }
 });
 
+test("discovery, full-market on-chain stream, rankings, and holders use real APIs with local filters", async () => {
+  const tokenA = "0x1111111111111111111111111111111111111111";
+  const tokenB = "0x2222222222222222222222222222222222222222";
+  const now = Math.floor(Date.now() / 1000);
+  const tokens = [
+    { token_name: "Alpha", symbol: "ALPHA", contract_address: tokenA, creator_address: "0x3333333333333333333333333333333333333333", quote_token: "BNB", status: "bonding", submitted_at: new Date(Date.now() - 60_000).toISOString(), progress_percent: 80, current_price_quote: "0.01", total_raised_quote: "8" },
+    { token_name: "Beta", symbol: "BETA", contract_address: tokenB, creator_address: "0x4444444444444444444444444444444444444444", quote_token: "USDT", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 10, current_price_quote: "0.02", total_raised_quote: "2" },
+  ];
+  const activity = [
+    { activity_type: "buy", tx_hash: `0x${"11".repeat(32)}`, trader: "0x5555555555555555555555555555555555555555", token_address: tokenA, token_name: "Alpha", symbol: "ALPHA", quote_token: "BNB", quote_amount: "0.1", token_amount: "100", status: "success", timestamp: now },
+    { activity_type: "sell", tx_hash: `0x${"22".repeat(32)}`, trader: "0x6666666666666666666666666666666666666666", token_address: tokenB, token_name: "Beta", symbol: "BETA", quote_token: "USDT", quote_amount: "20", token_amount: "1000", status: "success", timestamp: now - 1 },
+    { activity_type: "create", tx_hash: `0x${"33".repeat(32)}`, trader: tokens[1].creator_address, token_address: tokenB, token_name: "Beta", symbol: "BETA", quote_token: "USDT", status: "deployed", timestamp: now - 2 },
+  ];
+  let marketRequests = 0;
+  let holderRequests = 0;
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/market-activity")) { marketRequests += 1; return { ok: true, json: async () => ({ data: { activity, summary: { total_tokens: 2, launches_24h: 1, trades_24h: 2 } } }) }; }
+    if (url.includes("v1/pump/holders")) { holderRequests += 1; return { ok: true, json: async () => ({ data: { holders_count: 7, top_holders: [{ address: tokens[0].creator_address, percentage: 12.5 }] } }) }; }
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: tokens }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...tokens[0], creator: tokens[0].creator_address, curve_address: "0x7777777777777777777777777777777777777777", tax_enabled: true, buy_tax_percent: 5, sell_tax_percent: 6 } }) };
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response);
+  assert.equal(window.document.querySelector("[data-market-total]")?.textContent, "2");
+  assert.equal(window.document.querySelector("[data-market-launches]")?.textContent, "1");
+  assert.equal(window.document.querySelector("[data-market-trades]")?.textContent, "2");
+  assert.equal(window.document.querySelectorAll('[data-panel="live"] .live-row').length, 3);
+  assert.equal(window.document.querySelectorAll('[data-panel="rank"] .rank-row').length, 2);
+  window.document.querySelector('[data-live-filter="buy"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.equal(window.document.querySelectorAll('[data-panel="live"] .live-row').length, 1);
+  window.document.querySelector('[data-rank-filter="latest"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.equal(marketRequests, 1, "live/rank local filters made an extra API request");
+  window.document.querySelector('[data-live-token="' + tokenA + '"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(window.document.querySelector("[data-token-tax-detail]")?.textContent, "买 5% / 卖 6%");
+  window.document.querySelector('[data-detail-tab="holders"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(holderRequests, 1);
+  assert.match(window.document.querySelector('[data-detail-panel="holders"]')?.textContent || "", /7 位持有人/);
+  assert.match(window.document.querySelector('[data-detail-panel="holders"]')?.textContent || "", /12\.50%/);
+});
+
 test("wrong quote-token contract is rejected before any provider send", async () => {
   const token = "0x1111111111111111111111111111111111111111";
   const curve = "0x2222222222222222222222222222222222222222";
