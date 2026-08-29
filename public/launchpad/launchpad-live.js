@@ -2,12 +2,88 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
-  const state = { tokens: [], tokenFilter: "trending", tokenSearch: "", liveFilter: "all", rankFilter: "progress", myLaunchFilter: "all", historyFilter: "all", details: {}, holders: {}, marketActivity: [], marketSummary: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], creatorRewards: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, balances: { quote: null, token: null, gas: null }, chartInterval: 300, busy: false, launchBusy: false, launchQuote: "BNB", launchMode: "fair", curveMode: "standard", taxEnabled: false, launchLogoUrl: "", launchSnapshot: null, launchConfirmation: null, launchTerminal: false, refreshPromise: null };
+  const state = { tokens: [], tokenFilter: "trending", tokenSearch: "", liveFilter: "all", rankFilter: "progress", myLaunchFilter: "all", historyFilter: "all", details: {}, holders: {}, marketActivity: [], marketSummary: {}, config: null, selected: null, detail: null, trades: [], myLaunches: [], history: [], creatorRewards: [], favorites: [], side: "buy", quote: null, quoteKey: "", account: "", chainId: "", sessionExpiresAt: 0, provider: null, balances: { quote: null, token: null, gas: null }, chartInterval: 300, busy: false, launchBusy: false, launchQuote: "BNB", launchMode: "fair", curveMode: "standard", taxEnabled: false, launchLogoUrl: "", launchSnapshot: null, launchConfirmation: null, launchTerminal: false, refreshPromise: null };
   const SESSION_KEY = "bitbt_pump_session";
   const SESSION_ADDRESS_KEY = "bitbt_pump_session_address";
   const LOCALE_KEY = "bitbt_pump_locale";
   const PENDING_LAUNCH_CONFIRMATION_KEY = "bitbt_pump_pending_launch_confirmation";
   const charts = new Map();
+  const announcedProviders = [];
+  const boundProviders = new Set();
+  let providerSelectionPromise = null;
+  const isEvmProvider = (provider) => { try { return Boolean(provider && typeof provider.request === "function"); } catch { return false; } };
+  const safeProviderInfo = (info) => { try { return { name: typeof info?.name === "string" ? info.name.slice(0, 80) : "EVM Wallet", rdns: typeof info?.rdns === "string" ? info.rdns.slice(0, 120) : "" }; } catch { return { name: "EVM Wallet", rdns: "" }; } };
+  const providerIdentity = (provider, info = {}) => `${info.rdns || ""} ${info.name || ""} ${provider?.isOkxWallet ? "okx" : ""} ${provider?.isOKExWallet ? "okx" : ""} ${provider?.isBinance ? "binance" : ""} ${provider?.isBinanceWallet ? "binance" : ""} ${provider?.isTokenPocket ? "tokenpocket" : ""} ${provider?.isMetaMask ? "metamask" : ""}`.toLowerCase();
+  const providerScore = (entry) => { const identity = providerIdentity(entry.provider, entry.info); if (/okx|okex/.test(identity)) return 500; if (/binance/.test(identity)) return 400; if (/tokenpocket|token pocket/.test(identity)) return 300; if (/metamask/.test(identity)) return 200; return 100; };
+  const rememberProvider = (provider, info = {}, trustedDirect = false) => {
+    if (!isEvmProvider(provider)) return;
+    const safeInfo = safeProviderInfo(info);
+    const existing = announcedProviders.find((entry) => entry.provider === provider);
+    if (existing) { existing.info = { ...existing.info, ...safeInfo }; existing.trustedDirect ||= trustedDirect; }
+    else announcedProviders.push({ provider, info: safeInfo, trustedDirect, userApproved: false });
+  };
+  const collectProviders = () => {
+    rememberProvider(window.okxwallet?.ethereum || window.okxwallet, { name: "OKX Wallet", rdns: "com.okex.wallet" }, true);
+    rememberProvider(window.BinanceChain, { name: "Binance Wallet", rdns: "com.binance.wallet" }, true);
+    rememberProvider(window.binancew3w?.ethereum || window.binancew3w, { name: "Binance Web3 Wallet", rdns: "com.binance.wallet" }, true);
+    rememberProvider(window.tokenpocket?.ethereum, { name: "TokenPocket", rdns: "pro.tokenpocket" }, true);
+    const injected = window.ethereum;
+    if (Array.isArray(injected?.providers)) injected.providers.forEach((provider) => rememberProvider(provider, {}, true));
+    rememberProvider(injected, {}, true);
+    return announcedProviders.filter((entry) => (entry.trustedDirect || entry.userApproved) && isEvmProvider(entry.provider)).sort((a, b) => providerScore(b) - providerScore(a));
+  };
+  const selectedProvider = () => {
+    const preferred = collectProviders()[0]?.provider || null;
+    if (!state.account && preferred) state.provider = preferred;
+    if (isEvmProvider(state.provider)) return state.provider;
+    state.provider = preferred;
+    return state.provider;
+  };
+  const isTrustedProvider = (provider) => { collectProviders(); return announcedProviders.some((entry) => entry.provider === provider && (entry.trustedDirect || entry.userApproved)); };
+  const requestProviderAnnouncements = () => { try { window.dispatchEvent(new window.Event("eip6963:requestProvider")); } catch {} };
+  const chooseAnnouncedProvider = () => {
+    if (providerSelectionPromise) return providerSelectionPromise;
+    const choices = announcedProviders.filter((entry) => !entry.trustedDirect && !entry.userApproved && isEvmProvider(entry.provider));
+    if (!choices.length) return Promise.reject(new Error("未检测到 EVM 钱包"));
+    providerSelectionPromise = new Promise((resolve, reject) => {
+      const overlay = document.createElement("div"); overlay.className = "wallet-provider-overlay"; overlay.setAttribute("role", "dialog"); overlay.setAttribute("aria-modal", "true"); overlay.setAttribute("aria-label", "选择 EVM 钱包");
+      const panel = document.createElement("div"); panel.className = "wallet-provider-dialog";
+      const title = document.createElement("h2"); title.textContent = "选择钱包";
+      const note = document.createElement("p"); note.textContent = "请选择你当前正在使用的钱包。只有确认后，页面才会请求连接和签名。";
+      const list = document.createElement("div"); list.className = "wallet-provider-list";
+      const cleanup = () => { overlay.remove(); providerSelectionPromise = null; };
+      choices.forEach((entry, index) => {
+        const button = document.createElement("button"); button.type = "button"; button.dataset.eip6963Provider = String(index);
+        const name = document.createElement("strong"); name.textContent = entry.info.name || "EVM Wallet";
+        const rdns = document.createElement("small"); rdns.textContent = entry.info.rdns || "EIP-6963 Provider";
+        button.append(name, rdns);
+        button.addEventListener("click", () => { entry.userApproved = true; state.provider = entry.provider; cleanup(); resolve(entry.provider); });
+        list.appendChild(button);
+      });
+      const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "wallet-provider-cancel"; cancel.textContent = "取消"; cancel.addEventListener("click", () => { cleanup(); reject(new Error("已取消钱包连接")); });
+      panel.append(title, note, list, cancel); overlay.appendChild(panel); root.appendChild(overlay); list.querySelector("button")?.focus();
+    });
+    return providerSelectionPromise;
+  };
+  const waitForProvider = async (timeout = 1500) => {
+    const immediate = selectedProvider();
+    if (immediate) return immediate;
+    requestProviderAnnouncements();
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+      const provider = selectedProvider();
+      if (provider) return provider;
+      if (Date.now() - started >= 250 && announcedProviders.some((entry) => !entry.trustedDirect && !entry.userApproved)) return chooseAnnouncedProvider();
+    }
+    if (announcedProviders.some((entry) => !entry.trustedDirect && !entry.userApproved)) return chooseAnnouncedProvider();
+    throw new Error("未检测到 EVM 钱包，请在 OKX、TokenPocket、Binance Wallet 或其他 EVM 钱包内打开");
+  };
+  window.addEventListener("eip6963:announceProvider", (event) => {
+    rememberProvider(event?.detail?.provider, event?.detail?.info || {}, false);
+    if (!state.account) state.provider = collectProviders()[0]?.provider || null;
+  });
+  requestProviderAnnouncements();
   const $ = (selector) => root.querySelector(selector);
   const $$ = (selector) => [...root.querySelectorAll(selector)];
   const text = (selector, value) => $$(selector).forEach((node) => { node.textContent = value == null || value === "" ? "—" : String(value); });
@@ -292,7 +368,7 @@
   const getFeePolicy = async () => {
     const fallbackBaseFee = 2_000_000_000n;
     try {
-      const latest = await window.ethereum.request({ method: "eth_getBlockByNumber", params: ["latest", false] });
+      const latest = await selectedProvider().request({ method: "eth_getBlockByNumber", params: ["latest", false] });
       const baseFee = latest?.baseFeePerGas ? BigInt(latest.baseFeePerGas) : 0n;
       return { maxPriorityFeePerGas: PRIORITY_FEE_WEI, maxFeePerGas: (baseFee > 0n ? baseFee * 2n : fallbackBaseFee) + PRIORITY_FEE_WEI };
     } catch {
@@ -300,14 +376,14 @@
     }
   };
   const normalizeChainId = (value) => { const normalized = String(value ?? "").trim().toLowerCase(); if (normalized === "0x38" || normalized === "56" || normalized === "bsc" || normalized === "bnb") return "0x38"; return ""; };
-  const rpc = (to, data) => window.ethereum.request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
-  const walletNativeBalance = () => window.ethereum.request({ method: "eth_getBalance", params: [state.account, "latest"] }).then((value) => BigInt(value));
+  const rpc = (to, data) => selectedProvider().request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
+  const walletNativeBalance = () => selectedProvider().request({ method: "eth_getBalance", params: [state.account, "latest"] }).then((value) => BigInt(value));
   const walletTokenBalance = (token) => rpc(token, `0x70a08231${addressWord(state.account)}`);
   const allowance = (token, owner, spender) => rpc(token, `0xdd62ed3e${addressWord(owner)}${addressWord(spender)}`);
-  const send = async (tx) => { const fee = tx.fee || await getFeePolicy(); return window.ethereum.request({ method: "eth_sendTransaction", params: [{ from: tx.from, to: tx.to, ...(tx.data ? { data: tx.data } : {}), ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), gas: `0x${tx.gas.toString(16)}`, maxPriorityFeePerGas: `0x${fee.maxPriorityFeePerGas.toString(16)}`, maxFeePerGas: `0x${fee.maxFeePerGas.toString(16)}` }] }); };
+  const send = async (tx) => { const fee = tx.fee || await getFeePolicy(); return selectedProvider().request({ method: "eth_sendTransaction", params: [{ from: tx.from, to: tx.to, ...(tx.data ? { data: tx.data } : {}), ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), gas: `0x${tx.gas.toString(16)}`, maxPriorityFeePerGas: `0x${fee.maxPriorityFeePerGas.toString(16)}`, maxFeePerGas: `0x${fee.maxFeePerGas.toString(16)}` }] }); };
   const receiptHasStatus = (receipt) => receipt != null && receipt.status !== undefined && receipt.status !== null;
   const receiptSucceeded = (receipt) => receiptHasStatus(receipt) && [true, 1, "1", "0x1", "0x01"].includes(receipt.status);
-  const waitReceipt = async (hash) => { for (let i = 0; i < 60; i += 1) { try { const receipt = await window.ethereum.request({ method: "eth_getTransactionReceipt", params: [hash] }); if (receiptHasStatus(receipt)) return receipt; } catch {} await new Promise((resolve) => window.setTimeout(resolve, 2000)); } const error = new Error("交易已广播，但链上确认较慢，请稍后在交易记录或 BscScan 查看"); error.code = "TX_CONFIRMATION_PENDING"; throw error; };
+  const waitReceipt = async (hash) => { for (let i = 0; i < 60; i += 1) { try { const receipt = await selectedProvider().request({ method: "eth_getTransactionReceipt", params: [hash] }); if (receiptHasStatus(receipt)) return receipt; } catch {} await new Promise((resolve) => window.setTimeout(resolve, 2000)); } const error = new Error("交易已广播，但链上确认较慢，请稍后在交易记录或 BscScan 查看"); error.code = "TX_CONFIRMATION_PENDING"; throw error; };
   const report = (body) => api("v1/wallet/tx/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => undefined);
   const invalidateQuote = () => { state.quote = null; state.quoteKey = ""; text("[data-quote-output], [data-quote-min], [data-quote-route]", "—"); text("[data-quote-fee], [data-protocol-fee]", "等待报价"); text("[data-price-impact]", "API 未提供"); };
   const clearLaunchReview = () => { text("[data-preview-name], [data-preview-ticker], [data-launch-review-chain], [data-launch-review-name], [data-launch-review-mode], [data-launch-review-quote], [data-launch-review-quote-address], [data-launch-review-curve], [data-launch-review-threshold], [data-launch-review-fee], [data-launch-review-recipient], [data-launch-review-factory], [data-launch-review-id], [data-launch-review-salt], [data-launch-review-predicted], [data-launch-review-description]", "—"); text("[data-preview-symbol]", "—"); const publishButton = $("[data-launch-publish]"); if (publishButton) { publishButton.disabled = true; publishButton.setAttribute("disabled", ""); publishButton.textContent = state.launchTerminal ? "发币流程已结束" : "正在自动准备发币参数…"; } };
@@ -325,8 +401,9 @@
       const session = await api("v1/auth/siwe/session");
       const sessionAddress = String(session.address || "").toLowerCase();
       if (!/^0x[0-9a-f]{40}$/.test(sessionAddress)) throw new Error("SIWE session address is invalid");
-      const accounts = window.ethereum ? await window.ethereum.request({ method: "eth_accounts" }) : [];
-      const chainId = window.ethereum ? await window.ethereum.request({ method: "eth_chainId" }) : "";
+      const provider = selectedProvider();
+      const accounts = provider ? await provider.request({ method: "eth_accounts" }) : [];
+      const chainId = provider ? await provider.request({ method: "eth_chainId" }) : "";
       const providerAddress = String(accounts?.[0] || "").toLowerCase();
       const normalizedChain = normalizeChainId(chainId);
       if (providerAddress && providerAddress !== sessionAddress) { resetProviderState("钱包账户已变化，请重新连接"); return false; }
@@ -345,7 +422,7 @@
       return false;
     }
   };
-  const assertProviderState = async () => { if (!window.ethereum || !state.account) throw new Error("请先连接并验证钱包"); const [accounts, chainId] = await Promise.all([window.ethereum.request({ method: "eth_accounts" }), window.ethereum.request({ method: "eth_chainId" })]); const account = String(accounts?.[0] || "").toLowerCase(); const normalizedChain = normalizeChainId(chainId); if (account !== state.account || normalizedChain !== "0x38") { resetProviderState(); throw new Error("钱包账户或网络已变化，请重新连接 BSC 钱包"); } state.chainId = normalizedChain; return { account, chainId: state.chainId }; };
+  const assertProviderState = async () => { const provider = selectedProvider(); if (!provider || !state.account) throw new Error("请先连接并验证钱包"); const [accounts, chainId] = await Promise.all([provider.request({ method: "eth_accounts" }), provider.request({ method: "eth_chainId" })]); const account = String(accounts?.[0] || "").toLowerCase(); const normalizedChain = normalizeChainId(chainId); if (account !== state.account || normalizedChain !== "0x38") { resetProviderState(); throw new Error("钱包账户或网络已变化，请重新连接 BSC 钱包"); } state.chainId = normalizedChain; return { account, chainId: state.chainId }; };
   const revalidateSession = async () => {
     if (!state.account || !sessionStorage.getItem(SESSION_KEY)) return;
     if (state.sessionExpiresAt && Date.now() >= state.sessionExpiresAt) { resetProviderState("登录已过期，请重新连接钱包"); return; }
@@ -360,18 +437,19 @@
       if (error?.message?.includes("钱包账户或网络已变化")) return;
     }
   };
-  const bindProviderEvents = () => { if (window.ethereum?.on) { window.ethereum.on("accountsChanged", (accounts) => { const next = String(accounts?.[0] || "").toLowerCase(); if (!next) { window.setTimeout(() => { void restoreSession(); }, 350); return; } if (state.account && next === state.account) return; resetProviderState(); }); window.ethereum.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); } window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
+  const bindSelectedProviderEvents = (provider) => { if (!provider?.on || boundProviders.has(provider)) return; boundProviders.add(provider); provider.on("accountsChanged", (accounts) => { const next = String(accounts?.[0] || "").toLowerCase(); if (!next) { window.setTimeout(() => { void restoreSession(); }, 350); return; } if (state.account && next === state.account) return; resetProviderState(); }); provider.on("chainChanged", () => resetProviderState("网络已变化，请重新连接 BSC")); };
+  const bindProviderEvents = () => { const provider = selectedProvider(); if (provider) bindSelectedProviderEvents(provider); window.addEventListener("eip6963:announceProvider", (event) => { if (isTrustedProvider(event?.detail?.provider)) bindSelectedProviderEvents(event.detail.provider); }); window.addEventListener("focus", () => { void revalidateSession(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void revalidateSession(); }); };
   const connectWallet = async () => {
-    if (!window.ethereum) throw new Error("未检测到 EVM 钱包");
-    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }); const address = accounts?.[0]; if (!address) throw new Error("钱包未返回账户");
-    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+    const provider = await waitForProvider(); state.provider = provider; bindSelectedProviderEvents(provider);
+    const accounts = await provider.request({ method: "eth_requestAccounts" }); const address = accounts?.[0]; if (!address) throw new Error("钱包未返回账户");
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
     const noncePayload = await api("v1/auth/siwe/nonce"); const domain = String(noncePayload.domain || "").toLowerCase(); if (domain !== "bitbt.fun") throw new Error("SIWE domain 不受信任");
     const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: 56\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
-    const signature = await window.ethereum.request({ method: "personal_sign", params: [message, address] }); const verified = await api("v1/auth/siwe/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
+    const signature = await provider.request({ method: "personal_sign", params: [message, address] }); const verified = await api("v1/auth/siwe/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
     sessionStorage.setItem(SESSION_KEY, verified.token); state.account = String(verified.address || address).toLowerCase(); sessionStorage.setItem(SESSION_ADDRESS_KEY, state.account); state.chainId = "0x38"; state.sessionExpiresAt = Date.now() + Number(verified.expires_in || 3600) * 1000; setLaunchAvailability(true); invalidateQuote(); renderWalletState(); await assertProviderState(); await refreshBalances(); await loadUserPanels().catch(() => undefined); toast("钱包已连接"); return state.account;
   };
   const refreshBalances = async () => {
-    if (!state.account || !state.detail || !window.ethereum) return;
+    if (!state.account || !state.detail || !selectedProvider()) return;
     const quote = state.detail.quote_token_address || quoteAddress(state.detail.quote_token);
     const [gas, token, quoteBalance] = await Promise.all([walletNativeBalance(), walletTokenBalance(tokenAddress(state.selected)), quote ? walletTokenBalance(quote) : walletNativeBalance()]);
     state.balances = { gas, token, quote: quoteBalance };
@@ -510,7 +588,7 @@
     const estimateTx = { from, to, data, value: `0x${value.toString(16)}`, maxPriorityFeePerGas: `0x${fee.maxPriorityFeePerGas.toString(16)}`, maxFeePerGas: `0x${fee.maxFeePerGas.toString(16)}` };
     let estimatedGas;
     try {
-      estimatedGas = BigInt(await window.ethereum.request({ method: "eth_estimateGas", params: [estimateTx] }));
+      estimatedGas = BigInt(await selectedProvider().request({ method: "eth_estimateGas", params: [estimateTx] }));
     } catch (error) {
       const message = String(error?.message || error?.data?.message || error?.data?.originalError?.message || "");
       if (/Address must end with 8888|CREATE2 failed/i.test(message)) throw new Error("发币参数与链上 Factory 不一致，请重新加载发币参数");
@@ -651,7 +729,7 @@
       return snapshot;
     }
     const { fee, prepared } = snapshot; assertLaunchBinding(fee, prepared, address, name, symbol, quote, tax); if (snapshot.name !== name || snapshot.symbol !== symbol || snapshot.quote !== quote || snapshot.address !== address || snapshot.description !== description || snapshot.formKey !== formKey || snapshot.logoSelectionKey !== logoSelectionKey) { invalidateLaunchSnapshot(); throw new Error("发币确认快照已过期，请重新加载"); }
-    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); await assertProviderState(); const accounts = await window.ethereum.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
+    const provider = selectedProvider(); await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); await assertProviderState(); const accounts = await provider.request({ method: "eth_accounts" }); if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
     const launchData = encodeLaunch(prepared, tax); const launchValue = BigInt(fee.fee_wei); let preflight; try { preflight = await launchPreflight({ from: address, to: prepared.factory_address, data: launchData, value: launchValue }); } catch (error) { if (/发币参数与链上 Factory 不一致/.test(String(error?.message || ""))) { invalidateLaunchSnapshot(true); await launchTokenSingleFlight(); toast("链上 Factory 状态已变化，参数已自动更新，请重新核对后发布"); return; } throw error; }
     let hash;
     try {

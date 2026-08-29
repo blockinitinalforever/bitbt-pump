@@ -1,12 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-type WalletProvider = {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-  on?: (event: string, handler: (...args: unknown[]) => void) => void;
-  removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
-};
+import { getInjectedEvmProvider } from "@/lib/evm-provider";
 function buildSiweMessage(domain: string, address: string, nonce: string) {
   return `${domain} wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://${domain}\nVersion: 1\nChain ID: 56\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
 }
@@ -27,7 +22,7 @@ export default function PumpWalletConnect({ compact = false, onConnected }: { co
   }, [onConnected]);
 
   useEffect(() => {
-    const provider = (window as Window & { ethereum?: WalletProvider }).ethereum;
+    const provider = getInjectedEvmProvider();
     const syncAddress = (nextAddress?: string) => {
       const normalized = nextAddress?.toLowerCase() || "";
       if (syncedAddressRef.current === normalized) return;
@@ -54,7 +49,7 @@ export default function PumpWalletConnect({ compact = false, onConnected }: { co
 
   const connect = async () => {
     setError(undefined);
-    const provider = (window as Window & { ethereum?: WalletProvider }).ethereum;
+    const provider = getInjectedEvmProvider();
     if (!provider) { setError("No EVM wallet detected"); return; }
     setBusy(true);
     try {

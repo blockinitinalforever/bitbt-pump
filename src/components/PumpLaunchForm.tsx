@@ -14,16 +14,7 @@ import {
   assertPreparedLaunchBinding,
   encodeLaunchTokenData,
 } from "@/lib/pump-launch";
-
-type EvmProvider = {
-  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
-};
-
-declare global {
-  interface Window {
-    ethereum?: EvmProvider;
-  }
-}
+import { getInjectedEvmProvider, type EvmProvider } from "@/lib/evm-provider";
 
 const GAS_LIMIT = "0x3567e0";
 
@@ -78,7 +69,7 @@ export default function PumpLaunchForm({ zh }: { zh: boolean }) {
     setError("");
     setPrepared(undefined);
     setTxHash("");
-    const provider = window.ethereum;
+    const provider = getInjectedEvmProvider();
     if (!provider || !address)
       throw new Error(
         zh ? "请先连接 BNB Chain 钱包" : "Connect a BNB Chain wallet first",
