@@ -489,7 +489,9 @@ test("Pump static shells expose the official Website favicon and contact channel
     assert.match(document, /rel="apple-touch-icon"/);
   }
   for (const marker of ["https://bitbt.com", "mailto:support@bitbt.com", "https://t.me/BitBTVentures", "https://x.com/0xcryptolin", "@BitBTVentures", "@0xcryptolin"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(html, /data-official-contacts/);
+  assert.match(html, /data-global-official-contacts/);
+  assert.ok(html.indexOf("data-global-official-contacts") < html.indexOf('class="screen-switcher"'), "official contacts must be global rather than scoped to one screen");
+  for (const marker of [".official-contact-bar{", "overflow-x:auto", "scroll-snap-type:x proximity", ".official-contact-bar strong{display:none}", "calc(100dvh - 155px)"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("clicking the visible logo button opens the hidden native file input", () => {

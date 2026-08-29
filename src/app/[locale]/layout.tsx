@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   title: "BitBT Pump",
   description:
     "Building Long-Term Value for the Next Generation of AI & Web3 Innovation",
+  icons: {
+    icon: [{ url: "/icon.svg?v=20260829", type: "image/svg+xml" }],
+    shortcut: "/icon.svg?v=20260829",
+    apple: "/launchpad/assets/app-icons/pwa/bitbt-180.png?v=20260829",
+  },
 };
 
 export default async function LocaleLayout({
