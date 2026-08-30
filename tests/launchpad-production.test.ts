@@ -16,6 +16,7 @@ const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
+const deployScript = fs.readFileSync(path.join(root, "deploy/deploy-server.sh"), "utf8");
 
 type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
 
@@ -941,13 +942,21 @@ test("production upload limits and error responses stay aligned across browser, 
 test("every locale-relative Launchpad script has an executable public rewrite", () => {
   assert.match(nextConfig, /source: "\/pump\/:address"/);
   assert.match(nextConfig, /source: "\/pump"/);
-  assert.match(nextConfig, /\/:locale\/pump\/:address/);
+  assert.match(nextConfig, /\/:locale\(en\|zh\)\/pump\/:address/);
+  assert.doesNotMatch(nextConfig, /source: "\/:locale\/pump/);
   assert.match(shell, /src="\/launchpad\/bitbt-launch-ui-app\.html"/);
   assert.match(html, /<base href="\/launchpad\/">/);
   for (const script of ["launch-logo-upload.js", "launchpad-live.js"]) {
     assert.match(html, new RegExp(`<script src="\\./${script.replaceAll(".", "\\.")}">`));
     assert.match(nextConfig, new RegExp(`/:locale/${script.replaceAll(".", "\\.")}`));
   }
+});
+
+test("WalletConnect config route cannot collide with a locale Pump rewrite", () => {
+  assert.match(nextConfig, /source: "\/:locale\(en\|zh\)\/pump\/:address"/);
+  assert.doesNotMatch(nextConfig, /source: "\/:locale\/pump\/:address"/);
+  assert.match(deployScript, /walletConnectProjectId/);
+  assert.match(deployScript, /WalletConnect project configuration is unavailable or invalid/);
 });
 
 test("canonical Pump routes are locale-free and legacy locale URLs redirect", () => {

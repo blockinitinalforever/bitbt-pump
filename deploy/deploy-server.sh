@@ -49,7 +49,18 @@ sudo systemctl reload nginx
 sleep 3
 systemctl is-active --quiet bitbt-pump-web
 curl -fsS http://127.0.0.1:3003/en/pump >/dev/null
-curl -fsS http://127.0.0.1:3003/api/pump/wallet-config >/dev/null
+curl -fsS http://127.0.0.1:3003/api/pump/wallet-config | node -e '
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  const payload = JSON.parse(input);
+  const projectId = payload?.data?.walletConnectProjectId;
+  if (payload?.success !== true || typeof projectId !== "string" || !/^[a-zA-Z0-9_-]{32,128}$/.test(projectId)) {
+    throw new Error("WalletConnect project configuration is unavailable or invalid");
+  }
+});
+'
 curl -fsS https://bitbt.fun/api/pump/v1/pump/tokens >/dev/null
 
 mapfile -t PUMP_OLD_RELEASES < <(
