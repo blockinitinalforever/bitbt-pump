@@ -15,7 +15,7 @@ const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -39,7 +39,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   let currentChainId = options.chainId ?? "0x38";
   let sendRejectsRemaining = options.sendRejects ?? 0;
   let estimateRejectsRemaining = options.estimateRejects ?? 0;
-  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return currentChainId; if (method === "wallet_switchEthereumChain") { currentChainId = String(params?.[0]?.chainId || currentChainId); return null; } if (method === "personal_sign") return "0xsigned"; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
+  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return currentChainId; if (method === "wallet_switchEthereumChain") { currentChainId = String(params?.[0]?.chainId || currentChainId); return null; } if (method === "personal_sign") return "0xsigned"; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_call") return `0x${(options.tokenBalance ?? 0n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return options.receiptPromise ? await options.receiptPromise : { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
   const untrustedProvider = { request: async ({ method }: { method: string }) => { untrustedProviderCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return ["0x9999999999999999999999999999999999999999"]; if (method === "eth_chainId") return "0x38"; if (method === "wallet_switchEthereumChain") return null; if (method === "personal_sign") return "0xattacker"; throw new Error(`unexpected untrusted provider call: ${method}`); }, on: () => undefined };
   Object.defineProperty(window, "location", { configurable: true, value: location });
   Object.defineProperty(window, "history", { configurable: true, value: history });
@@ -186,6 +186,58 @@ test("native BNB quote accepts API chain aliases and keeps exact zero-sentinel b
   assert.notEqual((window.document.querySelector("[data-quote-output]")?.textContent || "").trim(), "—");
   assert.equal(providerCalls.includes("eth_sendTransaction"), false);
   assert.ok(chartData.flat().every((point) => Object.values(point as Record<string, unknown>).every((value) => typeof value !== "number" || Number.isFinite(value))));
+});
+
+test("a broadcast trade keeps its original wallet, side, and token metadata after UI selection changes", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const tokenA = "0x2222222222222222222222222222222222222222";
+  const tokenB = "0x3333333333333333333333333333333333333333";
+  const curveA = "0x4444444444444444444444444444444444444444";
+  const curveB = "0x5555555555555555555555555555555555555555";
+  const tokens = [
+    { token_name: "Alpha", symbol: "ALPHA", contract_address: tokenA, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1 },
+    { token_name: "Beta", symbol: "BETA", contract_address: tokenB, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 2 },
+  ];
+  let resolveReceipt: (value: unknown) => void = () => undefined;
+  const receiptPromise = new Promise<unknown>((resolve) => { resolveReceipt = resolve; });
+  const reports: Array<Record<string, unknown>> = [];
+  const response = async (input: string, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: tokens }) };
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/pump/detail")) { const beta = url.toLowerCase().includes(tokenB); return { ok: true, json: async () => ({ data: { ...(beta ? tokens[1] : tokens[0]), quote_token_address: null, curve_address: beta ? curveB : curveA } }) }; }
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("buy-quote")) { const beta = url.toLowerCase().includes(tokenB); return { ok: true, json: async () => ({ data: { token_address: beta ? tokenB : tokenA, curve_address: beta ? curveB : curveA, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: beta ? "q-beta" : "q-alpha", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200 } }) }; }
+    if (url.includes("v1/wallet/tx/report")) { reports.push(JSON.parse(String(init?.body || "{}"))); return { ok: true, json: async () => ({ data: { accepted: true } }) }; }
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window, providerCalls } = await boot(response, { account, session: { token: "session", address: account }, receiptPromise });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const input = window.document.querySelector("#trade-amount") as HTMLInputElement;
+  input.value = "0.001";
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  window.document.querySelector("#trade-submit")?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  for (let attempt = 0; attempt < 20 && !providerCalls.includes("eth_getTransactionReceipt"); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.ok(providerCalls.includes("eth_getTransactionReceipt"), "trade was not broadcast before the UI selection changed");
+  window.document.querySelector(`[data-live-token="${tokenB}"]`)?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(window.document.querySelector("[data-active-symbol]")?.textContent, "BETA");
+  resolveReceipt({ status: "0x1" });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const tradeReports = reports.filter((report) => report.tx_type === "pump_buy");
+  assert.deepEqual(tradeReports.map((report) => report.status), ["pending", "success"]);
+  for (const report of tradeReports) {
+    assert.equal(report.user_address, account);
+    assert.equal(report.from_token, "BNB");
+    assert.equal(report.to_token, "ALPHA");
+    assert.equal((report.metadata as Record<string, unknown>).token_address, tokenA);
+    assert.equal((report.metadata as Record<string, unknown>).curve_address, curveA);
+  }
 });
 
 test("token details use a canonical address URL and copy the full contract address", async () => {
@@ -512,17 +564,50 @@ test("bridge contains provider-state, session-expiry, non-zero launch, and quote
 
 test("a valid SIWE session restores the wallet label after a page refresh", async () => {
   const account = "0x1111111111111111111111111111111111111111";
+  let resolveActivity: (value: unknown) => void = () => undefined;
+  const delayedActivity = new Promise<unknown>((resolve) => { resolveActivity = resolve; });
   const response = async (input: string) => {
     const url = String(input);
     if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return delayedActivity;
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
-  const { window, providerEvents } = await boot(response, { account, session: { token: "session", address: account } });
+  const { window, providerEvents, storage } = await boot(response, { account, session: { token: "session", address: account } });
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
   providerEvents.accountsChanged?.([account]);
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  providerEvents.accountsChanged?.(["0x2222222222222222222222222222222222222222"]);
+  assert.equal(window.document.querySelector(".connect-global")?.textContent, "连接钱包");
+  resolveActivity({ ok: true, json: async () => ({ data: { activity: [{ token_name: "STALE ACCOUNT TRADE" }], launches: [{ token_name: "STALE ACCOUNT TOKEN" }], creator_rewards: [{ status: "accrued", amount_wei: "1" }], summary: {} } }) });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.doesNotMatch(window.document.body.textContent || "", /STALE ACCOUNT/);
+  assert.equal(storage.has("bitbt_pump_session"), false);
+});
+
+test("BNB balance refresh reuses one native-balance request per token-balance request", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const token = "0x2222222222222222222222222222222222222222";
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [{ token_name: "Alpha", symbol: "ALPHA", contract_address: token, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1 }] }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { symbol: "ALPHA", quote_token: "BNB", quote_token_address: null, curve_address: "0x3333333333333333333333333333333333333333", progress_percent: 1 } }) };
+    if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { providerCalls } = await boot(response, { account, session: { token: "session", address: account }, tokenBalance: 10n ** 18n });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const nativeReads = providerCalls.filter((method) => method === "eth_getBalance").length;
+  const tokenReads = providerCalls.filter((method) => method === "eth_call").length;
+  assert.ok(nativeReads > 0, "native BNB balance was not loaded");
+  assert.equal(nativeReads, tokenReads, "BNB quote balance made a duplicate eth_getBalance request");
 });
 
 test("OKX, TokenPocket, and Binance Wallet connect on BSC without redundant switching and switch once from another chain", async () => {
@@ -668,7 +753,7 @@ test("production wallet bridge applies the fixed 0.05 Gwei policy and normalizes
   assert.match(bridge, /status: ok \? "success" : "failed"/);
   assert.match(bridge, /\[true, 1, "1", "0x1", "0x01"\]\.includes\(receipt\.status\)/);
   assert.match(bridge, /receipt\.status !== undefined && receipt\.status !== null/);
-  assert.match(bridge, /const send = async \(tx\)/);
+  assert.match(bridge, /const send = async \(tx, provider = selectedProvider\(\)\)/);
   assert.doesNotMatch(bridge, /launchTokenSingleFlight[\\s\\S]*eth_sendTransaction/);
 });
 
