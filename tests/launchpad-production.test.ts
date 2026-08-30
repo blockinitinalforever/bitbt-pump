@@ -103,8 +103,8 @@ test("discovery, full-market on-chain stream, rankings, and holders use real API
   const tokenB = "0x2222222222222222222222222222222222222222";
   const now = Math.floor(Date.now() / 1000);
   const tokens = [
-    { token_name: "Alpha", symbol: "ALPHA", contract_address: tokenA, creator_address: "0x3333333333333333333333333333333333333333", quote_token: "BNB", status: "bonding", submitted_at: new Date(Date.now() - 60_000).toISOString(), progress_percent: 80, current_price_quote: "0.01", total_raised_quote: "8" },
-    { token_name: "Beta", symbol: "BETA", contract_address: tokenB, creator_address: "0x4444444444444444444444444444444444444444", quote_token: "USDT", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 10, current_price_quote: "0.02", total_raised_quote: "2" },
+    { token_name: "Alpha", symbol: "ALPHA", contract_address: tokenA, creator_address: "0x3333333333333333333333333333333333333333", quote_token: "BNB", classification: "Meme", tax_enabled: true, status: "bonding", submitted_at: new Date(Date.now() - 60_000).toISOString(), progress_percent: 80, current_price_quote: "0.01", total_raised_quote: "8", trade_count_5m: 1, trade_count_24h: 8, volume_quote_5m: "1", volume_quote_24h: "10", price_change_5m_percent: 1, price_change_24h_percent: 20 },
+    { token_name: "Beta", symbol: "BETA", contract_address: tokenB, creator_address: "0x4444444444444444444444444444444444444444", quote_token: "USDT", classification: "AI", tax_enabled: false, status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 10, current_price_quote: "0.02", total_raised_quote: "2", trade_count_5m: 3, trade_count_24h: 4, volume_quote_5m: "2", volume_quote_24h: "5", price_change_5m_percent: 9, price_change_24h_percent: 2 },
   ];
   const activity = [
     { activity_type: "buy", tx_hash: `0x${"11".repeat(32)}`, trader: "0x5555555555555555555555555555555555555555", token_address: tokenA, token_name: "Alpha", symbol: "ALPHA", quote_token: "BNB", quote_amount: "0.1", token_amount: "100", status: "success", timestamp: now },
@@ -131,7 +131,21 @@ test("discovery, full-market on-chain stream, rankings, and holders use real API
   assert.equal(window.document.querySelectorAll('[data-panel="rank"] .rank-row').length, 2);
   window.document.querySelector('[data-live-filter="buy"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.equal(window.document.querySelectorAll('[data-panel="live"] .live-row').length, 1);
-  window.document.querySelector('[data-rank-filter="latest"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  window.document.querySelector('[data-live-filter="create"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.equal(window.document.querySelectorAll('[data-panel="live"] .live-row').length, 1);
+  const quoteFilter = window.document.querySelector('[data-market-quote-filter]') as HTMLSelectElement;
+  quoteFilter.querySelector('option[value="all"]')?.removeAttribute("selected");
+  quoteFilter.querySelector('option[value="usdt"]')?.setAttribute("selected", "selected");
+  quoteFilter.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(window.document.querySelectorAll('[data-panel="discover"] .token-card').length, 1);
+  assert.match(window.document.querySelector('[data-panel="discover"] .token-card')?.textContent || "", /BETA/);
+  quoteFilter.querySelector('option[value="usdt"]')?.removeAttribute("selected");
+  quoteFilter.querySelector('option[value="all"]')?.setAttribute("selected", "selected");
+  quoteFilter.dispatchEvent(new window.Event("change", { bubbles: true }));
+  window.document.querySelector('[data-rank-filter="volume"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  window.document.querySelector('[data-rank-window="5m"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /BETA/);
+  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /5M 3 笔/);
   assert.equal(marketRequests, 1, "live/rank local filters made an extra API request");
   window.document.querySelector('[data-live-token="' + tokenA + '"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -974,6 +988,9 @@ test("token filters sort the already-loaded list locally without another token-l
   assert.match(bridge, /state\.tokenFilter/);
   assert.match(bridge, /renderTokens\(\);/);
   assert.doesNotMatch(bridge, /data-token-filter[\\s\\S]{0,1000}api\(/);
+  for (const marker of ["data-market-quote-filter", "data-market-category-filter", "data-market-type-filter", "data-rank-window=\"5m\"", "data-live-filter=\"create\""]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(bridge, /marketMetric/);
+  assert.match(bridge, /bindMarketSelect/);
 });
 
 test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {
