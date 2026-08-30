@@ -8,6 +8,13 @@ BITBT_PUMP_API_URL=https://appbackend.bitbt.com \
 npm run build
 ```
 
+WalletConnect uses the public Reown/WalletConnect project ID already exposed by the independent
+BitBT API capability endpoint. A server-local override may be stored in
+`/etc/bitbt-pump-web.env` as `WALLETCONNECT_PROJECT_ID=...`. Allow `https://bitbt.fun` in the
+selected project's origin allowlist. The ID is intentionally returned to the browser by the
+same-origin `/api/pump/wallet-config` endpoint; private RPC/API credentials must never be put in
+this environment variable.
+
 Upload `.next/standalone/`, `.next/static/`, and `public/` to the release directory. The
 systemd unit expects the standalone entrypoint at `current/server.js` and fails fast if it
 is missing. The Nginx TLS configuration assumes the Let's Encrypt certificate for
