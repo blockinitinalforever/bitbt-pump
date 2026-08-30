@@ -19,6 +19,7 @@
 
 # production
 /build
+/public/launchpad/walletconnect-provider.js
 
 # misc
 .DS_Store

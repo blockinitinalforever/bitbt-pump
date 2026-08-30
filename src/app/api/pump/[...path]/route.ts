@@ -7,6 +7,17 @@ const SIWE_REQUIRED_ENDPOINTS = new Set([
   "v1/token/prepare-launch",
   "v1/token/launch",
   "v1/pump/wallet-activity",
+  "v1/pump/comments",
+  "v1/pump/alerts",
+  "v1/pump/referral",
+  "v1/pump/campaigns",
+  "v1/pump/kol",
+]);
+const SIWE_REQUIRED_READ_ENDPOINTS = new Set([
+  "v1/pump/wallet-activity",
+  "v1/pump/alerts",
+  "v1/pump/referral",
+  "v1/pump/kol",
 ]);
 const ALLOWED = new Set([
   "v1/auth/siwe/nonce",
@@ -19,9 +30,20 @@ const ALLOWED = new Set([
   "v1/pump/buy-quote",
   "v1/pump/sell-quote",
   "v1/pump/trades",
+  "v1/pump/market",
+  "v1/pump/candles",
+  "v1/pump/migration-proof",
   "v1/pump/market-activity",
   "v1/pump/holders",
   "v1/pump/wallet-activity",
+  "v1/pump/economics/config",
+  "v1/pump/comments",
+  "v1/pump/alerts",
+  "v1/pump/name-check",
+  "v1/pump/points",
+  "v1/pump/referral",
+  "v1/pump/campaigns",
+  "v1/pump/kol",
   "v1/wallet/tx/report",
   "v1/wallet/tx/history",
   "v1/market/favorites",
@@ -35,7 +57,9 @@ const ALLOWED = new Set([
 async function forward(request: NextRequest, path: string[]) {
   const key = path.join("/");
   if (!ALLOWED.has(key)) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (SIWE_REQUIRED_ENDPOINTS.has(key) && !request.headers.get("authorization")?.startsWith("Bearer ")) {
+  const writeRequest = request.method !== "GET" && request.method !== "HEAD";
+  const requiresSiwe = SIWE_REQUIRED_ENDPOINTS.has(key) && (writeRequest || SIWE_REQUIRED_READ_ENDPOINTS.has(key));
+  if (requiresSiwe && !request.headers.get("authorization")?.startsWith("Bearer ")) {
     return NextResponse.json({ success: false, error: "SIWE session required for this operation" }, { status: 401, headers: { "cache-control": "no-store" } });
   }
   if (key === "v1/upload/image") {
@@ -107,6 +131,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  return forward(request, (await context.params).path);
+}
+
+export async function DELETE(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return forward(request, (await context.params).path);
 }
 

@@ -10,12 +10,14 @@ const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-a
 const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
+const walletConnectBridge = fs.readFileSync(path.join(root, "src/client/walletconnect-provider.ts"), "utf8");
+const walletConfigRoute = fs.readFileSync(path.join(root, "src/app/api/pump/wallet-config/route.ts"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
 const proxy = fs.readFileSync(path.join(root, "src/app/api/pump/[...path]/route.ts"), "utf8");
 const edgeProxy = fs.readFileSync(path.join(root, "src/proxy.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963"; maliciousAnnouncement?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
@@ -59,17 +61,18 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const providerGlobals = providerTarget === "okxwallet" ? { okxwallet: ethereum }
     : providerTarget === "binance" ? { BinanceChain: ethereum }
       : providerTarget === "tokenpocket" ? { tokenpocket: { ethereum } }
-        : providerTarget === "eip6963" || providerTarget === "parent-okxwallet" ? {}
+        : providerTarget === "eip6963" || providerTarget === "parent-okxwallet" || providerTarget === "none" ? {}
           : { ethereum };
   if (providerTarget === "parent-okxwallet") (window.parent as Window & { okxwallet?: unknown }).okxwallet = ethereum;
   if (providerTarget === "eip6963") window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "EIP Wallet", rdns: "wallet.example" }, provider: ethereum } })));
+  if (options.walletConnect) Object.defineProperty(window, "BitBTWalletConnect", { configurable: true, value: { getProvider: async () => Object.assign(ethereum, { isWalletConnect: true, connected: false, connect: async () => undefined }) } });
   if (options.maliciousAnnouncement) window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "OKX Wallet", rdns: "com.okex.wallet" }, provider: untrustedProvider } })));
   const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   const windowContext = { ...context };
   delete windowContext.history;
   delete windowContext.location;
   delete windowContext.navigator;
-  Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), timeScale: () => ({ fitContent: () => undefined }) }) } });
+  Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), addHistogramSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), priceScale: () => ({ applyOptions: () => undefined }) }), applyOptions: () => undefined, remove: () => undefined, timeScale: () => ({ fitContent: () => undefined }) }) } });
   vm.runInNewContext(bridge, context);
   await new Promise((resolve) => setTimeout(resolve, 20));
   return { window, providerCalls, untrustedProviderCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites, storage };
@@ -113,7 +116,7 @@ test("discovery, full-market on-chain stream, rankings, and holders use real API
     const url = String(input);
     if (url.includes("v1/pump/market-activity")) { marketRequests += 1; return { ok: true, json: async () => ({ data: { activity, summary: { total_tokens: 2, launches_24h: 1, trades_24h: 2 } } }) }; }
     if (url.includes("v1/pump/holders")) { holderRequests += 1; return { ok: true, json: async () => ({ data: { holders_count: 7, top_holders: [{ address: tokens[0].creator_address, percentage: 12.5 }] } }) }; }
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: tokens }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: tokens }) };
     if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...tokens[0], creator: tokens[0].creator_address, curve_address: "0x7777777777777777777777777777777777777777", tax_enabled: true, buy_tax_percent: 5, sell_tax_percent: 6 } }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
@@ -152,7 +155,7 @@ test("wrong quote-token contract is rejected before any provider send", async ()
   const wrongQuote = "0x4444444444444444444444444444444444444444";
   const response = async (input: string) => {
     const url = String(input);
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [{ token_name: "Real", symbol: "REAL", contract_address: token, quote_token: "USDT", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1, current_price_quote: "1", total_raised_quote: "1" }] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [{ token_name: "Real", symbol: "REAL", contract_address: token, quote_token: "USDT", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1, current_price_quote: "1", total_raised_quote: "1" }] }) };
     if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { symbol: "REAL", quote_token: "USDT", quote_token_address: expectedQuote, curve_address: curve, progress_percent: 1, current_price_quote: "1", total_raised_quote: "1" } }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "USDT", quote_token_address: wrongQuote, chain_id: "0x38", quote_id: "q1", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "100", min_out: "98", slippage_bps: 200 } }) };
@@ -172,7 +175,7 @@ test("native BNB quote accepts API chain aliases and keeps exact zero-sentinel b
   const curve = "0x2222222222222222222222222222222222222222";
   const response = async (input: string) => {
     const url = String(input);
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [{ token_name: "Real", symbol: "REAL", contract_address: token, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1 }] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [{ token_name: "Real", symbol: "REAL", contract_address: token, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1 }] }) };
     if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { symbol: "REAL", quote_token: "BNB", quote_token_address: null, curve_address: curve, progress_percent: 1 } }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [{ quote_amount: "1000000000000000000", token_amount: "100000000000000000000000000000000000000", timestamp: Date.now() }] }) };
     if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "bsc", quote_id: "q-bnb", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "100", min_out: "98", slippage_bps: 200 } }) };
@@ -206,7 +209,7 @@ test("a broadcast trade keeps its original wallet, side, and token metadata afte
     if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
     if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: tokens }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: tokens }) };
     if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     if (url.includes("v1/pump/detail")) { const beta = url.toLowerCase().includes(tokenB); return { ok: true, json: async () => ({ data: { ...(beta ? tokens[1] : tokens[0]), quote_token_address: null, curve_address: beta ? curveB : curveA } }) }; }
@@ -247,7 +250,7 @@ test("token details use a canonical address URL and copy the full contract addre
   const response = async (input: string) => {
     const url = String(input);
     if (url.includes("v1/pump/detail?")) return { ok: true, json: async () => ({ data: fixture }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [fixture] }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
@@ -278,13 +281,15 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
   const response = async (input: string) => {
     const url = String(input);
     if (url.includes("v1/pump/detail?")) return { ok: true, json: async () => ({ data: fixture }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [fixture] }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: trades }) };
+    if (url.includes("v1/pump/candles")) return { ok: true, json: async () => ({ data: [{ open_time: now - 60, open: "0.000000000000000305", high: "0.000000000000000305", low: "0.000000000000000305", close: "0.000000000000000305", volume_quote: "0.1" }, { open_time: now, open: "0.000000000000000305", high: "0.000000000000000305", low: "0.000000000000000305", close: "0.000000000000000305", volume_quote: "0.05" }] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "q-real", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_quote: "0.01", fee_rate_percent: "1.000000%" } }) };
     throw new Error(`unmocked ${url}`);
   };
   const app = await boot(response, { pathname: "/launchpad/bitbt-launch-ui-app.html", parentPathname: `/pump/${token}` });
+  for (let attempt = 0; attempt < 20 && app.window.document.querySelector("[data-active-price]")?.textContent === "—"; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(app.window.document.querySelector("[data-active-image]")?.getAttribute("src"), logo);
   assert.match(app.window.document.querySelector("[data-active-price]")?.textContent || "", /0\.000000000000000305 BNB/);
   assert.equal(app.window.document.querySelector("[data-active-trade-count]")?.textContent, "2");
@@ -297,6 +302,7 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
   assert.equal(app.clipboardWrites.at(-1), `https://bitbt.fun/pump/${token}`);
   const beforeIntervals = app.chartData.length;
   app.window.document.querySelector('[data-chart-interval="60"]')?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  for (let attempt = 0; attempt < 20 && app.chartData.length <= beforeIntervals; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
   assert.ok(app.chartData.length > beforeIntervals, "K-line interval button did not redraw the chart");
   const amount = app.window.document.querySelector("#trade-amount") as HTMLInputElement;
   amount.value = "1";
@@ -312,7 +318,7 @@ test("a token without trades shows an explicit empty K-line instead of a permane
   const response = async (input: string) => {
     const url = String(input);
     if (url.includes("v1/pump/detail?")) return { ok: true, json: async () => ({ data: fixture }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [fixture] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [fixture] }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
@@ -328,7 +334,7 @@ test("zero, unsafe, and lower-than-policy minOut are rejected", async () => {
     const curve = "0x2222222222222222222222222222222222222222";
     const response = async (input: string) => {
       const url = String(input);
-      if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [{ symbol: "REAL", contract_address: token, quote_token: "BNB", status: "deployed" }] }) };
+      if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [{ symbol: "REAL", contract_address: token, quote_token: "BNB", status: "deployed" }] }) };
       if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { symbol: "REAL", quote_token: "BNB", quote_token_address: null, curve_address: curve } }) };
       if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
       if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: 56, quote_id: "q-invalid", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "100", min_out: minOut, slippage_bps: slippage } }) };
@@ -352,12 +358,13 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const curve = "0x5555555555555555555555555555555555555555";
   const fee = { fee_wei: "5000000000000000", receive_address: recipient, factory_address: factory, chain_id: "bsc" };
   const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" } as const;
-  type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string };
-  const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)" };
+  type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string; initial_buy_wei: string; initial_buy_min_tokens_out: string; transaction_value_wei: string; tax_lifecycle?: Record<string, string> };
+  const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)", initial_buy_wei: "0", initial_buy_min_tokens_out: "0", transaction_value_wei: fee.fee_wei };
   const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0, confirmFailures = 0, logoUploadFailures = 0, confirmFailureMode: "500" | "timeout" = "500") => {
     const curveMode = customCurve ? "custom" : "standard";
-    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account };
-    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: curveMode } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenWithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address))" : prepared.method };
+    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account, tax_duration_days: "0", anti_bot_duration_minutes: "5", anti_bot_extra_tax_rate: "2", max_wallet_pct: "2", sell_cooldown_seconds: "30" };
+    const taxLifecycle = { tax_duration_seconds: "0", anti_bot_duration_seconds: "300", anti_bot_extra_tax_bps: "200", max_wallet_bps: "200", sell_cooldown_seconds: "30" };
+    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: curveMode } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenV2WithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address),(uint32,uint32,uint16,uint16,uint32))" : prepared.method, ...(taxMode ? { tax_lifecycle: taxLifecycle } : {}) };
     let sendCount = 0;
     let prepareCount = 0;
     let statusCount = 0;
@@ -369,9 +376,10 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     const response = async (input: string, init?: RequestInit) => {
       const url = String(input);
       fetchUrls.push(url);
-      if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+      if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
       if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { domain: "bitbt.fun", nonce: "n1" } }) };
       if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account } }) };
+      if (url.includes("v1/pump/name-check")) return { ok: true, json: async () => ({ data: { available: true } }) };
       if (url.includes("v1/token/launch-fee")) return { ok: true, json: async () => ({ data: fee }) };
       if (url.includes("v1/token/prepare-launch")) { prepareCount += 1; prepareBody = JSON.parse(String(init?.body || "{}")); return { ok: true, json: async () => ({ data: mutate ? mutate(quotePrepared) : quotePrepared }) }; }
       if (url.includes("v1/token/status")) { statusCount += 1; return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) }; }
@@ -412,7 +420,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     await new Promise((resolve) => setTimeout(resolve, 80));
     if (taxMode) assert.equal((window.document.querySelector("#tax-recipient-wallet") as HTMLInputElement).value, account);
     const snapshotText = window.document.querySelector("[data-panel='create-review']")?.textContent || "";
-    if (!mutate) { assert.match(snapshotText, /Real Token/); assert.match(snapshotText, /REAL/); assert.match(snapshotText, /Fresh launch story/); assert.match(snapshotText, new RegExp(quote)); assert.match(snapshotText, /0\.005 BNB/); }
+    if (!mutate) { const diagnostic = `toast=${window.document.querySelector(".toast")?.textContent || ""} fetch=${fetchUrls.join(",")}`; assert.match(snapshotText, /Real Token/, diagnostic); assert.match(snapshotText, /REAL/); assert.match(snapshotText, /Fresh launch story/); assert.match(snapshotText, new RegExp(quote)); assert.match(snapshotText, /0\.005 BNB/); }
     // linkedom does not reflect the boolean disabled property after async DOM mutation;
     // the production browser path removes the attribute in renderLaunchReview.
     submit.disabled = false;
@@ -461,8 +469,8 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   }
   const taxed = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true);
   assert.equal(taxed.sendCount, 1, "tax-token launch did not broadcast");
-  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: "standard", buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account });
-  assert.equal(String(taxed.providerTransactions[0]?.data).slice(0, 10), "0x4bec1297");
+  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: "standard", buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account, tax_duration_days: "0", anti_bot_duration_minutes: "5", anti_bot_extra_tax_rate: "2", max_wallet_pct: "2", sell_cooldown_seconds: "30" });
+  assert.equal(String(taxed.providerTransactions[0]?.data).slice(0, 10), "0xb6d56503");
   const taxedBackgroundRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true, true);
   assert.equal(taxedBackgroundRetry.sendCount, 1, "tax-token retry flow rebroadcast the wallet transaction");
   assert.equal(taxedBackgroundRetry.statusCount, 1, "tax-token retry flow did not reconcile through the status endpoint");
@@ -539,7 +547,7 @@ test("a persisted successful receipt retries confirmation after refresh without 
     const url = String(input);
     if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
     if (url.includes("v1/token/launch")) { confirms += 1; return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) }; }
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...pendingConfirmation.prepared.launch, status: "deployed", contract_address: predicted, curve_address: curve, quote_token_address: null } }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
@@ -571,7 +579,7 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
     if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
     if (url.includes("v1/pump/wallet-activity")) return delayedActivity;
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
@@ -595,7 +603,7 @@ test("BNB balance refresh reuses one native-balance request per token-balance re
     if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
     if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [{ token_name: "Alpha", symbol: "ALPHA", contract_address: token, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1 }] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [{ token_name: "Alpha", symbol: "ALPHA", contract_address: token, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 1 }] }) };
     if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { symbol: "ALPHA", quote_token: "BNB", quote_token_address: null, curve_address: "0x3333333333333333333333333333333333333333", progress_percent: 1 } }) };
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
@@ -618,7 +626,7 @@ test("OKX, TokenPocket, and Binance Wallet connect on BSC without redundant swit
     if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
     if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
@@ -649,7 +657,7 @@ test("the iframe connects through an OKX provider injected only into its same-or
     if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
     if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
@@ -670,7 +678,7 @@ test("an EIP-6963-only wallet connects only after explicit user selection", asyn
     if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
     if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
@@ -686,6 +694,42 @@ test("an EIP-6963-only wallet connects only after explicit user selection", asyn
   assert.ok(app.providerCalls.includes("personal_sign"));
 });
 
+test("a regular browser can connect through WalletConnect and exposes wallet-app deep links", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("/api/pump/wallet-config")) return { ok: true, json: async () => ({ data: { walletConnectProjectId: "test-project" } }) };
+    if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { nonce: "nonce-123", domain: "bitbt.fun" } }) };
+    if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const app = await boot(response, { account, providerTarget: "none", walletConnect: true });
+  app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  const buttons = [...app.window.document.querySelectorAll(".wallet-provider-list button")];
+  assert.ok(buttons.some((button) => button.textContent?.includes("OKX Wallet App")));
+  assert.ok(buttons.some((button) => button.textContent?.includes("MetaMask App")));
+  assert.ok(buttons.some((button) => button.textContent?.includes("Trust Wallet App")));
+  assert.ok(buttons.some((button) => button.textContent?.includes("TokenPocket App")));
+  assert.match(bridge, /tpdapp:\/\/open\?params=/);
+  assert.match(bridge, /okx:\/\/wallet\/dapp\/url\?dappUrl=/);
+  assert.match(html, /wss:\/\/\*\.walletconnect\.org/);
+  assert.match(html, /https:\/\/fonts\.reown\.com/);
+  assert.match(walletConfigRoute, /api\/v1\/connect\/capabilities/);
+  for (const method of ["personal_sign", "eth_sendTransaction", "eth_estimateGas"]) assert.match(walletConnectBridge, new RegExp(method));
+  const walletConnect = buttons.find((button) => button.textContent?.includes("WalletConnect"));
+  assert.ok(walletConnect, "WalletConnect choice was not rendered in a regular browser");
+  walletConnect.dispatchEvent(new app.window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(app.window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  assert.equal(app.storage.get("bitbt_pump_provider_kind"), "walletconnect");
+  assert.ok(app.providerCalls.includes("personal_sign"));
+});
+
 test("a forged EIP-6963 OKX announcement cannot replace a directly injected wallet", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const response = async (input: string) => {
@@ -694,7 +738,7 @@ test("a forged EIP-6963 OKX announcement cannot replace a directly injected wall
     if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account, expires_in: 3600 } }) };
     if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
@@ -728,7 +772,7 @@ test("wallet activity loads buy, sell, and create once and filters them locally"
       } }) };
     }
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     throw new Error(`unmocked ${url}`);
   };
@@ -763,7 +807,8 @@ test("live tokens use API logo URLs and launch Logo upload is deferred until a s
   assert.match(bridge, /receipt\.status[\s\S]*rememberLaunchConfirmation/);
   assert.match(bridge, /const confirmSuccessfulLaunch[\s\S]*bitbtUploadSelectedLaunchLogo[\s\S]*logo_url: pending\.confirmedLogoUrl/);
   assert.doesNotMatch(bridge, /prepare-launch[\s\S]{0,700}logo_url/);
-  assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net data:/);
+  assert.match(html, /img-src 'self' https:\/\/\*\.amazonaws\.com https:\/\/\*\.cloudfront\.net/);
+  assert.match(html, /https:\/\/\*\.walletconnect\.org/);
 });
 
 test("logo file chooser is enabled inside the production wallet iframe", () => {
@@ -937,13 +982,13 @@ test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configur
   for (const mode of ["fair", "custom", "community"]) assert.match(html, new RegExp(`data-launch-mode="${mode}"`));
   for (const marker of ["migration-threshold-quote", "data-custom-curve-fields", "data-curve-mode=\"custom\"", "标准目标的 50%–200%", "社区收益代币", "链上执行"]) assert.match(html, new RegExp(marker));
   for (const id of ["buy-tax-rate", "sell-tax-rate", "funds-recipient-pct", "burn-pct", "holders-pct", "liquidity-pct", "min-dividend-balance", "tax-recipient-wallet"]) assert.match(html, new RegExp(`id="${id}"`));
-  for (const marker of ["launchTaxTokenWithQuotePaid", "0x4bec1297", "launchTaxConfig", "data-tax-mode", "data-tax-fields", "买入和卖出税率必须在 1%–10%", "税费分配比例合计必须为 100%", "发币准备方法与税费模式不匹配"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const marker of ["launchTaxTokenV2WithQuotePaid", "0xb6d56503", "launchTaxConfig", "data-tax-mode", "data-tax-fields", "买入和卖出税率必须在 1%–10%", "税费分配比例合计必须为 100%", "发币准备方法与税费或首购模式不匹配"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const marker of ["launchCurveTarget", "migration_threshold_quote", "curve_mode", "setCurveMode", "setTaxMode", "链上 Factory 状态已变化，参数已自动更新"]) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const marker of ["autoPrepareLaunch", "正在自动准备发币参数", "发币参数已自动准备", '"#buy-tax-rate": "5"', '"#sell-tax-rate": "5"', '"#tax-recipient-wallet": state.account']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(html, /data-launch-load/);
   assert.match(html, /默认使用当前 Owner（连接钱包）地址；这是可编辑的默认值/);
   assert.match(html, /迁移 PancakeSwap 后对 Pair 买卖持续执行所选税率/);
-  assert.match(html, /当前链上交易不包含初始买入/);
+  assert.match(html, /创建者初始买入.*可选 · 与发币原子执行/);
   assert.doesNotMatch(html, /预计获得 16\.84M MOON/);
 });
 
@@ -965,7 +1010,7 @@ test("Pump startup loads only selected detail and a stale response cannot replac
   const delayedAlpha = new Promise<unknown>((resolve) => { resolveAlpha = resolve; });
   const response = async (input: string) => {
     const url = String(input);
-    if (url.includes("v1/pump/tokens")) return { ok: true, json: async () => ({ data: tokens }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: tokens }) };
     if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
@@ -987,10 +1032,11 @@ test("Pump startup loads only selected detail and a stale response cannot replac
 
 test("Pump polling refreshes selected trades every cycle but batches full market refreshes", () => {
   assert.match(bridge, /refreshSelectedTrades/);
-  assert.match(bridge, /refreshCycle % 2 === 0 \? refreshLive\(\) : refreshSelectedTrades\(\)/);
+  assert.match(bridge, /const refreshMarket = !socketHealthy \|\| refreshCycle % 4 === 0/);
+  assert.match(bridge, /const refreshTrades = !socketHealthy \|\| refreshCycle % 2 === 0/);
   assert.match(bridge, /loadDetail\(freshToken, \{ refreshBalance: false, forceDetail: true, refreshTrades: false \}\)/);
   assert.match(bridge, /requestSequence !== detailRequestSequence/);
-  assert.match(bridge, /if \(!state\.trades\.length\).*charts\.delete\(selector\)/);
+  assert.match(bridge, /if \(!state\.candles\.length\).*charts\.delete\(selector\)/);
 });
 
 test("Pump proxy hides wallet RPC credentials and protects every write endpoint", () => {

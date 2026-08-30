@@ -34,6 +34,7 @@ cp -a .next/static "$PUMP_RELEASE_DIR/.next/static"
 cp -a public "$PUMP_RELEASE_DIR/public"
 test -f "$PUMP_RELEASE_DIR/server.js"
 test -f "$PUMP_RELEASE_DIR/public/launchpad/launchpad-live.js"
+test -f "$PUMP_RELEASE_DIR/public/launchpad/walletconnect-provider.js"
 
 sudo install -m 0644 deploy/bitbt-pump-web.service /etc/systemd/system/bitbt-pump-web.service
 sudo install -m 0644 deploy/bitbt.fun.nginx.conf /etc/nginx/sites-available/bitbt.fun
@@ -48,6 +49,7 @@ sudo systemctl reload nginx
 sleep 3
 systemctl is-active --quiet bitbt-pump-web
 curl -fsS http://127.0.0.1:3003/en/pump >/dev/null
+curl -fsS http://127.0.0.1:3003/api/pump/wallet-config >/dev/null
 curl -fsS https://bitbt.fun/api/pump/v1/pump/tokens >/dev/null
 
 mapfile -t PUMP_OLD_RELEASES < <(
