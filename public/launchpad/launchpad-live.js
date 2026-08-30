@@ -18,6 +18,8 @@
   let detailRequestSequence = 0;
   let quoteRequestSequence = 0;
   let selectedDetailAddress = "";
+  let userDataRequestSequence = 0;
+  let balanceRequestSequence = 0;
   const isEvmProvider = (provider) => { try { return Boolean(provider && typeof provider.request === "function"); } catch { return false; } };
   const safeProviderInfo = (info) => { try { return { name: typeof info?.name === "string" ? info.name.slice(0, 80) : "EVM Wallet", rdns: typeof info?.rdns === "string" ? info.rdns.slice(0, 120) : "" }; } catch { return { name: "EVM Wallet", rdns: "" }; } };
   const providerIdentity = (provider, info = {}) => `${info.rdns || ""} ${info.name || ""} ${provider?.isOkxWallet ? "okx" : ""} ${provider?.isOKExWallet ? "okx" : ""} ${provider?.isBinance ? "binance" : ""} ${provider?.isBinanceWallet ? "binance" : ""} ${provider?.isTokenPocket ? "tokenpocket" : ""} ${provider?.isMetaMask ? "metamask" : ""}`.toLowerCase();
@@ -327,24 +329,30 @@
     if (watchlist) { const favoriteAddresses = new Set(state.favorites.map((item) => String(item.contract_address || "").toLowerCase())); const cards = state.tokens.filter((token) => favoriteAddresses.has(tokenAddress(token).toLowerCase())).map(tokenCard).join(""); watchlist.innerHTML = cards || `<p class="footer-note">暂无自选代币。请在代币详情中点击收藏。</p>`; bindLiveTokenSelection(); }
   };
   const loadFavorites = async () => {
-    try { state.favorites = await api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`); } catch { state.favorites = []; }
+    const requestSequence = ++userDataRequestSequence;
+    const account = state.account;
+    try { const favorites = await api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`); if (requestSequence !== userDataRequestSequence || state.account !== account) return; state.favorites = favorites; } catch { if (requestSequence !== userDataRequestSequence || state.account !== account) return; state.favorites = []; }
     renderMyPanels();
   };
   const loadUserPanels = async () => {
-    if (!state.account) { await loadFavorites(); return; }
+    if (!state.account) return loadFavorites();
+    const requestSequence = ++userDataRequestSequence;
+    const account = state.account;
     const [activity, favorites] = await Promise.allSettled([
-      api(`v1/pump/wallet-activity?address=${encodeURIComponent(state.account)}&limit=500`),
+      api(`v1/pump/wallet-activity?address=${encodeURIComponent(account)}&limit=500`),
       api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`),
     ]);
+    if (requestSequence !== userDataRequestSequence || state.account !== account) return;
     if (activity.status === "fulfilled") {
       state.myLaunches = Array.isArray(activity.value?.launches) ? activity.value.launches : [];
       state.history = Array.isArray(activity.value?.activity) ? activity.value.activity : [];
       state.creatorRewards = Array.isArray(activity.value?.creator_rewards) ? activity.value.creator_rewards : [];
     } else {
       const [launches, history] = await Promise.allSettled([
-        api(`v1/token/my-tokens?address=${encodeURIComponent(state.account)}`),
-        api(`v1/wallet/tx/history?address=${encodeURIComponent(state.account)}&chain_id=bsc&limit=100`),
+        api(`v1/token/my-tokens?address=${encodeURIComponent(account)}`),
+        api(`v1/wallet/tx/history?address=${encodeURIComponent(account)}&chain_id=bsc&limit=100`),
       ]);
+      if (requestSequence !== userDataRequestSequence || state.account !== account) return;
       state.myLaunches = launches.status === "fulfilled" ? launches.value : [];
       state.history = history.status === "fulfilled" ? history.value : [];
       state.creatorRewards = [];
@@ -357,7 +365,9 @@
     const token = state.selected;
     const address = tokenAddress(token).toLowerCase();
     const favorite = state.favorites.some((item) => String(item.contract_address || "").toLowerCase() === address);
+    const requestSequence = ++userDataRequestSequence;
     await api("v1/market/favorites", { method: favorite ? "DELETE" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ device_id: deviceId(), symbol: token.symbol || token.token_name, chain_id: "bsc", contract_address: tokenAddress(token) }) });
+    if (requestSequence !== userDataRequestSequence) return;
     state.favorites = favorite ? state.favorites.filter((item) => String(item.contract_address || "").toLowerCase() !== address) : [...state.favorites, { symbol: token.symbol, chain_id: "bsc", contract_address: tokenAddress(token) }];
     renderMyPanels();
     renderSelected();
@@ -386,10 +396,10 @@
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
   const USER_SLIPPAGE_BPS = 200;
   const PRIORITY_FEE_WEI = 50_000_000n;
-  const getFeePolicy = async () => {
+  const getFeePolicy = async (provider = selectedProvider()) => {
     const fallbackBaseFee = 2_000_000_000n;
     try {
-      const latest = await selectedProvider().request({ method: "eth_getBlockByNumber", params: ["latest", false] });
+      const latest = await provider.request({ method: "eth_getBlockByNumber", params: ["latest", false] });
       const baseFee = latest?.baseFeePerGas ? BigInt(latest.baseFeePerGas) : 0n;
       return { maxPriorityFeePerGas: PRIORITY_FEE_WEI, maxFeePerGas: (baseFee > 0n ? baseFee * 2n : fallbackBaseFee) + PRIORITY_FEE_WEI };
     } catch {
@@ -406,14 +416,14 @@
     if (chainId !== "0x38") throw new Error("钱包未切换到 BSC，请在钱包中选择 BNB Smart Chain");
     state.chainId = chainId;
   };
-  const rpc = (to, data) => selectedProvider().request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
-  const walletNativeBalance = () => selectedProvider().request({ method: "eth_getBalance", params: [state.account, "latest"] }).then((value) => BigInt(value));
-  const walletTokenBalance = (token) => rpc(token, `0x70a08231${addressWord(state.account)}`);
-  const allowance = (token, owner, spender) => rpc(token, `0xdd62ed3e${addressWord(owner)}${addressWord(spender)}`);
-  const send = async (tx) => { const fee = tx.fee || await getFeePolicy(); return selectedProvider().request({ method: "eth_sendTransaction", params: [{ from: tx.from, to: tx.to, ...(tx.data ? { data: tx.data } : {}), ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), gas: `0x${tx.gas.toString(16)}`, maxPriorityFeePerGas: `0x${fee.maxPriorityFeePerGas.toString(16)}`, maxFeePerGas: `0x${fee.maxFeePerGas.toString(16)}` }] }); };
+  const rpc = (to, data, provider = selectedProvider()) => provider.request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
+  const walletNativeBalance = (account = state.account, provider = selectedProvider()) => provider.request({ method: "eth_getBalance", params: [account, "latest"] }).then((value) => BigInt(value));
+  const walletTokenBalance = (token, account = state.account, provider = selectedProvider()) => rpc(token, `0x70a08231${addressWord(account)}`, provider);
+  const allowance = (token, owner, spender, provider = selectedProvider()) => rpc(token, `0xdd62ed3e${addressWord(owner)}${addressWord(spender)}`, provider);
+  const send = async (tx, provider = selectedProvider()) => { const fee = tx.fee || await getFeePolicy(provider); return provider.request({ method: "eth_sendTransaction", params: [{ from: tx.from, to: tx.to, ...(tx.data ? { data: tx.data } : {}), ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), gas: `0x${tx.gas.toString(16)}`, maxPriorityFeePerGas: `0x${fee.maxPriorityFeePerGas.toString(16)}`, maxFeePerGas: `0x${fee.maxFeePerGas.toString(16)}` }] }); };
   const receiptHasStatus = (receipt) => receipt != null && receipt.status !== undefined && receipt.status !== null;
   const receiptSucceeded = (receipt) => receiptHasStatus(receipt) && [true, 1, "1", "0x1", "0x01"].includes(receipt.status);
-  const waitReceipt = async (hash) => { for (let i = 0; i < 60; i += 1) { try { const receipt = await selectedProvider().request({ method: "eth_getTransactionReceipt", params: [hash] }); if (receiptHasStatus(receipt)) return receipt; } catch {} await new Promise((resolve) => window.setTimeout(resolve, 2000)); } const error = new Error("交易已广播，但链上确认较慢，请稍后在交易记录或 BscScan 查看"); error.code = "TX_CONFIRMATION_PENDING"; throw error; };
+  const waitReceipt = async (hash, provider = selectedProvider()) => { for (let i = 0; i < 60; i += 1) { try { const receipt = await provider.request({ method: "eth_getTransactionReceipt", params: [hash] }); if (receiptHasStatus(receipt)) return receipt; } catch {} await new Promise((resolve) => window.setTimeout(resolve, 2000)); } const error = new Error("交易已广播，但链上确认较慢，请稍后在交易记录或 BscScan 查看"); error.code = "TX_CONFIRMATION_PENDING"; throw error; };
   const report = (body) => api("v1/wallet/tx/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => undefined);
   const invalidateQuote = () => { quoteRequestSequence += 1; state.quote = null; state.quoteKey = ""; text("[data-quote-output], [data-quote-min], [data-quote-route]", "—"); text("[data-quote-fee], [data-protocol-fee]", "等待报价"); text("[data-price-impact]", "API 未提供"); };
   const clearLaunchReview = () => { text("[data-preview-name], [data-preview-ticker], [data-launch-review-chain], [data-launch-review-name], [data-launch-review-mode], [data-launch-review-quote], [data-launch-review-quote-address], [data-launch-review-curve], [data-launch-review-threshold], [data-launch-review-fee], [data-launch-review-recipient], [data-launch-review-factory], [data-launch-review-id], [data-launch-review-salt], [data-launch-review-predicted], [data-launch-review-description]", "—"); text("[data-preview-symbol]", "—"); const publishButton = $("[data-launch-publish]"); if (publishButton) { publishButton.disabled = true; publishButton.setAttribute("disabled", ""); publishButton.textContent = state.launchTerminal ? "发币流程已结束" : "正在自动准备发币参数…"; } };
@@ -422,7 +432,7 @@
   const resetLaunchFlow = () => { if (state.launchConfirmation) { toast("已有链上成功的发币结果等待保存，请先完成确认"); return; } state.launchSnapshot = null; state.launchLogoUrl = ""; document.documentElement.dataset.launchLogoUrl = ""; state.launchTerminal = false; clearLaunchReview(); const art = $("#create-art"); if (art) { art.textContent = "MB"; art.style.backgroundImage = ""; } const fileName = $("[data-launch-file-name]"); if (fileName) fileName.textContent = "尚未选择文件"; const input = $("#token-logo-file"); if (input) input.value = ""; window.dispatchEvent(new CustomEvent("bitbt:launch-reset")); };
   const renderLaunchReview = (fee, prepared, description) => { text("[data-preview-name], [data-launch-review-name]", prepared.launch.token_name); text("[data-preview-ticker], [data-launch-review-quote]", prepared.launch.symbol); text("[data-preview-symbol]", prepared.launch.symbol.slice(0, 2).toUpperCase()); text("[data-launch-review-chain]", `BSC Chain · ${prepared.launch.quote_token}`); text("[data-launch-review-description]", description); text("[data-launch-review-mode]", `${state.launchMode === "community" ? "社区收益 · " : ""}${state.curveMode === "custom" ? "自定义线性曲线" : "标准线性曲线"}`); text("[data-launch-review-quote-address]", prepared.quote_token_address); text("[data-launch-review-curve]", prepared.curve_address); text("[data-launch-review-threshold]", `${formatUnits(BigInt(prepared.migration_threshold_wei))} ${prepared.launch.quote_token}`); text("[data-launch-review-fee]", `${formatUnits(BigInt(fee.fee_wei))} BNB`); text("[data-launch-review-recipient]", prepared.fee_recipient); text("[data-launch-review-factory]", prepared.factory_address); text("[data-launch-review-id]", prepared.launch.id); text("[data-launch-review-salt]", prepared.salt); text("[data-launch-review-predicted]", prepared.predicted_token_address); const publishButton = $("[data-launch-publish]"); if (publishButton) { publishButton.disabled = false; publishButton.removeAttribute("disabled"); publishButton.textContent = "确认以上快照并发布代币"; } };
   const renderLaunchTaxReview = (tax) => text("[data-launch-review-tax]", tax ? `买 ${tax.buy_tax_rate}% · 卖 ${tax.sell_tax_rate}% · 资金/销毁/分红/流动性 ${tax.funds_recipient_pct}/${tax.burn_pct}/${tax.holders_pct}/${tax.liquidity_pct}%` : "标准代币 · 无转账税");
-  const resetProviderState = (message = "钱包状态已变化，请重新连接") => { sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_ADDRESS_KEY); state.account = ""; state.chainId = ""; state.sessionExpiresAt = 0; state.balances = { quote: null, token: null, gas: null }; setLaunchAvailability(false); invalidateQuote(); invalidateLaunchSnapshot(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = "连接钱包"; }); if (message) toast(message); };
+  const resetProviderState = (message = "钱包状态已变化，请重新连接") => { sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_ADDRESS_KEY); userDataRequestSequence += 1; balanceRequestSequence += 1; state.account = ""; state.chainId = ""; state.sessionExpiresAt = 0; state.balances = { quote: null, token: null, gas: null }; state.myLaunches = []; state.history = []; state.creatorRewards = []; setLaunchAvailability(false); invalidateQuote(); invalidateLaunchSnapshot(); renderMyPanels(); $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = "连接钱包"; }); if (message) toast(message); };
   const renderWalletState = () => { $$('[data-wallet-label], .connect-global, .connect').forEach((node) => { node.textContent = state.account ? short(state.account) : "连接钱包"; }); const taxRecipient = $("#tax-recipient-wallet"); if (state.taxEnabled && state.account && taxRecipient && !taxRecipient.value) taxRecipient.value = state.account; if (state.detail) applySide(state.side === "sell"); };
   const restoreSessionOnce = async () => {
     const token = sessionStorage.getItem(SESSION_KEY);
@@ -498,9 +508,15 @@
     finally { walletConnectionPromise = null; }
   };
   const refreshBalances = async () => {
-    if (!state.account || !state.detail || !selectedProvider()) return;
+    const account = state.account;
+    const provider = selectedProvider();
+    const address = tokenAddress(state.selected).toLowerCase();
+    if (!account || !state.detail || !provider || !/^0x[0-9a-f]{40}$/.test(address)) return;
+    const requestSequence = ++balanceRequestSequence;
     const quote = state.detail.quote_token_address || quoteAddress(state.detail.quote_token);
-    const [gas, token, quoteBalance] = await Promise.all([walletNativeBalance(), walletTokenBalance(tokenAddress(state.selected)), quote ? walletTokenBalance(quote) : walletNativeBalance()]);
+    const gasPromise = walletNativeBalance(account, provider);
+    const [gas, token, quoteBalance] = await Promise.all([gasPromise, walletTokenBalance(address, account, provider), quote ? walletTokenBalance(quote, account, provider) : gasPromise]);
+    if (requestSequence !== balanceRequestSequence || state.account !== account || tokenAddress(state.selected).toLowerCase() !== address || selectedProvider() !== provider) return;
     state.balances = { gas, token, quote: quoteBalance };
     applySide(state.side === "sell");
     text("[data-holding-amount]", formatUnits(token));
@@ -568,45 +584,53 @@
     const amountWei = parseUnits(amount);
     const output = amountFromApi(quoteBindingState.output);
     const minOut = quoteBindingState.minOut;
-    const selector = state.side === "buy" ? (quote ? "0x6818735c" : "0xd96a094a") : (quote ? "0x5969261f" : "0xd79875eb");
+    const provider = selectedProvider();
+    if (!provider) throw new Error("请先连接并验证钱包");
+    const tradeContext = { account: quoteBindingState.account, side: quoteBindingState.side, tokenAddress: quoteBindingState.tokenAddress, tokenSymbol: String(state.detail.symbol || state.selected.symbol || "TOKEN"), quoteSymbol: quoteBindingState.quoteToken, curve, provider };
+    const selector = tradeContext.side === "buy" ? (quote ? "0x6818735c" : "0xd96a094a") : (quote ? "0x5969261f" : "0xd79875eb");
+    const txType = tradeContext.side === "buy" ? "pump_buy" : "pump_sell";
+    const fromToken = tradeContext.side === "buy" ? tradeContext.quoteSymbol : tradeContext.tokenSymbol;
+    const toToken = tradeContext.side === "buy" ? tradeContext.tokenSymbol : tradeContext.quoteSymbol;
     let hash;
     let mainStatusReported = false;
     state.busy = true;
     try {
-      if ((state.side === "buy" && quote) || state.side === "sell") {
+      if ((tradeContext.side === "buy" && quote) || tradeContext.side === "sell") {
         await assertQuoteBinding();
-        const asset = state.side === "buy" ? quote : tokenAddress(state.selected);
-        const currentAllowance = await allowance(asset, state.account, curve);
+        const asset = tradeContext.side === "buy" ? quote : tradeContext.tokenAddress;
+        const currentAllowance = await allowance(asset, tradeContext.account, curve, tradeContext.provider);
         if (currentAllowance < amountWei) {
           let approval;
           try {
-            approval = await send({ from: state.account, to: asset, data: `0x095ea7b3${addressWord(curve)}${word(amountWei)}`, gas: 100000n });
-            await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, status: "pending", metadata: { spender: curve } });
+            approval = await send({ from: tradeContext.account, to: asset, data: `0x095ea7b3${addressWord(curve)}${word(amountWei)}`, gas: 100000n }, tradeContext.provider);
+            await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: "pending", metadata: { spender: curve, token_address: tradeContext.tokenAddress } });
             toast("授权交易已发送");
-            const receipt = await waitReceipt(approval);
+            const receipt = await waitReceipt(approval, tradeContext.provider);
             const ok = receiptSucceeded(receipt);
-            await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, status: ok ? "success" : "failed", metadata: { spender: curve } });
+            await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: ok ? "success" : "failed", metadata: { spender: curve, token_address: tradeContext.tokenAddress } });
             if (!ok) throw new Error("授权失败");
           } catch (error) {
-            if (approval) await report({ user_address: state.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", status: "failed", metadata: { spender: curve, error: error.message } });
+            if (approval) await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: "failed", metadata: { spender: curve, token_address: tradeContext.tokenAddress, error: error.message } });
             throw error;
           }
           await assertQuoteBinding();
         }
       }
-      const data = state.side === "buy" ? (quote ? `${selector}${word(amountWei)}` : `${selector}${word(minOut)}`) : `${selector}${word(amountWei)}${word(minOut)}`;
-      hash = await send({ from: state.account, to: curve, data, value: state.side === "buy" && !quote ? amountWei : 0n, gas: 350000n });
-      await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, to_token: state.side === "buy" ? state.detail.symbol : state.detail.quote_token, from_amount: amount, to_amount: formatUnits(output), status: "pending", metadata: { token_address: tokenAddress(state.selected), curve_address: curve } });
+      const data = tradeContext.side === "buy" ? (quote ? `${selector}${word(amountWei)}` : `${selector}${word(minOut)}`) : `${selector}${word(amountWei)}${word(minOut)}`;
+      hash = await send({ from: tradeContext.account, to: curve, data, value: tradeContext.side === "buy" && !quote ? amountWei : 0n, gas: 350000n }, tradeContext.provider);
+      await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, from_amount: amount, to_amount: formatUnits(output), status: "pending", metadata: { token_address: tradeContext.tokenAddress, curve_address: curve } });
       toast("交易已广播，等待回执…");
-      const receipt = await waitReceipt(hash);
+      const receipt = await waitReceipt(hash, tradeContext.provider);
       const ok = receiptSucceeded(receipt);
-      await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", from_token: state.side === "buy" ? state.detail.quote_token : state.detail.symbol, to_token: state.side === "buy" ? state.detail.symbol : state.detail.quote_token, from_amount: amount, to_amount: formatUnits(output), status: ok ? "success" : "failed", metadata: { token_address: tokenAddress(state.selected), curve_address: curve } });
+      await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, from_amount: amount, to_amount: formatUnits(output), status: ok ? "success" : "failed", metadata: { token_address: tradeContext.tokenAddress, curve_address: curve } });
       mainStatusReported = true;
       if (!ok) throw new Error("交易回执失败");
       toast("交易已确认");
-      await Promise.all([loadDetail(state.selected), loadUserPanels()]);
+      const refreshes = [loadUserPanels()];
+      if (tokenAddress(state.selected).toLowerCase() === tradeContext.tokenAddress) refreshes.push(loadDetail(state.selected));
+      await Promise.all(refreshes);
     } catch (error) {
-      if (hash && !mainStatusReported && error?.code !== "TX_CONFIRMATION_PENDING") await report({ user_address: state.account, tx_hash: hash, chain_id: "bsc", tx_type: state.side === "buy" ? "pump_buy" : "pump_sell", status: "failed", metadata: { error: error.message } });
+      if (hash && !mainStatusReported && error?.code !== "TX_CONFIRMATION_PENDING") await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, status: "failed", metadata: { token_address: tradeContext.tokenAddress, curve_address: curve, error: error.message } });
       if (hash) await loadUserPanels().catch(() => undefined);
       throw error;
     } finally { state.busy = false; }
