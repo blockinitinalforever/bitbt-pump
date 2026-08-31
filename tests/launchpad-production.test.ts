@@ -868,6 +868,31 @@ test("wallet activity loads buy, sell, and create once and filters them locally"
   assert.equal(activityRequests, 1, "local history filtering made an unnecessary API request");
 });
 
+test("wallet position keeps BNB cost basis and USD valuation in the same unit", async () => {
+  const account = "0x5945f53249015dae01fbfb039f5a64af5cff5629";
+  const token = "0xb749f8fb754c583b0557cdedcd4b1c88df148888";
+  const curve = "0x7777777777777777777777777777777777777777";
+  const market = { token_name: "Position", symbol: "POS", contract_address: token, quote_token: "BNB", status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 10, current_price_quote: "0.1666666667", current_price_usd: "100", quote_price_usd: 600, market_cap_usd: "1000", fdv_usd: "100000000000", total_raised_quote: "1" };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [{ activity_type: "buy", token_address: token, quote_amount: "1", token_amount: "10", quote_token: "BNB", status: "success", created_at: new Date().toISOString() }], launches: [], creator_rewards: [], holdings: [{ token_address: token, balance_raw: String(10n * 10n ** 18n) }], holdings_complete: true, trade_history_complete: true, summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [market] }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...market, curve_address: curve, creator: account, tokens_sold: "10" } }) };
+    if (url.includes("v1/pump/trades") || url.includes("v1/pump/kline")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response, { account, session: { token: "session", address: account }, tokenBalance: 10n * 10n ** 18n });
+  for (let attempt = 0; attempt < 20 && window.document.querySelector("[data-holding-value]")?.textContent === "—"; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(window.document.querySelector("[data-holding-cost]")?.textContent, "0.1 BNB");
+  assert.equal(window.document.querySelector("[data-holding-value]")?.textContent, "$1.00K");
+  assert.equal(window.document.querySelector("[data-holding-pnl]")?.textContent, "+$400.00");
+  assert.equal(window.document.querySelector("[data-holding-return]")?.textContent, "+66.67%");
+  assert.equal(window.document.querySelector("[data-holding-share]")?.textContent, "100.00%");
+});
+
 test("production wallet bridge applies the fixed 0.05 Gwei policy and normalizes provider receipt states", () => {
   for (const marker of ["PRIORITY_FEE_WEI = 50_000_000n", "maxPriorityFeePerGas", "maxFeePerGas", "eth_getBlockByNumber", 'status: "pending"', 'status: "failed"']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
   assert.match(bridge, /status: ok \? "success" : "failed"/);
