@@ -288,7 +288,7 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
   const curve = "0x2222222222222222222222222222222222222222";
   const logo = "https://cdn.example.com/pepe.png";
   const now = Math.floor(Date.now() / 1000);
-  const fixture = { token_name: "Pepe", symbol: "PEPE", creator_address: "0x3333333333333333333333333333333333333333", creator: "0x3333333333333333333333333333333333333333", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "deployed", submitted_at: new Date().toISOString(), logo_url: logo, progress_percent: 12, current_price_quote: "0.000000000000000305", total_raised_quote: "0.25", tokens_sold: "819672.131147540983606557" };
+  const fixture = { token_name: "Pepe", symbol: "PEPE", creator_address: "0x3333333333333333333333333333333333333333", creator: "0x3333333333333333333333333333333333333333", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "deployed", submitted_at: new Date().toISOString(), logo_url: logo, description: "Community-built PEPE launch", website: "https://pepe.example.com", twitter: "https://x.com/pepe", telegram: "https://t.me/pepe", discord: "javascript:alert(1)", progress_percent: 12, current_price_quote: "0.000000000000000305", total_raised_quote: "0.25", tokens_sold: "819672.131147540983606557" };
   const trades = [
     { trader: fixture.creator, trade_type: "buy", quote_amount: "0.1", token_amount: "327868.852459016393442622", timestamp: now - 60 },
     { trader: "0x4444444444444444444444444444444444444444", trade_type: "sell", quote_amount: "0.05", token_amount: "163934.426229508196721311", timestamp: now },
@@ -300,7 +300,7 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
     if (url.includes("v1/pump/trades")) return { ok: true, json: async () => ({ data: trades }) };
     if (url.includes("v1/pump/candles")) return { ok: true, json: async () => ({ data: [{ open_time: now - 60, open: "0.000000000000000305", high: "0.000000000000000305", low: "0.000000000000000305", close: "0.000000000000000305", volume_quote: "0.1" }, { open_time: now, open: "0.000000000000000305", high: "0.000000000000000305", low: "0.000000000000000305", close: "0.000000000000000305", volume_quote: "0.05" }] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
-    if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "q-real", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_quote: "0.01", fee_rate_percent: "1.000000%" } }) };
+    if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "q-real", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_quote: "0.01", fee_rate_percent: "1.000000%", price_impact_percent: "1.234567" } }) };
     throw new Error(`unmocked ${url}`);
   };
   const app = await boot(response, { pathname: "/launchpad/bitbt-launch-ui-app.html", parentPathname: `/pump/${token}` });
@@ -309,6 +309,11 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
   assert.match(app.window.document.querySelector("[data-active-price]")?.textContent || "", /0\.000000000000000305 BNB/);
   assert.equal(app.window.document.querySelector("[data-active-trade-count]")?.textContent, "2");
   assert.equal(app.window.document.querySelector("[data-active-volume]")?.textContent, "0.15 BNB");
+  assert.equal(app.window.document.querySelector("[data-token-description]")?.textContent, fixture.description);
+  const projectLinks = [...app.window.document.querySelectorAll<HTMLAnchorElement>("[data-token-socials] a")];
+  assert.deepEqual(projectLinks.map((link) => link.textContent), ["官网", "X", "Telegram"]);
+  assert.ok(projectLinks.every((link) => /^https:/.test(link.href)));
+  assert.equal(projectLinks.some((link) => link.href.startsWith("javascript:")), false);
   assert.ok(app.chartData.flat().length > 0, "decimal trade amounts did not produce K-line candles");
   assert.ok(app.chartData.flat().every((point) => Object.values(point as Record<string, unknown>).every((value) => typeof value !== "number" || Number.isFinite(value))));
   for (const fake of ["$483K", "$35.2K", "6,062", "15.1%", "未发现高风险项"]) assert.equal((app.window.document.body.textContent || "").includes(fake), false, `prototype detail value leaked: ${fake}`);
@@ -325,6 +330,7 @@ test("detail and trade panels render only real API values, decimal K-lines, and 
   await new Promise((resolve) => setTimeout(resolve, 450));
   assert.equal(app.window.document.querySelector("[data-quote-output]")?.textContent, "1 PEPE");
   assert.match(app.window.document.querySelector("[data-quote-fee]")?.textContent || "", /1\.000000% · 0\.01 BNB/);
+  assert.equal(app.window.document.querySelector("[data-price-impact]")?.textContent, "1.23%");
 });
 
 test("a token without trades shows an explicit empty K-line instead of a permanent loading state", async () => {
@@ -372,7 +378,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const predicted = "0x4444444444444444444444444444444444444444";
   const curve = "0x5555555555555555555555555555555555555555";
   const fee = { fee_wei: "5000000000000000", receive_address: recipient, factory_address: factory, chain_id: "bsc" };
-  const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" } as const;
+  const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", USD1: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d" } as const;
   type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string; initial_buy_wei: string; initial_buy_min_tokens_out: string; transaction_value_wei: string; tax_lifecycle?: Record<string, string> };
   const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)", initial_buy_wei: "0", initial_buy_min_tokens_out: "0", transaction_value_wei: fee.fee_wei };
   const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0, confirmFailures = 0, logoUploadFailures = 0, confirmFailureMode: "500" | "timeout" = "500") => {
@@ -993,6 +999,13 @@ test("token filters sort the already-loaded list locally without another token-l
   assert.match(bridge, /bindMarketSelect/);
 });
 
+test("mobile market keeps search visible and floats trade actions above the bottom navigation", () => {
+  assert.match(html, /class="field token-search-field" data-token-search/);
+  assert.doesNotMatch(html, /data-token-search[^>]*hidden/);
+  assert.match(html, /\.fixed-trade\{height:76px;bottom:calc\(72px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(html, /screen\[data-panel="detail"\]\.has-bottom-nav\{padding-bottom:calc\(166px \+ env\(safe-area-inset-bottom\)\)/);
+});
+
 test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {
   for (const marker of ["setLaunchAvailability", "data-open=\"create-mode\"", "data-nav=\"create-mode\"", "data-launch-mode", "wallet-gated", "请先连接并验证钱包"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(html, /BitBT Pump/);
@@ -1002,7 +1015,8 @@ test("all launch entry points are wallet-gated until SIWE connection succeeds", 
 });
 
 test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configuration", () => {
-  for (const quote of ["BNB", "USDT", "USDC", "GW"]) assert.match(html, new RegExp(`data-launch-quote="${quote}"`));
+  for (const quote of ["BNB", "USDT", "USDC", "USD1"]) assert.match(html, new RegExp(`data-launch-quote="${quote}"`));
+  assert.doesNotMatch(html, /data-launch-quote="GW"|option value="gw">GW/);
   for (const id of ["token-classification", "token-twitter", "token-telegram", "token-website", "token-discord"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const field of ["classification", "twitter", "telegram", "website", "discord", "launch_settings", "antisniper", "enable_tax", "request_platform_lp"]) assert.match(bridge, new RegExp(field));
   for (const mode of ["fair", "custom", "community"]) assert.match(html, new RegExp(`data-launch-mode="${mode}"`));
