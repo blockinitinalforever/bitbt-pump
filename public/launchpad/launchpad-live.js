@@ -605,9 +605,10 @@
   const word = (value) => value.toString(16).padStart(64, "0");
   const addressWord = (value) => String(value).replace(/^0x/, "").toLowerCase().padStart(64, "0");
   const formatUnits = (value, decimals = 18, digits = 6) => { const scale = 10n ** BigInt(decimals); const whole = value / scale; const fraction = (value % scale).toString().padStart(decimals, "0").slice(0, digits).replace(/0+$/, ""); return fraction ? `${whole}.${fraction}` : whole.toString(); };
-  // Every launch quote asset is bound to its configured BSC contract and then
-  // checked again against the address returned by prepare-launch.
+  // GW remains here only so already-issued GW-denominated projects can still
+  // resolve balances and trade. New-token creation does not expose GW.
   const quoteAddress = (symbol) => ({ BNB: null, USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", USD1: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" })[String(symbol || "").toUpperCase()];
+  const LAUNCH_QUOTE_TOKENS = new Set(["BNB", "USDT", "USDC", "USD1"]);
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
   const USER_SLIPPAGE_BPS = 200;
   const PRIORITY_FEE_WEI = 50_000_000n;
@@ -1049,7 +1050,7 @@
     if (state.launchConfirmation) return confirmSuccessfulLaunch();
     if (state.launchTerminal) throw new Error("本次发币流程已结束，请刷新页面开始新的流程");
     const name = $("#token-name")?.value?.trim(); const symbol = $("#token-symbol")?.value?.trim().toUpperCase(); if (!name || !symbol) throw new Error("请填写代币名称和符号"); const address = state.account || await connectWallet(); await assertProviderState();
-    const quote = state.launchQuote; if (!quoteAddress(quote) && quote !== "BNB") throw new Error("不支持的发币计价资产"); const description = $("#token-story")?.value?.trim() || ""; const logoSelectionKey = window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || ""; const metadata = { classification: $("#token-classification")?.value?.trim() || "Meme", twitter: $("#token-twitter")?.value?.trim() || "", telegram: $("#token-telegram")?.value?.trim() || "", website: $("#token-website")?.value?.trim() || "", discord: $("#token-discord")?.value?.trim() || "" }; const tax = launchTaxConfig(); const initial=launchInitialBuy(); const formKey = launchFormKey(); const snapshotKey = `${address}|${name}|${symbol}|${quote}|${description}|${logoSelectionKey}|${formKey}`; let snapshot = state.launchSnapshot;
+    const quote = state.launchQuote; if (!LAUNCH_QUOTE_TOKENS.has(quote) || (!quoteAddress(quote) && quote !== "BNB")) throw new Error("不支持的发币计价资产"); const description = $("#token-story")?.value?.trim() || ""; const logoSelectionKey = window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || ""; const metadata = { classification: $("#token-classification")?.value?.trim() || "Meme", twitter: $("#token-twitter")?.value?.trim() || "", telegram: $("#token-telegram")?.value?.trim() || "", website: $("#token-website")?.value?.trim() || "", discord: $("#token-discord")?.value?.trim() || "" }; const tax = launchTaxConfig(); const initial=launchInitialBuy(); const formKey = launchFormKey(); const snapshotKey = `${address}|${name}|${symbol}|${quote}|${description}|${logoSelectionKey}|${formKey}`; let snapshot = state.launchSnapshot;
     if (!snapshot || snapshot.key !== snapshotKey) {
       const availability = await api(`v1/pump/name-check?name=${encodeURIComponent(name)}&symbol=${encodeURIComponent(symbol)}`);
       if (!availability?.available) throw new Error("代币名称或符号已被占用或受保护，请更换后重试");

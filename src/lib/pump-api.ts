@@ -176,7 +176,7 @@ export type PreparedLaunch = {
 };
 
 export type PumpQuoteToken = "BNB" | "USDT" | "USDC" | "USD1" | "GW";
-export type PumpLaunchQuoteToken = PumpQuoteToken;
+export type PumpLaunchQuoteToken = Exclude<PumpQuoteToken, "GW">;
 
 export type PrepareLaunchInput = {
   creator_address: string;

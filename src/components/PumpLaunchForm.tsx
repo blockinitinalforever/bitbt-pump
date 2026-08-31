@@ -248,7 +248,6 @@ export default function PumpLaunchForm({ zh }: { zh: boolean }) {
             <option>USDT</option>
             <option>USDC</option>
             <option>USD1</option>
-            <option>GW</option>
           </select>
         </label>
         <label className="text-xs text-[#666] sm:col-span-2">
