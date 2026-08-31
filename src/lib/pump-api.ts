@@ -40,6 +40,7 @@ export type PumpToken = {
   status: string;
   submitted_at?: string;
   logo_url?: string | null;
+  classification?: string | null;
   progress_percent: number;
   current_price_quote?: string;
   total_raised_quote?: string;
@@ -61,6 +62,12 @@ export type PumpDetail = {
   status?: string;
   submitted_at?: string;
   logo_url?: string | null;
+  classification?: string | null;
+  description?: string | null;
+  website?: string | null;
+  telegram?: string | null;
+  twitter?: string | null;
+  discord?: string | null;
   current_price_bnb: string;
   current_price_quote?: string;
   tokens_sold: string;
@@ -83,6 +90,7 @@ export type PumpQuote = {
   fee_quote?: string;
   fee_bnb?: string;
   curve_address: string;
+  price_impact_percent?: string | null;
 };
 
 export type PumpTrade = {
@@ -167,6 +175,9 @@ export type PreparedLaunch = {
   method: string;
 };
 
+export type PumpQuoteToken = "BNB" | "USDT" | "USDC" | "USD1" | "GW";
+export type PumpLaunchQuoteToken = PumpQuoteToken;
+
 export type PrepareLaunchInput = {
   creator_address: string;
   token_name: string;
@@ -176,10 +187,11 @@ export type PrepareLaunchInput = {
   mintable: boolean;
   burnable: boolean;
   chain_id: "bsc";
-  quote_token: "BNB" | "USDT" | "USDC" | "GW";
+  quote_token: PumpLaunchQuoteToken;
   description?: string;
   website?: string;
   telegram?: string;
+  twitter?: string;
   discord?: string;
   memo?: string;
   classification?: string;

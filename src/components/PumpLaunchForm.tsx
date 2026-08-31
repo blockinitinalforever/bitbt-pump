@@ -247,6 +247,7 @@ export default function PumpLaunchForm({ zh }: { zh: boolean }) {
             <option>BNB</option>
             <option>USDT</option>
             <option>USDC</option>
+            <option>USD1</option>
             <option>GW</option>
           </select>
         </label>
