@@ -105,8 +105,8 @@ test("discovery, full-market on-chain stream, rankings, and holders use real API
   const tokenB = "0x2222222222222222222222222222222222222222";
   const now = Math.floor(Date.now() / 1000);
   const tokens = [
-    { token_name: "Alpha", symbol: "ALPHA", contract_address: tokenA, creator_address: "0x3333333333333333333333333333333333333333", quote_token: "BNB", classification: "Meme", tax_enabled: true, status: "bonding", submitted_at: new Date(Date.now() - 60_000).toISOString(), progress_percent: 80, current_price_quote: "0.01", total_raised_quote: "8", trade_count_5m: 1, trade_count_24h: 8, volume_quote_5m: "1", volume_quote_24h: "10", price_change_5m_percent: 1, price_change_24h_percent: 20 },
-    { token_name: "Beta", symbol: "BETA", contract_address: tokenB, creator_address: "0x4444444444444444444444444444444444444444", quote_token: "USDT", classification: "AI", tax_enabled: false, status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 10, current_price_quote: "0.02", total_raised_quote: "2", trade_count_5m: 3, trade_count_24h: 4, volume_quote_5m: "2", volume_quote_24h: "5", price_change_5m_percent: 9, price_change_24h_percent: 2 },
+    { token_name: "Alpha", symbol: "ALPHA", contract_address: tokenA, creator_address: "0x3333333333333333333333333333333333333333", quote_token: "BNB", classification: "Meme", tax_enabled: true, buy_tax_percent: 5, sell_tax_percent: 6, status: "bonding", submitted_at: new Date(Date.now() - 60_000).toISOString(), progress_percent: 80, current_price_quote: "0.01", current_price_usd: "6", market_cap_quote: "1", market_cap_usd: "600", total_raised_quote: "8", trade_count_5m: 1, trade_count_24h: 8, volume_quote_5m: "1", volume_usd_5m: "600", volume_quote_24h: "10", volume_usd_24h: "6000", buy_volume_usd_24h: "4200", sell_volume_usd_24h: "1800", net_flow_usd_24h: "2400", buy_ratio_24h_percent: "70", price_change_5m_percent: 1, price_change_24h_percent: 20 },
+    { token_name: "Beta", symbol: "BETA", contract_address: tokenB, creator_address: "0x4444444444444444444444444444444444444444", quote_token: "USDT", classification: "AI", tax_enabled: false, status: "deployed", submitted_at: new Date().toISOString(), progress_percent: 10, current_price_quote: "0.02", current_price_usd: "0.02", market_cap_quote: "200", market_cap_usd: "200", total_raised_quote: "2", trade_count_5m: 3, trade_count_24h: 4, volume_quote_5m: "2", volume_usd_5m: "2", volume_quote_24h: "5", volume_usd_24h: "5", buy_volume_usd_24h: "1", sell_volume_usd_24h: "4", net_flow_usd_24h: "-3", buy_ratio_24h_percent: "20", price_change_5m_percent: 9, price_change_24h_percent: 2 },
   ];
   const activity = [
     { activity_type: "buy", tx_hash: `0x${"11".repeat(32)}`, trader: "0x5555555555555555555555555555555555555555", token_address: tokenA, token_name: "Alpha", symbol: "ALPHA", quote_token: "BNB", quote_amount: "0.1", token_amount: "100", status: "success", timestamp: now },
@@ -131,6 +131,12 @@ test("discovery, full-market on-chain stream, rankings, and holders use real API
   assert.equal(window.document.querySelector("[data-market-trades]")?.textContent, "2");
   assert.equal(window.document.querySelectorAll('[data-panel="live"] .live-row').length, 3);
   assert.equal(window.document.querySelectorAll('[data-panel="rank"] .rank-row').length, 2);
+  const alphaCard = window.document.querySelector(`[data-panel="discover"] [data-live-token="${tokenA}"]`);
+  assert.match(alphaCard?.textContent || "", /\$600\.00/);
+  assert.match(alphaCard?.textContent || "", /\$6\.00K/);
+  assert.match(alphaCard?.textContent || "", /税 买5% \/ 卖6%/);
+  assert.match(alphaCard?.textContent || "", /买入 70%/);
+  assert.match(alphaCard?.textContent || "", /净流入 \$2\.40K/);
   window.document.querySelector('[data-live-filter="buy"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.equal(window.document.querySelectorAll('[data-panel="live"] .live-row').length, 1);
   window.document.querySelector('[data-live-filter="create"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -146,12 +152,19 @@ test("discovery, full-market on-chain stream, rankings, and holders use real API
   quoteFilter.dispatchEvent(new window.Event("change", { bubbles: true }));
   window.document.querySelector('[data-rank-filter="volume"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   window.document.querySelector('[data-rank-window="5m"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
-  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /BETA/);
-  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /5M 3 笔/);
+  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /ALPHA/);
+  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /5M 1 笔/);
+  window.document.querySelector('[data-rank-filter="net-flow"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /ALPHA/);
+  assert.match(window.document.querySelector('[data-panel="rank"] .rank-row')?.textContent || "", /买入 70%/);
   assert.equal(marketRequests, 1, "live/rank local filters made an extra API request");
   window.document.querySelector('[data-live-token="' + tokenA + '"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(window.document.querySelector("[data-token-tax-detail]")?.textContent, "买 5% / 卖 6%");
+  assert.equal(window.document.querySelector("[data-active-market]")?.textContent, "$600.00");
+  assert.equal(window.document.querySelector("[data-active-volume]")?.textContent, "$6.00K");
+  assert.equal(window.document.querySelector("[data-active-net-flow]")?.textContent, "$2.40K");
+  assert.equal(window.document.querySelector("[data-active-buy-ratio]")?.textContent, "70.0%");
   window.document.querySelector('[data-detail-tab="holders"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(holderRequests, 1);
