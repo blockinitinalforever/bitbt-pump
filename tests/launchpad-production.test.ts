@@ -1017,6 +1017,7 @@ test("all launch entry points are wallet-gated until SIWE connection succeeds", 
 test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configuration", () => {
   for (const quote of ["BNB", "USDT", "USDC", "USD1"]) assert.match(html, new RegExp(`data-launch-quote="${quote}"`));
   assert.doesNotMatch(html, /data-launch-quote="GW"|option value="gw">GW/);
+  assert.match(bridge, /GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F"/, "existing GW launches must remain resolvable after the new-launch entry is retired");
   for (const id of ["token-classification", "token-twitter", "token-telegram", "token-website", "token-discord"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const field of ["classification", "twitter", "telegram", "website", "discord", "launch_settings", "antisniper", "enable_tax", "request_platform_lp"]) assert.match(bridge, new RegExp(field));
   for (const mode of ["fair", "custom", "community"]) assert.match(html, new RegExp(`data-launch-mode="${mode}"`));

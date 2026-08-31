@@ -605,6 +605,8 @@
   const word = (value) => value.toString(16).padStart(64, "0");
   const addressWord = (value) => String(value).replace(/^0x/, "").toLowerCase().padStart(64, "0");
   const formatUnits = (value, decimals = 18, digits = 6) => { const scale = 10n ** BigInt(decimals); const whole = value / scale; const fraction = (value % scale).toString().padStart(decimals, "0").slice(0, digits).replace(/0+$/, ""); return fraction ? `${whole}.${fraction}` : whole.toString(); };
+  // GW is retained only for resolving existing GW-denominated launches. New
+  // launches deliberately do not expose it in the product UI.
   const quoteAddress = (symbol) => ({ BNB: null, USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", USD1: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" })[String(symbol || "").toUpperCase()];
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
   const USER_SLIPPAGE_BPS = 200;

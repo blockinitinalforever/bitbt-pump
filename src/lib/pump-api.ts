@@ -175,6 +175,9 @@ export type PreparedLaunch = {
   method: string;
 };
 
+export type PumpQuoteToken = "BNB" | "USDT" | "USDC" | "USD1" | "GW";
+export type PumpLaunchQuoteToken = Exclude<PumpQuoteToken, "GW">;
+
 export type PrepareLaunchInput = {
   creator_address: string;
   token_name: string;
@@ -184,7 +187,9 @@ export type PrepareLaunchInput = {
   mintable: boolean;
   burnable: boolean;
   chain_id: "bsc";
-  quote_token: "BNB" | "USDT" | "USDC" | "USD1";
+  // GW remains readable/tradable for existing launches, but is intentionally
+  // unavailable for new launches after its product entry was retired.
+  quote_token: PumpLaunchQuoteToken;
   description?: string;
   website?: string;
   telegram?: string;
