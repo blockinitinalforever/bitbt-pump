@@ -187,6 +187,46 @@ test("wrong quote-token contract is rejected before any provider send", async ()
   assert.equal(providerCalls.includes("eth_sendTransaction"), false);
 });
 
+test("migrated Pump tokens quote and execute through the verified PancakeSwap V2 router", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const token = "0x2222222222222222222222222222222222222222";
+  const curve = "0x3333333333333333333333333333333333333333";
+  const pair = "0x4444444444444444444444444444444444444444";
+  const router = "0x10ed43c718714eb63d5aa57b78b54704e256024e";
+  const reports: Array<Record<string, unknown>> = [];
+  const response = async (input: string, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/pump/wallet-activity")) return { ok: true, json: async () => ({ data: { activity: [], launches: [], creator_rewards: [], summary: {} } }) };
+    if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [{ token_name: "Migrated", symbol: "MIG", contract_address: token, quote_token: "BNB", status: "migrated", migrated: true, submitted_at: new Date().toISOString(), progress_percent: 100 }] }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { token_name: "Migrated", symbol: "MIG", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "migrated", migrated: true, progress_percent: 100 } }) };
+    if (url.includes("v1/pump/migration-proof")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, migrated: true, router_address: router, router_verified: true, pair_address: pair, lp_burn_verified: true } }) };
+    if (url.includes("v1/pump/trades") || url.includes("v1/pump/candles")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, route_type: "pancakeswap_v2", router_address: router, pair_address: pair, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "dex-quote", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_rate_percent: "0.000000%", fee_quote: "0" } }) };
+    if (url.includes("v1/wallet/tx/report")) { reports.push(JSON.parse(String(init?.body || "{}"))); return { ok: true, json: async () => ({ data: { accepted: true } }) }; }
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window, providerTransactions } = await boot(response, { account, session: { token: "session", address: account } });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const input = window.document.querySelector("#trade-amount") as HTMLInputElement;
+  input.value = "0.001";
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.match(window.document.querySelector("[data-quote-route]")?.textContent || "", /PancakeSwap V2/);
+  window.document.querySelector("#trade-submit")?.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const trade = providerTransactions.find((transaction) => String(transaction.to).toLowerCase() === router);
+  assert.ok(trade, "migrated trade was not sent to PancakeSwap V2");
+  assert.match(String(trade?.data), /^0xb6f9de95/);
+  assert.equal(String(trade?.value), "0x38d7ea4c68000");
+  const tradeReports = reports.filter((report) => report.tx_type === "pump_buy");
+  assert.deepEqual(tradeReports.map((report) => report.status), ["pending", "success"]);
+  assert.ok(tradeReports.every((report) => (report.metadata as Record<string, unknown>).route_type === "pancakeswap_v2"));
+});
+
 test("native BNB quote accepts API chain aliases and keeps exact zero-sentinel binding", async () => {
   const token = "0x1111111111111111111111111111111111111111";
   const curve = "0x2222222222222222222222222222222222222222";
