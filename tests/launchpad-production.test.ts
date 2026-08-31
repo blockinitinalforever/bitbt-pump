@@ -378,7 +378,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const predicted = "0x4444444444444444444444444444444444444444";
   const curve = "0x5555555555555555555555555555555555555555";
   const fee = { fee_wei: "5000000000000000", receive_address: recipient, factory_address: factory, chain_id: "bsc" };
-  const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", USD1: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d" } as const;
+  const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", USD1: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" } as const;
   type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string; initial_buy_wei: string; initial_buy_min_tokens_out: string; transaction_value_wei: string; tax_lifecycle?: Record<string, string> };
   const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)", initial_buy_wei: "0", initial_buy_min_tokens_out: "0", transaction_value_wei: fee.fee_wei };
   const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0, confirmFailures = 0, logoUploadFailures = 0, confirmFailureMode: "500" | "timeout" = "500") => {
@@ -1015,9 +1015,8 @@ test("all launch entry points are wallet-gated until SIWE connection succeeds", 
 });
 
 test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configuration", () => {
-  for (const quote of ["BNB", "USDT", "USDC", "USD1"]) assert.match(html, new RegExp(`data-launch-quote="${quote}"`));
-  assert.doesNotMatch(html, /data-launch-quote="GW"|option value="gw">GW/);
-  assert.match(bridge, /GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F"/, "existing GW launches must remain resolvable after the new-launch entry is retired");
+  for (const quote of ["BNB", "USDT", "USDC", "USD1", "GW"]) assert.match(html, new RegExp(`data-launch-quote="${quote}"`));
+  assert.match(bridge, /GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F"/);
   for (const id of ["token-classification", "token-twitter", "token-telegram", "token-website", "token-discord"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const field of ["classification", "twitter", "telegram", "website", "discord", "launch_settings", "antisniper", "enable_tax", "request_platform_lp"]) assert.match(bridge, new RegExp(field));
   for (const mode of ["fair", "custom", "community"]) assert.match(html, new RegExp(`data-launch-mode="${mode}"`));

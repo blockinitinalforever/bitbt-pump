@@ -31,7 +31,7 @@ test("launch preparation fails closed when factory or fee recipient changes", ()
 });
 
 test("all supported quote tokens are bound to their configured contract", () => {
-  for (const symbol of ["BNB", "USDT", "USDC", "GW"]) {
+  for (const symbol of ["BNB", "USDT", "USDC", "USD1", "GW"]) {
     const expected = getQuoteTokenAddress(symbol);
     const valid = { ...prepared, launch: { ...prepared.launch, quote_token: symbol }, quote_token_address: expected || "0x0000000000000000000000000000000000000000" };
     assert.doesNotThrow(() => assertPreparedLaunchBinding(valid, fee, creator, { token_name: "My Token", symbol: "MTK", quote_token: symbol }, expected));

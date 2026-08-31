@@ -19,6 +19,8 @@ test("parseUnits rejects invalid, zero and over-precision values", () => {
 test("unsupported quote tokens fail closed", () => {
   assert.equal(isSupportedQuoteToken("BNB"), true);
   assert.equal(isSupportedQuoteToken("usdt"), true);
+  assert.equal(isSupportedQuoteToken("USD1"), true);
+  assert.equal(isSupportedQuoteToken("GW"), true);
   assert.equal(isSupportedQuoteToken("UNKNOWN"), false);
   assert.equal(getQuoteTokenAddress("BNB"), null);
   assert.throws(() => getQuoteTokenAddress("UNKNOWN"));
