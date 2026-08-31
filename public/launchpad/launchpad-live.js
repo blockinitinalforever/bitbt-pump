@@ -215,7 +215,8 @@
   };
   const api = async (path, init) => {
     const requestToken = sessionStorage.getItem(SESSION_KEY);
-    const response = await fetch(`/api/pump/${path}`, { ...init, cache: "no-store", headers: { accept: "application/json", ...(requestToken ? { authorization: `Bearer ${requestToken}` } : {}), ...(init?.headers || {}) } });
+    const publicRead = !init?.method && /^(?:v1\/pump\/(?:tokens|detail|details|trades|market(?:-activity)?|candles|migration-proof|holders|economics\/config|name-check))(?:[?]|$)/.test(path);
+    const response = await fetch(`/api/pump/${path}`, { ...init, cache: publicRead ? "default" : "no-store", headers: { accept: "application/json", ...(requestToken ? { authorization: `Bearer ${requestToken}` } : {}), ...(init?.headers || {}) } });
     let payload;
     if (typeof response.text === "function") {
       const raw = await response.text();
@@ -610,6 +611,8 @@
   const quoteAddress = (symbol) => ({ BNB: null, USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", USD1: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d", GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F" })[String(symbol || "").toUpperCase()];
   const LAUNCH_QUOTE_TOKENS = new Set(["BNB", "USDT", "USDC", "USD1"]);
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+  const PANCAKE_V2_ROUTER = "0x10ed43c718714eb63d5aa57b78b54704e256024e";
+  const WBNB_ADDRESS = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
   const USER_SLIPPAGE_BPS = 200;
   const PRIORITY_FEE_WEI = 50_000_000n;
   const getFeePolicy = async (provider = selectedProvider()) => {
@@ -746,7 +749,12 @@
   const reloadCandles = async () => { const address = tokenAddress(state.selected).toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(address)) return; const sequence = ++candleRequestSequence; const interval = state.chartInterval; const candles = await fetchCandles(address, interval); if (sequence !== candleRequestSequence || tokenAddress(state.selected).toLowerCase() !== address || state.chartInterval !== interval) return; state.candles = candles; drawCharts(); };
   const loadDetail = async (token, { refreshBalance = true, forceDetail = false, refreshTrades = true } = {}) => {
     if (!tokenAddress(token)) return;
-    const requestSequence = ++detailRequestSequence; state.selected = token; const address = tokenAddress(token).toLowerCase(); const [detail, trades, candles, proof] = await Promise.all([!forceDetail && state.details[address] ? Promise.resolve(state.details[address]) : api(`v1/pump/detail?address=${encodeURIComponent(tokenAddress(token))}`), refreshTrades ? api(`v1/pump/trades?token_address=${encodeURIComponent(tokenAddress(token))}`) : Promise.resolve(state.trades), fetchCandles(address).catch(() => []), api(`v1/pump/migration-proof?token_address=${encodeURIComponent(address)}`).catch(() => null)]); if (requestSequence !== detailRequestSequence || tokenAddress(state.selected).toLowerCase() !== address) return false; state.detail = detail; state.details[address] = detail; state.trades = trades; state.candles = candles; state.migrationProof = proof; selectedDetailAddress = address; if (refreshBalance) state.balances = { quote: null, token: null, gas: null }; renderSelected(); renderTradeConfig(); renderLiveRows(); drawCharts(); if (state.account && refreshBalance) await refreshBalances(); return true;
+    const requestSequence = ++detailRequestSequence; state.selected = token; const address = tokenAddress(token).toLowerCase();
+    const detailPromise = !forceDetail && state.details[address] ? Promise.resolve(state.details[address]) : api(`v1/pump/detail?address=${encodeURIComponent(tokenAddress(token))}`);
+    const migratedKnown = token?.migrated === true || status(token) === "migrated";
+    const [detail, trades, candles, knownProof] = await Promise.all([detailPromise, refreshTrades ? api(`v1/pump/trades?token_address=${encodeURIComponent(tokenAddress(token))}`) : Promise.resolve(state.trades), fetchCandles(address).catch(() => []), migratedKnown ? api(`v1/pump/migration-proof?token_address=${encodeURIComponent(address)}`).catch(() => null) : Promise.resolve(null)]);
+    const proof = knownProof || (!migratedKnown && detail?.migrated === true ? await api(`v1/pump/migration-proof?token_address=${encodeURIComponent(address)}`).catch(() => null) : null);
+    if (requestSequence !== detailRequestSequence || tokenAddress(state.selected).toLowerCase() !== address) return false; state.detail = detail; state.details[address] = detail; state.trades = trades; state.candles = candles; state.migrationProof = proof; selectedDetailAddress = address; if (refreshBalance) state.balances = { quote: null, token: null, gas: null }; renderSelected(); renderTradeConfig(); renderLiveRows(); drawCharts(); if (state.account && refreshBalance) await refreshBalances(); return true;
   };
   const activateDetail = () => { const detailPanel = $('[data-panel="detail"]'); if (!detailPanel) return; $$("[data-panel]").forEach((panel) => panel.classList.toggle("active", panel === detailPanel)); detailPanel.classList.add("has-bottom-nav"); detailPanel.scrollTop = 0; };
   const openToken = async (token, { historyMode = "push", fallbackDetail = null } = {}) => {
@@ -809,14 +817,79 @@
     text("[data-active-symbol]", detail.symbol || token.symbol); text("[data-active-quote]", quote); text("[data-active-status]", selectedStatus.toUpperCase()); text("[data-active-address]", `${short(address)} · BNB CHAIN`); text("[data-active-price-label]", `PRICE / ${quote}`); text("[data-active-price]", `${decimal(detail.current_price_quote ?? detail.current_price_bnb)} ${quote}`); text("[data-active-market]", `${decimal(raised)} ${quote}`); text("[data-active-rank]", selectedStatus); text("[data-active-curve]", `${progress.toFixed(2)}%`); text("[data-active-volume]", token.volume_quote_24h != null ? `${decimal(token.volume_quote_24h)} ${quote}` : recentTrades.length ? `${decimal(volume)} ${quote}` : "—"); text("[data-active-raised]", `${decimal(raised)} ${quote}`); text("[data-active-trade-count]", token.trade_count_24h ?? state.trades.length); text("[data-trade-count-label]", `共 ${state.trades.length} 笔`); text("[data-active-sold]", sold == null ? "—" : `${decimal(sold)} ${detail.symbol || token.symbol}`); text("[data-active-reserve]", `储备 ${decimal(raised)} ${quote}`); text("[data-active-remaining]", detail.migrated ? "已迁移至 DEX" : "迁移剩余由链上进度决定"); text("[data-chain-contract]", address); text("[data-chain-curve]", detail.curve_address || "—"); text("[data-chain-created]", formatDate(detail.submitted_at || token.submitted_at)); text("[data-chain-creator]", detail.creator || token.creator_address || "—"); text("[data-chain-status]", selectedStatus); text("[data-token-tax-detail], [data-token-tax]", taxLabel); text("[data-migration-router]", state.migrationProof?.router_verified ? `${short(state.migrationProof.router_address)} · 已验证` : state.migrationProof?.router_address ? `${short(state.migrationProof.router_address)} · 未验证` : "尚未读取"); text("[data-migration-pair]", state.migrationProof?.pair_address || (detail.migrated ? "迁移证明暂不可用" : "尚未迁移")); text("[data-migration-lp]", state.migrationProof?.lp_burn_verified ? `${formatUnits(BigInt(state.migrationProof.lp_burned_balance_raw || "0"), 18, 6)} LP · 已销毁` : detail.migrated ? "未验证" : "尚未迁移"); text("[data-holding-amount]", state.balances.token == null ? "—" : formatUnits(state.balances.token)); text("[data-holding-short]", state.balances.token == null ? "—" : formatUnits(state.balances.token, 18, 4)); text("[data-holding-value]", "—"); text("[data-active-change]", Number.isFinite(Number(token.price_change_24h_percent)) ? `${Number(token.price_change_24h_percent) >= 0 ? "+" : ""}${Number(token.price_change_24h_percent).toFixed(2)}%` : "—"); $$('[data-active-image]').forEach((node) => { node.src = assetImage({ ...token, ...detail }); }); $$('[data-active-curve-bar]').forEach((node) => { node.style.width = `${progress}%`; }); $$('[data-copy-token-address]').forEach((node) => { node.dataset.tokenAddress = address; node.title = `复制完整地址 ${address}`; }); const favorite = state.favorites.some((item) => String(item.contract_address || "").toLowerCase() === address.toLowerCase()); $$('[data-favorite-token]').forEach((node) => { node.classList.toggle("active", favorite); node.title = favorite ? "取消自选" : "加入自选"; }); const holderPayload = state.holders[address.toLowerCase()]; if (holderPayload) renderHolders(address, holderPayload); else { text("[data-holder-count]", "点击持有人页加载"); const holderList = $("[data-holder-list]"); if (holderList) holderList.innerHTML = `<p class="footer-note">打开本页后按需读取真实持有人数据。</p>`; }
     const liveRows = state.trades.slice(0, 20).map((trade) => `<div class="live-row"><span class="trade-type ${String(trade.trade_type).toLowerCase() === "buy" ? "buy" : "sell"}">${escapeHtml(String(trade.trade_type || "TRADE").toUpperCase())}</span><div><p><b>${escapeHtml(short(trade.trader))}</b></p><small>${escapeHtml(decimal(trade.quote_amount || trade.bnb_amount))} ${escapeHtml(quote)} · ${escapeHtml(decimal(trade.token_amount))} ${escapeHtml(detail.symbol)}</small></div><small>${escapeHtml(age(new Date((trade.timestamp > 1e12 ? trade.timestamp : trade.timestamp * 1000)).toISOString()))}</small></div>`).join(""); const tradePanel = $('[data-panel="detail"] [data-detail-panel="trades"]'); if (tradePanel) { [...tradePanel.querySelectorAll(".live-row, .footer-note")].forEach((node) => node.remove()); tradePanel.querySelector(".section-title")?.insertAdjacentHTML("afterend", liveRows || `<p class="footer-note">暂无真实成交记录。</p>`); } renderComments(address.toLowerCase()); renderAlertButtons(); applySide(state.side === "sell");
   };
-  const quoteBinding = (response, address, amount) => { const output = state.side === "buy" ? response?.tokens_out : (response?.quote_out_raw || response?.quote_out || response?.bnb_out); const quoteAddressValue = String(response?.quote_token_address || "").toLowerCase(); const expiry = Number(response?.expires_at) * (Number(response?.expires_at) < 1e12 ? 1000 : 1); const detailQuote = String(state.detail?.quote_token_address || ZERO_ADDRESS).toLowerCase(); const quoteToken = String(response?.quote_token || "").toUpperCase(); const quoteKind = quoteToken === "BNB" ? "native" : "erc20"; const outputRaw = String(output || ""); const minOutRaw = String(response?.min_out || ""); const slippageBps = Number(response?.slippage_bps); let minOutValid = false; if (/^\d+$/.test(outputRaw) && /^\d+$/.test(minOutRaw) && Number.isInteger(slippageBps) && slippageBps === USER_SLIPPAGE_BPS) { const outputBig = BigInt(outputRaw); const minOut = BigInt(minOutRaw); minOutValid = minOut > 0n && minOut === outputBig * BigInt(10000 - slippageBps) / 10000n; } const chainId = normalizeChainId(response?.chain_id); const addressKindValid = quoteKind === "native" ? quoteAddressValue === ZERO_ADDRESS && detailQuote === ZERO_ADDRESS : /^0x[0-9a-fA-F]{40}$/.test(quoteAddressValue) && quoteAddressValue !== ZERO_ADDRESS && quoteAddressValue === detailQuote; if (!response || !/^0x[0-9a-fA-F]{40}$/.test(response.token_address || "") || response.token_address.toLowerCase() !== address.toLowerCase() || !/^0x[0-9a-fA-F]{40}$/.test(response.curve_address || "") || response.curve_address.toLowerCase() !== String(state.detail.curve_address || "").toLowerCase() || !addressKindValid || chainId !== "0x38" || !response.quote_id || !Number.isFinite(expiry) || expiry <= Date.now() || expiry > Date.now() + 35000 || !response.quote_token || quoteToken !== String(state.detail.quote_token).toUpperCase() || !/^\d+$/.test(outputRaw) || !minOutValid) throw new Error("报价缺少有效且完整的链、代币、曲线、计价币或滑点保护"); return { response, quoteId: String(response.quote_id), quoteKind, tokenAddress: address.toLowerCase(), curveAddress: response.curve_address.toLowerCase(), quoteTokenAddress: quoteAddressValue, quoteToken, account: (state.account || "").toLowerCase(), chainId, side: state.side, amount, output: outputRaw, minOut: BigInt(minOutRaw), slippageBps, expiresAt: expiry }; };
-  const assertQuoteBinding = async () => { if (!state.quote || Date.now() >= state.quote.expiresAt) { invalidateQuote(); throw new Error("报价已过期，请重新获取"); } const provider = await assertProviderState(); const address = tokenAddress(state.selected).toLowerCase(); const detailCurve = String(state.detail?.curve_address || "").toLowerCase(); const detailQuote = String(state.detail?.quote_token_address || ZERO_ADDRESS).toLowerCase(); const currentQuoteKind = String(state.detail?.quote_token || "").toUpperCase() === "BNB" ? "native" : "erc20"; const expectedMin = state.quote.output ? BigInt(state.quote.output) * BigInt(10000 - USER_SLIPPAGE_BPS) / 10000n : 0n; if (!state.quote.quoteId || state.quote.tokenAddress !== address || state.quote.curveAddress !== detailCurve || state.quote.quoteTokenAddress !== detailQuote || state.quote.quoteKind !== currentQuoteKind || state.quote.account !== provider.account || state.quote.chainId !== provider.chainId || state.quote.side !== state.side || state.quote.amount !== $("#trade-amount")?.value?.trim() || state.quote.quoteToken !== String(state.detail.quote_token).toUpperCase() || state.quote.slippageBps !== USER_SLIPPAGE_BPS || state.quote.minOut <= 0n || state.quote.minOut !== expectedMin) { invalidateQuote(); throw new Error("报价与当前代币、曲线、钱包、网络或滑点政策不匹配"); } return state.quote; };
-  const updateQuote = async () => { if (!state.selected || !state.detail) return; const input = $("#trade-amount"); const amount = input?.value?.trim(); if (!amount || number(amount) <= 0) { invalidateQuote(); return; } const requestSequence = ++quoteRequestSequence; const address = tokenAddress(state.selected); const side = state.side; const response = side === "buy" ? await api(`v1/pump/buy-quote?token_address=${encodeURIComponent(address)}&quote_amount=${encodeURIComponent(amount)}`) : await api(`v1/pump/sell-quote?token_address=${encodeURIComponent(address)}&token_amount=${encodeURIComponent(amount)}`); if (requestSequence !== quoteRequestSequence || side !== state.side || address.toLowerCase() !== tokenAddress(state.selected).toLowerCase() || amount !== $("#trade-amount")?.value?.trim()) return; state.quote = quoteBinding(response, address, amount); state.quoteKey = `${side}:${address}:${amount}:${state.account}:${state.chainId}`; const outputUnit = side === "buy" ? state.detail.symbol : state.detail.quote_token; const feeRate = String(response.fee_rate_percent || "").trim(); const feeAmount = decimal(response.fee_quote ?? response.fee_bnb); text("[data-quote-output]", `${baseUnits(state.quote.output, 8)} ${outputUnit}`); text("[data-quote-min]", `${baseUnits(state.quote.minOut.toString(), 8)} ${outputUnit}`); text("[data-quote-route]", side === "buy" ? `${state.detail.quote_token} → 联合曲线` : `联合曲线 → ${state.detail.quote_token}`); text("[data-quote-fee]", feeRate ? `${feeRate} · ${feeAmount} ${state.detail.quote_token}` : `${feeAmount} ${state.detail.quote_token}`); text("[data-protocol-fee]", feeRate || "以实时报价为准"); text("[data-slippage-value], [data-slippage-label]", `${(state.quote.slippageBps / 100).toFixed(0)}% · 固定`); text("[data-price-impact]", priceImpactLabel(response.price_impact_percent)); };
+  const quoteBinding = (response, address, amount) => {
+    const output = state.side === "buy" ? response?.tokens_out : (response?.quote_out_raw || response?.quote_out || response?.bnb_out);
+    const quoteAddressValue = String(response?.quote_token_address || "").toLowerCase();
+    const expiry = Number(response?.expires_at) * (Number(response?.expires_at) < 1e12 ? 1000 : 1);
+    const detailQuote = String(state.detail?.quote_token_address || ZERO_ADDRESS).toLowerCase();
+    const quoteToken = String(response?.quote_token || "").toUpperCase();
+    const quoteKind = quoteToken === "BNB" ? "native" : "erc20";
+    const routeType = String(response?.route_type || "bonding_curve").toLowerCase();
+    const routerAddress = String(response?.router_address || "").toLowerCase();
+    const pairAddress = String(response?.pair_address || "").toLowerCase();
+    const migratedRoute = routeType === "pancakeswap_v2";
+    const outputRaw = String(output || "");
+    const minOutRaw = String(response?.min_out || "");
+    const slippageBps = Number(response?.slippage_bps);
+    let minOutValid = false;
+    if (/^\d+$/.test(outputRaw) && /^\d+$/.test(minOutRaw) && Number.isInteger(slippageBps) && slippageBps === USER_SLIPPAGE_BPS) {
+      const outputBig = BigInt(outputRaw); const minOut = BigInt(minOutRaw);
+      minOutValid = minOut > 0n && minOut === outputBig * BigInt(10000 - slippageBps) / 10000n;
+    }
+    const chainId = normalizeChainId(response?.chain_id);
+    const addressKindValid = quoteKind === "native" ? quoteAddressValue === ZERO_ADDRESS && detailQuote === ZERO_ADDRESS : /^0x[0-9a-fA-F]{40}$/.test(quoteAddressValue) && quoteAddressValue !== ZERO_ADDRESS && quoteAddressValue === detailQuote;
+    const routeValid = migratedRoute
+      ? state.detail?.migrated === true && routerAddress === PANCAKE_V2_ROUTER && /^0x[0-9a-f]{40}$/.test(pairAddress) && pairAddress !== ZERO_ADDRESS && (!state.migrationProof?.pair_address || pairAddress === String(state.migrationProof.pair_address).toLowerCase())
+      : routeType === "bonding_curve" && state.detail?.migrated !== true && !routerAddress && !pairAddress;
+    if (!response || !/^0x[0-9a-fA-F]{40}$/.test(response.token_address || "") || response.token_address.toLowerCase() !== address.toLowerCase() || !/^0x[0-9a-fA-F]{40}$/.test(response.curve_address || "") || response.curve_address.toLowerCase() !== String(state.detail.curve_address || "").toLowerCase() || !addressKindValid || !routeValid || chainId !== "0x38" || !response.quote_id || !Number.isFinite(expiry) || expiry <= Date.now() || expiry > Date.now() + 35000 || !response.quote_token || quoteToken !== String(state.detail.quote_token).toUpperCase() || !/^\d+$/.test(outputRaw) || !minOutValid) throw new Error("报价缺少有效且完整的链、代币、路由、计价币或滑点保护");
+    return { response, quoteId: String(response.quote_id), quoteKind, routeType, routerAddress, pairAddress, tokenAddress: address.toLowerCase(), curveAddress: response.curve_address.toLowerCase(), quoteTokenAddress: quoteAddressValue, quoteToken, account: (state.account || "").toLowerCase(), chainId, side: state.side, amount, output: outputRaw, minOut: BigInt(minOutRaw), slippageBps, expiresAt: expiry };
+  };
+  const assertQuoteBinding = async () => {
+    if (!state.quote || Date.now() >= state.quote.expiresAt) { invalidateQuote(); throw new Error("报价已过期，请重新获取"); }
+    const provider = await assertProviderState();
+    const address = tokenAddress(state.selected).toLowerCase();
+    const detailCurve = String(state.detail?.curve_address || "").toLowerCase();
+    const detailQuote = String(state.detail?.quote_token_address || ZERO_ADDRESS).toLowerCase();
+    const currentQuoteKind = String(state.detail?.quote_token || "").toUpperCase() === "BNB" ? "native" : "erc20";
+    const currentRoute = state.detail?.migrated === true ? "pancakeswap_v2" : "bonding_curve";
+    const expectedMin = state.quote.output ? BigInt(state.quote.output) * BigInt(10000 - USER_SLIPPAGE_BPS) / 10000n : 0n;
+    if (!state.quote.quoteId || state.quote.tokenAddress !== address || state.quote.curveAddress !== detailCurve || state.quote.quoteTokenAddress !== detailQuote || state.quote.quoteKind !== currentQuoteKind || state.quote.routeType !== currentRoute || (currentRoute === "pancakeswap_v2" && state.quote.routerAddress !== PANCAKE_V2_ROUTER) || state.quote.account !== provider.account || state.quote.chainId !== provider.chainId || state.quote.side !== state.side || state.quote.amount !== $("#trade-amount")?.value?.trim() || state.quote.quoteToken !== String(state.detail.quote_token).toUpperCase() || state.quote.slippageBps !== USER_SLIPPAGE_BPS || state.quote.minOut <= 0n || state.quote.minOut !== expectedMin) { invalidateQuote(); throw new Error("报价与当前代币、路由、钱包、网络或滑点政策不匹配"); }
+    return state.quote;
+  };
+  const updateQuote = async () => {
+    if (!state.selected || !state.detail) return;
+    const input = $("#trade-amount"); const amount = input?.value?.trim();
+    if (!amount || number(amount) <= 0) { invalidateQuote(); return; }
+    const requestSequence = ++quoteRequestSequence; const address = tokenAddress(state.selected); const side = state.side;
+    const response = side === "buy" ? await api(`v1/pump/buy-quote?token_address=${encodeURIComponent(address)}&quote_amount=${encodeURIComponent(amount)}`) : await api(`v1/pump/sell-quote?token_address=${encodeURIComponent(address)}&token_amount=${encodeURIComponent(amount)}`);
+    if (requestSequence !== quoteRequestSequence || side !== state.side || address.toLowerCase() !== tokenAddress(state.selected).toLowerCase() || amount !== $("#trade-amount")?.value?.trim()) return;
+    state.quote = quoteBinding(response, address, amount); state.quoteKey = `${side}:${address}:${amount}:${state.account}:${state.chainId}`;
+    const outputUnit = side === "buy" ? state.detail.symbol : state.detail.quote_token;
+    const isDex = state.quote.routeType === "pancakeswap_v2";
+    const feeRate = String(response.fee_rate_percent || "").trim(); const feeAmount = decimal(response.fee_quote ?? response.fee_bnb);
+    text("[data-quote-output]", `${baseUnits(state.quote.output, 8)} ${outputUnit}`);
+    text("[data-quote-min]", `${baseUnits(state.quote.minOut.toString(), 8)} ${outputUnit}`);
+    text("[data-quote-route]", isDex ? `${state.detail.quote_token} ↔ PancakeSwap V2 ↔ ${state.detail.symbol}` : side === "buy" ? `${state.detail.quote_token} → 联合曲线` : `联合曲线 → ${state.detail.quote_token}`);
+    text("[data-quote-fee]", isDex ? "PancakeSwap 池费已计入报价" : feeRate ? `${feeRate} · ${feeAmount} ${state.detail.quote_token}` : `${feeAmount} ${state.detail.quote_token}`);
+    text("[data-protocol-fee]", isDex ? "DEX 池费 + 代币税（如有）" : feeRate || "以实时报价为准");
+    text("[data-slippage-value], [data-slippage-label]", `${(state.quote.slippageBps / 100).toFixed(0)}% · 固定`);
+    text("[data-price-impact]", priceImpactLabel(response.price_impact_percent));
+  };
   const applySideBase = (sell) => { state.side = sell ? "sell" : "buy"; $$('[data-trade-side]').forEach((node) => node.classList.toggle("active", (node.dataset.tradeSide === "sell") === sell)); const token = state.selected; const detail = state.detail; if (!token || !detail) return; const balance = sell ? state.balances.token : state.balances.quote; const unit = sell ? detail.symbol : detail.quote_token; text("[data-order-label]", sell ? "卖出数量" : "支付"); text("[data-order-unit]", unit); text("[data-order-balance]", balance == null ? "钱包余额 —" : `钱包余额 ${formatUnits(balance)} ${unit}`); if (!sell) text("[data-fixed-buy-balance]", balance == null ? `余额 — ${unit}` : `余额 ${formatUnits(balance)} ${unit}`); const submit = $("#trade-submit"); if (submit) { submit.textContent = state.account ? `${sell ? "卖出" : "买入"} ${sell ? detail.symbol : token.symbol || detail.symbol}` : `连接钱包并${sell ? "卖出" : "买入"}`; submit.classList.toggle("red", sell); } updateQuote().catch((error) => toastError(error, "报价获取失败，请稍后重试")); };
   const applySide = (sell) => {
     applySideBase(sell);
     const rate = sell ? state.detail?.sell_tax_percent : state.detail?.buy_tax_percent;
     text("[data-token-tax]", state.detail?.tax_enabled && Number.isFinite(Number(rate)) ? `${Number(rate)}%` : "0%");
+  };
+  const abiAddressArray = (addresses) => `${word(BigInt(addresses.length))}${addresses.map((address) => addressWord(address)).join("")}`;
+  const pancakeSwapData = ({ side, quoteAddress, token, account, amountIn, minOut }) => {
+    const routeQuote = quoteAddress || WBNB_ADDRESS;
+    const path = side === "buy" ? [routeQuote, token] : [token, routeQuote];
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 120);
+    const pathData = abiAddressArray(path);
+    if (side === "buy" && !quoteAddress) return `0xb6f9de95${word(minOut)}${word(128n)}${addressWord(account)}${word(deadline)}${pathData}`;
+    const selector = side === "sell" && !quoteAddress ? "0x791ac947" : "0x5c11d795";
+    return `${selector}${word(amountIn)}${word(minOut)}${word(160n)}${addressWord(account)}${word(deadline)}${pathData}`;
   };
   const executeTradeSingleFlight = async () => {
     if (!state.account) await connectWallet();
@@ -833,7 +906,10 @@
     const minOut = quoteBindingState.minOut;
     const provider = selectedProvider();
     if (!provider) throw new Error("请先连接并验证钱包");
-    const tradeContext = { account: quoteBindingState.account, side: quoteBindingState.side, tokenAddress: quoteBindingState.tokenAddress, tokenSymbol: String(state.detail.symbol || state.selected.symbol || "TOKEN"), quoteSymbol: quoteBindingState.quoteToken, curve, provider };
+    const isDex = quoteBindingState.routeType === "pancakeswap_v2";
+    const executionTarget = isDex ? quoteBindingState.routerAddress : curve;
+    if (!/^0x[0-9a-f]{40}$/.test(executionTarget) || executionTarget === ZERO_ADDRESS) throw new Error("交易执行地址无效");
+    const tradeContext = { account: quoteBindingState.account, side: quoteBindingState.side, tokenAddress: quoteBindingState.tokenAddress, tokenSymbol: String(state.detail.symbol || state.selected.symbol || "TOKEN"), quoteSymbol: quoteBindingState.quoteToken, curve, routeType: quoteBindingState.routeType, routerAddress: quoteBindingState.routerAddress, pairAddress: quoteBindingState.pairAddress, executionTarget, provider };
     const selector = tradeContext.side === "buy" ? (quote ? "0x6818735c" : "0xd96a094a") : (quote ? "0x5969261f" : "0xd79875eb");
     const txType = tradeContext.side === "buy" ? "pump_buy" : "pump_sell";
     const fromToken = tradeContext.side === "buy" ? tradeContext.quoteSymbol : tradeContext.tokenSymbol;
@@ -845,31 +921,32 @@
       if ((tradeContext.side === "buy" && quote) || tradeContext.side === "sell") {
         await assertQuoteBinding();
         const asset = tradeContext.side === "buy" ? quote : tradeContext.tokenAddress;
-        const currentAllowance = await allowance(asset, tradeContext.account, curve, tradeContext.provider);
+        const currentAllowance = await allowance(asset, tradeContext.account, executionTarget, tradeContext.provider);
         if (currentAllowance < amountWei) {
           let approval;
           try {
-            approval = await send({ from: tradeContext.account, to: asset, data: `0x095ea7b3${addressWord(curve)}${word(amountWei)}`, gas: 100000n }, tradeContext.provider);
-            await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: "pending", metadata: { spender: curve, token_address: tradeContext.tokenAddress } });
+            approval = await send({ from: tradeContext.account, to: asset, data: `0x095ea7b3${addressWord(executionTarget)}${word(amountWei)}`, gas: 100000n }, tradeContext.provider);
+            await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: "pending", metadata: { spender: executionTarget, token_address: tradeContext.tokenAddress, route_type: tradeContext.routeType } });
             toast("授权交易已发送");
             const receipt = await waitReceipt(approval, tradeContext.provider);
             const ok = receiptSucceeded(receipt);
-            await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: ok ? "success" : "failed", metadata: { spender: curve, token_address: tradeContext.tokenAddress } });
+            await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: ok ? "success" : "failed", metadata: { spender: executionTarget, token_address: tradeContext.tokenAddress, route_type: tradeContext.routeType } });
             if (!ok) throw new Error("授权失败");
           } catch (error) {
-            if (approval) await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: "failed", metadata: { spender: curve, token_address: tradeContext.tokenAddress, error: error.message } });
+            if (approval) await report({ user_address: tradeContext.account, tx_hash: approval, chain_id: "bsc", tx_type: "approve", from_token: fromToken, status: "failed", metadata: { spender: executionTarget, token_address: tradeContext.tokenAddress, route_type: tradeContext.routeType, error: error.message } });
             throw error;
           }
           await assertQuoteBinding();
         }
       }
-      const data = tradeContext.side === "buy" ? (quote ? `${selector}${word(amountWei)}` : `${selector}${word(minOut)}`) : `${selector}${word(amountWei)}${word(minOut)}`;
-      hash = await send({ from: tradeContext.account, to: curve, data, value: tradeContext.side === "buy" && !quote ? amountWei : 0n, gas: 350000n }, tradeContext.provider);
-      await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, from_amount: amount, to_amount: formatUnits(output), status: "pending", metadata: { token_address: tradeContext.tokenAddress, curve_address: curve } });
+      const data = isDex ? pancakeSwapData({ side: tradeContext.side, quoteAddress: quote, token: tradeContext.tokenAddress, account: tradeContext.account, amountIn: amountWei, minOut }) : tradeContext.side === "buy" ? (quote ? `${selector}${word(amountWei)}` : `${selector}${word(minOut)}`) : `${selector}${word(amountWei)}${word(minOut)}`;
+      hash = await send({ from: tradeContext.account, to: executionTarget, data, value: tradeContext.side === "buy" && !quote ? amountWei : 0n, gas: isDex ? 600000n : 350000n }, tradeContext.provider);
+      const tradeMetadata = { token_address: tradeContext.tokenAddress, curve_address: curve, route_type: tradeContext.routeType, router_address: tradeContext.routerAddress || undefined, pair_address: tradeContext.pairAddress || undefined };
+      await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, from_amount: amount, to_amount: formatUnits(output), status: "pending", metadata: tradeMetadata });
       toast("交易已广播，等待回执…");
       const receipt = await waitReceipt(hash, tradeContext.provider);
       const ok = receiptSucceeded(receipt);
-      await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, from_amount: amount, to_amount: formatUnits(output), status: ok ? "success" : "failed", metadata: { token_address: tradeContext.tokenAddress, curve_address: curve } });
+      await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, from_amount: amount, to_amount: formatUnits(output), status: ok ? "success" : "failed", metadata: tradeMetadata });
       mainStatusReported = true;
       if (!ok) throw new Error("交易回执失败");
       toast("交易已确认");
@@ -877,7 +954,7 @@
       if (tokenAddress(state.selected).toLowerCase() === tradeContext.tokenAddress) refreshes.push(loadDetail(state.selected));
       await Promise.all(refreshes);
     } catch (error) {
-      if (hash && !mainStatusReported && error?.code !== "TX_CONFIRMATION_PENDING") await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, status: "failed", metadata: { token_address: tradeContext.tokenAddress, curve_address: curve, error: error.message } });
+      if (hash && !mainStatusReported && error?.code !== "TX_CONFIRMATION_PENDING") await report({ user_address: tradeContext.account, tx_hash: hash, chain_id: "bsc", tx_type: txType, from_token: fromToken, to_token: toToken, status: "failed", metadata: { token_address: tradeContext.tokenAddress, curve_address: curve, route_type: tradeContext.routeType, router_address: tradeContext.routerAddress || undefined, pair_address: tradeContext.pairAddress || undefined, error: error.message } });
       if (hash) await loadUserPanels().catch(() => undefined);
       throw error;
     } finally { state.busy = false; }

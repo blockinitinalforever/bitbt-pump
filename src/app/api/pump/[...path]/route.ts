@@ -19,6 +19,19 @@ const SIWE_REQUIRED_READ_ENDPOINTS = new Set([
   "v1/pump/referral",
   "v1/pump/kol",
 ]);
+const PUBLIC_SHORT_CACHE_ENDPOINTS = new Set([
+  "v1/pump/tokens",
+  "v1/pump/detail",
+  "v1/pump/details",
+  "v1/pump/trades",
+  "v1/pump/market",
+  "v1/pump/candles",
+  "v1/pump/migration-proof",
+  "v1/pump/market-activity",
+  "v1/pump/holders",
+  "v1/pump/economics/config",
+  "v1/pump/name-check",
+]);
 const ALLOWED = new Set([
   "v1/auth/siwe/nonce",
   "v1/auth/siwe/verify",
@@ -58,6 +71,9 @@ async function forward(request: NextRequest, path: string[]) {
   const key = path.join("/");
   if (!ALLOWED.has(key)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const writeRequest = request.method !== "GET" && request.method !== "HEAD";
+  const responseCacheControl = !writeRequest && PUBLIC_SHORT_CACHE_ENDPOINTS.has(key)
+    ? "public, max-age=2, s-maxage=5, stale-while-revalidate=30"
+    : "no-store";
   const requiresSiwe = SIWE_REQUIRED_ENDPOINTS.has(key) && (writeRequest || SIWE_REQUIRED_READ_ENDPOINTS.has(key));
   if (requiresSiwe && !request.headers.get("authorization")?.startsWith("Bearer ")) {
     return NextResponse.json({ success: false, error: "SIWE session required for this operation" }, { status: 401, headers: { "cache-control": "no-store" } });
@@ -117,7 +133,7 @@ async function forward(request: NextRequest, path: string[]) {
     }
     return new NextResponse(request.method === "HEAD" ? null : response.body, {
       status: response.status,
-      headers: { "content-type": response.headers.get("content-type") || "application/json", "cache-control": "no-store" },
+      headers: { "content-type": response.headers.get("content-type") || "application/json", "cache-control": responseCacheControl },
     });
   } catch {
     return NextResponse.json({ success: false, error: "Pump service is temporarily unavailable" }, { status: 502, headers: { "cache-control": "no-store" } });

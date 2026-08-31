@@ -10,6 +10,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     typeof window !== "undefined"
       ? sessionStorage.getItem("bitbt_pump_session")
       : null;
+  const publicRead = !init?.method && /^(?:v1\/pump\/(?:tokens|detail|details|trades|market(?:-activity)?|candles|migration-proof|holders|economics\/config|name-check))(?:[?]|$)/.test(path);
   const response = await fetch(`/api/pump/${path}`, {
     ...init,
     headers: {
@@ -17,7 +18,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
-    cache: "no-store",
+    cache: publicRead ? "default" : "no-store",
   });
   const payload = (await response.json()) as PumpApiResponse<T>;
   if (!response.ok || payload.data === undefined)
