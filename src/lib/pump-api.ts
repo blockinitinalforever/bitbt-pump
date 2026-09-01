@@ -50,6 +50,9 @@ export type PumpToken = {
   tax_enabled?: boolean;
   buy_tax_percent?: number | null;
   sell_tax_percent?: number | null;
+  dex_profile?: string;
+  dex_router?: string;
+  lp_policy?: string;
 };
 
 export type PumpDetail = {
@@ -58,6 +61,13 @@ export type PumpDetail = {
   symbol: string;
   contract_address: string | null;
   curve_address: string;
+  route_type?: string;
+  router_address?: string | null;
+  pair_address?: string | null;
+  dex_kind?: "v2" | "v3" | null;
+  execution_target?: string | null;
+  execution_data?: string | null;
+  approval_spender?: string | null;
   quote_token: string;
   quote_token_address?: string | null;
   status?: string;

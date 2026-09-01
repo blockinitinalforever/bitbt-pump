@@ -19,6 +19,8 @@ const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 const deployScript = fs.readFileSync(path.join(root, "deploy/deploy-server.sh"), "utf8");
 const launchFormSource = fs.readFileSync(path.join(root, "src/components/PumpLaunchForm.tsx"), "utf8");
 const pumpApiSource = fs.readFileSync(path.join(root, "src/lib/pump-api.ts"), "utf8");
+const compactHtml = html.replace(/\s+/g, "");
+const compactBridge = bridge.replace(/\s+/g, "");
 
 type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
 
@@ -200,12 +202,13 @@ test("wrong quote-token contract is rejected before any provider send", async ()
   assert.equal(providerCalls.includes("eth_sendTransaction"), false);
 });
 
-test("migrated Pump tokens quote and execute through the verified PancakeSwap V2 router", async () => {
+test("migrated Pump tokens quote and execute through their verified configured V2 router", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const token = "0x2222222222222222222222222222222222222222";
   const curve = "0x3333333333333333333333333333333333333333";
   const pair = "0x4444444444444444444444444444444444444444";
-  const router = "0x10ed43c718714eb63d5aa57b78b54704e256024e";
+  const router = "0x5555555555555555555555555555555555555555";
+  const routeType = "secondary_v2";
   const reports: Array<Record<string, unknown>> = [];
   const response = async (input: string, init?: RequestInit) => {
     const url = String(input);
@@ -214,11 +217,11 @@ test("migrated Pump tokens quote and execute through the verified PancakeSwap V2
     if (url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
     if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [{ token_name: "Migrated", symbol: "MIG", contract_address: token, quote_token: "BNB", status: "migrated", migrated: true, submitted_at: new Date().toISOString(), progress_percent: 100 }] }) };
-    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { token_name: "Migrated", symbol: "MIG", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "migrated", migrated: true, progress_percent: 100 } }) };
-    if (url.includes("v1/pump/migration-proof")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, migrated: true, router_address: router, router_verified: true, pair_address: pair, lp_burn_verified: true } }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { token_name: "Migrated", symbol: "MIG", contract_address: token, quote_token: "BNB", quote_token_address: null, curve_address: curve, status: "migrated", migrated: true, progress_percent: 100, dex_profile: routeType, dex_router: router, lp_policy: "rewards" } }) };
+    if (url.includes("v1/pump/migration-proof")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, migrated: true, router_address: router, router_verified: true, factory_verified: true, wrapped_native_verified: true, pair_init_hash_verified: true, pair_address: pair, lp_receiver_address: account, lp_assignment_verified: true, lp_burn_verified: false } }) };
     if (url.includes("v1/pump/trades") || url.includes("v1/pump/candles")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
-    if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, route_type: "pancakeswap_v2", router_address: router, pair_address: pair, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "dex-quote", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_rate_percent: "0.000000%", fee_quote: "0" } }) };
+    if (url.includes("buy-quote")) return { ok: true, json: async () => ({ data: { token_address: token, curve_address: curve, route_type: routeType, router_address: router, pair_address: pair, quote_token: "BNB", quote_token_address: "0x0000000000000000000000000000000000000000", chain_id: "0x38", quote_id: "dex-quote", expires_at: Math.floor(Date.now() / 1000) + 20, tokens_out: "1000000000000000000", min_out: "980000000000000000", slippage_bps: 200, fee_rate_percent: "0.000000%", fee_quote: "0" } }) };
     if (url.includes("v1/wallet/tx/report")) { reports.push(JSON.parse(String(init?.body || "{}"))); return { ok: true, json: async () => ({ data: { accepted: true } }) }; }
     throw new Error(`unmocked ${url}`);
   };
@@ -228,16 +231,16 @@ test("migrated Pump tokens quote and execute through the verified PancakeSwap V2
   input.value = "0.001";
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 450));
-  assert.match(window.document.querySelector("[data-quote-route]")?.textContent || "", /PancakeSwap V2/);
+  assert.match(window.document.querySelector("[data-quote-route]")?.textContent || "", /secondary_v2/);
   window.document.querySelector("#trade-submit")?.dispatchEvent(new window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const trade = providerTransactions.find((transaction) => String(transaction.to).toLowerCase() === router);
-  assert.ok(trade, "migrated trade was not sent to PancakeSwap V2");
+  assert.ok(trade, "migrated trade was not sent to the configured V2 router");
   assert.match(String(trade?.data), /^0xb6f9de95/);
   assert.equal(String(trade?.value), "0x38d7ea4c68000");
   const tradeReports = reports.filter((report) => report.tx_type === "pump_buy");
   assert.deepEqual(tradeReports.map((report) => report.status), ["pending", "success"]);
-  assert.ok(tradeReports.every((report) => (report.metadata as Record<string, unknown>).route_type === "pancakeswap_v2"));
+  assert.ok(tradeReports.every((report) => (report.metadata as Record<string, unknown>).route_type === routeType));
 });
 
 test("native BNB quote accepts API chain aliases and keeps exact zero-sentinel binding", async () => {
@@ -434,13 +437,13 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   const curve = "0x5555555555555555555555555555555555555555";
   const fee = { fee_wei: "5000000000000000", receive_address: recipient, factory_address: factory, chain_id: "bsc" };
   const quoteAddresses = { BNB: "0x0000000000000000000000000000000000000000", USDT: "0x55d398326f99059fF775485246999027B3197955", USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", USD1: "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d" } as const;
-  type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; method: string; initial_buy_wei: string; initial_buy_min_tokens_out: string; transaction_value_wei: string; tax_lifecycle?: Record<string, string> };
-  const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)", initial_buy_wei: "0", initial_buy_min_tokens_out: "0", transaction_value_wei: fee.fee_wei };
+  type PreparedFixture = { launch: { id: string; token_name: string; symbol: string; creator_address: string; quote_token: string; launch_settings?: Record<string, unknown> }; fee_wei: string; factory_address: string; fee_recipient: string; chain_id: string; salt: string; predicted_token_address: string; curve_address: string; migration_threshold_wei: string; quote_token_address: string; dex_profile: string; dex_profile_id: string; dex_router: string; method: string; initial_buy_wei: string; initial_buy_min_tokens_out: string; transaction_value_wei: string; tax_lifecycle?: Record<string, string> };
+  const prepared: PreparedFixture = { launch: { id: "launch-1", token_name: "Real Token", symbol: "REAL", creator_address: account, quote_token: "BNB" }, fee_wei: fee.fee_wei, factory_address: factory, fee_recipient: recipient, chain_id: "bsc", salt: `0x${"ab".repeat(32)}`, predicted_token_address: predicted, curve_address: curve, migration_threshold_wei: "6140000000000000000", quote_token_address: quoteAddresses.BNB, dex_profile: "pancakeswap_v2", dex_profile_id: `0x${"cd".repeat(32)}`, dex_router: "0x10ED43C718714eb63d5aA57B78B54704E256024E", method: "launchTokenWithQuotePaid(string,string,uint256,bytes32,address)", initial_buy_wei: "0", initial_buy_min_tokens_out: "0", transaction_value_wei: fee.fee_wei };
   const run = async (quote: keyof typeof quoteAddresses, mutate?: (value: typeof prepared) => typeof prepared, changeAfterLoad = false, receiptStatus = "0x1", sendRejects = 0, sendErrorCode?: number, nullHash = false, retryAfterReject = false, nativeBalance = 10n ** 19n, taxMode = false, backgroundRetry = false, customCurve = false, estimateRejects = 0, confirmFailures = 0, logoUploadFailures = 0, confirmFailureMode: "500" | "timeout" = "500") => {
     const curveMode = customCurve ? "custom" : "standard";
-    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account, tax_duration_days: "0", anti_bot_duration_minutes: "5", anti_bot_extra_tax_rate: "2", max_wallet_pct: "2", sell_cooldown_seconds: "30" };
+    const taxSettings = { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: curveMode, dex_profile: "pancakeswap_v2", buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account, tax_duration_days: "0", anti_bot_duration_minutes: "5", anti_bot_extra_tax_rate: "2", max_wallet_pct: "2", sell_cooldown_seconds: "30" };
     const taxLifecycle = { tax_duration_seconds: "0", anti_bot_duration_seconds: "300", anti_bot_extra_tax_bps: "200", max_wallet_bps: "200", sell_cooldown_seconds: "30" };
-    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: curveMode } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenV2WithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address),(uint32,uint32,uint16,uint16,uint32))" : prepared.method, ...(taxMode ? { tax_lifecycle: taxLifecycle } : {}) };
+    const quotePrepared = { ...prepared, launch: { ...prepared.launch, quote_token: quote, launch_settings: taxMode ? taxSettings : { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: curveMode, dex_profile: "pancakeswap_v2" } }, quote_token_address: quoteAddresses[quote], method: taxMode ? "launchTaxTokenV2WithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address),(uint32,uint32,uint16,uint16,uint32))" : prepared.method, ...(taxMode ? { tax_lifecycle: taxLifecycle } : {}) };
     let sendCount = 0;
     let prepareCount = 0;
     let statusCount = 0;
@@ -453,6 +456,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
       const url = String(input);
       fetchUrls.push(url);
       if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
+      if (url.includes("v1/token/launch-options")) return { ok: true, json: async () => ({ data: { quotes: Object.keys(quoteAddresses).map((symbol) => ({ symbol, address: quoteAddresses[symbol as keyof typeof quoteAddresses] })), dex_profiles: [{ id: "pancakeswap_v2", name: "PancakeSwap V2", lp_policy: "burn", enabled: true }] } }) };
       if (url.includes("v1/auth/siwe/nonce")) return { ok: true, json: async () => ({ data: { domain: "bitbt.fun", nonce: "n1" } }) };
       if (url.includes("v1/auth/siwe/verify")) return { ok: true, json: async () => ({ data: { token: "session", address: account } }) };
       if (url.includes("v1/pump/name-check")) return { ok: true, json: async () => ({ data: { available: true } }) };
@@ -536,7 +540,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
     assert.equal(result.prepareCount, 1, `launch quote ${quote} was prepared more than once`);
     assert.equal(result.prepareBody?.quote_token, quote);
     assert.equal(result.prepareBody?.chain_id, "bsc");
-    assert.deepEqual(result.prepareBody?.launch_settings, { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: "standard" });
+    assert.deepEqual(result.prepareBody?.launch_settings, { antisniper: true, enable_tax: false, request_platform_lp: false, curve_mode: "standard", dex_profile: "pancakeswap_v2" });
     assert.equal(result.providerTransactions[0]?.value, "0x11c37937e08000");
     assert.equal(result.providerTransactions[0]?.gas, "0x249f00");
     assert.equal(result.providerTransactions[0]?.data?.toString().includes(quoteAddresses[quote].slice(2).toLowerCase()), true);
@@ -545,7 +549,7 @@ test("launch signing binds every prepare field and single-flights the wallet sen
   }
   const taxed = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true);
   assert.equal(taxed.sendCount, 1, "tax-token launch did not broadcast");
-  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: "standard", buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account, tax_duration_days: "0", anti_bot_duration_minutes: "5", anti_bot_extra_tax_rate: "2", max_wallet_pct: "2", sell_cooldown_seconds: "30" });
+  assert.deepEqual(taxed.prepareBody?.launch_settings, { antisniper: true, enable_tax: true, request_platform_lp: false, curve_mode: "standard", dex_profile: "pancakeswap_v2", buy_tax_rate: "5", sell_tax_rate: "5", funds_recipient_pct: "40", burn_pct: "20", holders_pct: "20", liquidity_pct: "20", min_dividend_balance: "100000", recipient_wallet: account, tax_duration_days: "0", anti_bot_duration_minutes: "5", anti_bot_extra_tax_rate: "2", max_wallet_pct: "2", sell_cooldown_seconds: "30" });
   assert.equal(String(taxed.providerTransactions[0]?.data).slice(0, 10), "0xb6d56503");
   const taxedBackgroundRetry = await run("BNB", undefined, false, "0x1", 0, undefined, false, false, 10n ** 19n, true, true);
   assert.equal(taxedBackgroundRetry.sendCount, 1, "tax-token retry flow rebroadcast the wallet transaction");
@@ -622,6 +626,7 @@ test("a persisted successful receipt retries confirmation after refresh without 
   const response = async (input: string) => {
     const url = String(input);
     if (url.includes("v1/auth/siwe/session")) return { ok: true, json: async () => ({ data: { address: account, expires_in: 300 } }) };
+    if (url.includes("v1/token/launch-options")) return { ok: true, json: async () => ({ data: { quotes: [{ symbol: "BNB", address: "0x0000000000000000000000000000000000000000" }], dex_profiles: [{ id: "pancakeswap_v2", name: "PancakeSwap V2", lp_policy: "burn", enabled: true }] } }) };
     if (url.includes("v1/token/launch")) { confirms += 1; return { ok: true, json: async () => ({ data: { status: "deployed", contract_address: predicted } }) }; }
     if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
@@ -940,7 +945,12 @@ test("Pump static shells expose the official Website favicon and contact channel
   assert.match(html, /<footer class="official-contact-footer">/);
   assert.ok(html.indexOf("data-global-official-contacts") > html.indexOf('class="workbench"'), "official contacts must be in the global footer below the interface");
   assert.ok(html.indexOf("data-global-official-contacts") < html.indexOf("</main>"), "official contacts must remain inside the global application shell");
-  for (const marker of [".official-contact-footer{", ".official-contact-bar{", "overflow-x:auto", "scroll-snap-type:x proximity", ".official-contact-bar strong{display:none}", "calc(100dvh - 155px)"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(html, /\.official-contact-footer\s*\{/);
+  assert.match(html, /\.official-contact-bar\s*\{/);
+  assert.match(html, /overflow-x:\s*auto/);
+  assert.match(html, /scroll-snap-type:\s*x proximity/);
+  assert.match(html, /\.official-contact-bar strong\s*\{[^}]*display:\s*none/s);
+  assert.match(html, /calc\(100dvh\s*-\s*155px\)/);
 });
 
 test("clicking the visible logo button opens the hidden native file input", () => {
@@ -1045,7 +1055,7 @@ test("every locale-relative Launchpad script has an executable public rewrite", 
   assert.match(nextConfig, /\/:locale\(en\|zh\)\/pump\/:address/);
   assert.doesNotMatch(nextConfig, /source: "\/:locale\/pump/);
   assert.match(shell, /src="\/launchpad\/bitbt-launch-ui-app\.html"/);
-  assert.match(html, /<base href="\/launchpad\/">/);
+  assert.match(html, /<base\s+href="\/launchpad\/"\s*\/>/);
   for (const script of ["launch-logo-upload.js", "launchpad-live.js"]) {
     assert.match(html, new RegExp(`<script src="\\./${script.replaceAll(".", "\\.")}">`));
     assert.match(nextConfig, new RegExp(`/:locale/${script.replaceAll(".", "\\.")}`));
@@ -1082,8 +1092,8 @@ test("token filters sort the already-loaded list locally without another token-l
 test("mobile market keeps search visible and floats trade actions above the bottom navigation", () => {
   assert.match(html, /class="field token-search-field" data-token-search/);
   assert.doesNotMatch(html, /data-token-search[^>]*hidden/);
-  assert.match(html, /\.fixed-trade\{height:76px;bottom:calc\(72px \+ env\(safe-area-inset-bottom\)\)/);
-  assert.match(html, /screen\[data-panel="detail"\]\.has-bottom-nav\{padding-bottom:calc\(166px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(compactHtml, /\.fixed-trade\{height:76px;bottom:calc\(72px\+env\(safe-area-inset-bottom\)\)/);
+  assert.match(compactHtml, /screen\[data-panel="detail"\]\.has-bottom-nav\{padding-bottom:calc\(166px\+env\(safe-area-inset-bottom\)\)/);
 });
 
 test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {
@@ -1099,21 +1109,21 @@ test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configur
   assert.doesNotMatch(html, /data-launch-quote="GW"|<option>GW<\/option>/);
   assert.doesNotMatch(launchFormSource, /<option>GW<\/option>/);
   assert.match(pumpApiSource, /PumpLaunchQuoteToken = Exclude<PumpQuoteToken, "GW">/);
-  assert.match(bridge, /LAUNCH_QUOTE_TOKENS = new Set\(\["BNB", "USDT", "USDC", "USD1"\]\)/);
-  assert.match(bridge, /!LAUNCH_QUOTE_TOKENS\.has\(quote\)/);
-  assert.match(bridge, /GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F"/, "existing GW projects must remain resolvable");
+  assert.match(bridge, /const launchQuoteTokens = \(\) => new Set/);
+  assert.match(bridge, /!launchQuoteTokens\(\)\.has\(quote\)/);
+  assert.doesNotMatch(bridge, /GW: "0x68985a6E02f80DE4d71732ca66E4e5d4e303965F"/);
   for (const id of ["token-classification", "token-twitter", "token-telegram", "token-website", "token-discord"]) assert.match(html, new RegExp(`id="${id}"`));
   for (const field of ["classification", "twitter", "telegram", "website", "discord", "launch_settings", "antisniper", "enable_tax", "request_platform_lp"]) assert.match(bridge, new RegExp(field));
   for (const mode of ["fair", "custom", "community"]) assert.match(html, new RegExp(`data-launch-mode="${mode}"`));
   for (const marker of ["migration-threshold-quote", "data-custom-curve-fields", "data-curve-mode=\"custom\"", "标准目标的 50%–200%", "社区收益代币", "链上执行"]) assert.match(html, new RegExp(marker));
   for (const id of ["buy-tax-rate", "sell-tax-rate", "funds-recipient-pct", "burn-pct", "holders-pct", "liquidity-pct", "min-dividend-balance", "tax-recipient-wallet"]) assert.match(html, new RegExp(`id="${id}"`));
-  for (const marker of ["launchTaxTokenV2WithQuotePaid", "0xb6d56503", "launchTaxConfig", "data-tax-mode", "data-tax-fields", "买入和卖出税率必须在 1%–10%", "税费分配比例合计必须为 100%", "发币准备方法与税费或首购模式不匹配"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const marker of ["launchTaxTokenV2WithQuotePaid", "0xb6d56503", "launchTaxConfig", "data-tax-mode", "data-tax-fields", "买入和卖出税率必须在 1%–10%", "税费分配比例合计必须为 100%", "发币准备方法与税费、首购或 DEX 模式不匹配"]) assert.match(bridge + html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const marker of ["launchCurveTarget", "migration_threshold_quote", "curve_mode", "setCurveMode", "setTaxMode", "链上 Factory 状态已变化，参数已自动更新"]) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const marker of ["autoPrepareLaunch", "正在自动准备发币参数", "发币参数已自动准备", '"#buy-tax-rate": "5"', '"#sell-tax-rate": "5"', '"#tax-recipient-wallet": state.account']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(html, /data-launch-load/);
   assert.match(html, /默认使用当前 Owner（连接钱包）地址；这是可编辑的默认值/);
   assert.match(html, /迁移 PancakeSwap 后对 Pair 买卖持续执行所选税率/);
-  assert.match(html, /创建者初始买入.*可选 · 与发币原子执行/);
+  assert.match(compactHtml, /创建者初始买入.*可选·与发币原子执行/);
   assert.doesNotMatch(html, /预计获得 16\.84M MOON/);
 });
 
@@ -1159,9 +1169,9 @@ test("Pump polling refreshes selected trades every cycle but batches full market
   assert.match(bridge, /refreshSelectedTrades/);
   assert.match(bridge, /const refreshMarket = !socketHealthy \|\| refreshCycle % 4 === 0/);
   assert.match(bridge, /const refreshTrades = !socketHealthy \|\| refreshCycle % 2 === 0/);
-  assert.match(bridge, /loadDetail\(freshToken, \{ refreshBalance: false, forceDetail: true, refreshTrades: false \}\)/);
+  assert.match(bridge, /loadDetail\(freshToken,\s*\{\s*refreshBalance:\s*false,\s*forceDetail:\s*true,\s*refreshTrades:\s*false,?\s*\}\s*\)/);
   assert.match(bridge, /requestSequence !== detailRequestSequence/);
-  assert.match(bridge, /if \(!state\.candles\.length\).*charts\.delete\(selector\)/);
+  assert.match(bridge, /if \(!state\.candles\.length\)[\s\S]*?charts\.delete\(selector\)/);
 });
 
 test("Pump proxy hides wallet RPC credentials and protects every write endpoint", () => {
@@ -1175,8 +1185,24 @@ test("Pump proxy hides wallet RPC credentials and protects every write endpoint"
   assert.match(proxy, /export async function HEAD/);
 });
 
+test("Split Vault and three-tier Vault Store stay SIWE-bound and fail closed before factory deployment", () => {
+  for (const marker of ["data-panel=\"revenue-center\"", "data-panel=\"vault-store\"", "data-vault-claim-all", "data-strategy-template-list"]) assert.match(html, new RegExp(marker));
+  for (const endpoint of ["v1/pump/vaults", "v1/pump/vaults/prepare", "v1/pump/vault-store/templates", "v1/pump/vault-store/registry", "v1/pump/strategies", "v1/pump/strategies/prepare"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
+  for (const marker of ["prepareVault", "sendVaultTransaction", "claimAllVaults", "claimHolderDividend", "prepareStrategy", "deployStrategy", "prepareStrategyAction", "executeStrategyAction", "submitVaultRegistry", "eth_estimateGas", "waitReceipt"]) assert.match(bridge, new RegExp(marker));
+  for (const marker of ["data-strategy-use-selected-lp", "lp_assignment_verified", "pair_address"]) assert.match(html + bridge, new RegExp(marker));
+  assert.match(bridge, /if \(!state\.vaultConfig\?\.enabled\) throw new Error/);
+  assert.match(bridge, /if \(!state\.strategyConfig\?\.enabled\) throw new Error/);
+  assert.match(bridge, /for \(const item of claims\).*catch \(error\).*failures\.push/s);
+});
+
+test("Developer Center exposes signed Webhook lifecycle without leaking its one-time secret", () => {
+  for (const marker of ["data-panel=\"developer-center\"", "data-webhook-create", "data-webhook-delete", "data-integration-status", "X-BitBT-Signature"]) assert.match(html + bridge, new RegExp(marker));
+  for (const endpoint of ["v1/pump/integrations/status", "v1/pump/integrations/webhooks"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
+  for (const marker of ["loadIntegrationStatus", "loadWebhooks", "createWebhook", "deleteWebhook", "signing_secret"]) assert.match(bridge, new RegExp(marker));
+});
+
 test("prototype UI stays hidden until real-data cleanup has run", () => {
   assert.match(html, /<body class="runtime-pending">/);
-  assert.match(html, /body\.runtime-pending #bitbt-launch\{visibility:hidden\}/);
-  assert.match(bridge, /clearPrototype\(\); document\.body\.classList\.remove\("runtime-pending"\)/);
+  assert.match(html, /body\.runtime-pending\s+#bitbt-launch\s*\{[^}]*visibility:\s*hidden/s);
+  assert.match(compactBridge, /clearPrototype\(\);document\.body\.classList\.remove\("runtime-pending"\)/);
 });

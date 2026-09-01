@@ -1,0 +1,15 @@
+{
+  "name": "bitbt-pump-vault-keeper",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node keeper.mjs",
+    "check": "node --check keeper.mjs"
+  },
+  "dependencies": {
+    "viem": "2.56.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "bitbt-pump-telegram-example",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node bot.mjs" },
+  "engines": { "node": ">=18" }
+}
