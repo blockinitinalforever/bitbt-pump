@@ -37,11 +37,16 @@ async function reply(chatId, text) { await telegram("sendMessage", { chat_id: ch
 
 async function command(message) {
   const [name, argument] = (message.text || "").trim().split(/\s+/, 2);
-  if (name === "/start" || name === "/help") return reply(message.chat.id, "BitBT Pump: /trending, /token <address>, /trades <address>");
+  if (name === "/start" || name === "/help") return reply(message.chat.id, "BitBT Pump: /trending, /announcements, /token <address>, /trades <address>");
   if (name === "/trending") {
     const rows = await pump("/v1/pump/market");
     const list = Array.isArray(rows) ? rows : rows?.tokens || [];
     return reply(message.chat.id, list.slice(0, 10).map((item, index) => `${index + 1}. ${item.symbol} ${item.price || item.current_price_quote || "—"} ${short(item.token_address || item.contract_address)}`).join("\n") || "No live projects");
+  }
+  if (name === "/announcements") {
+    const rows = await pump("/v1/pump/announcements");
+    const list = Array.isArray(rows) ? rows : [];
+    return reply(message.chat.id, list.slice(0, 5).map((item) => `${item.pinned ? "📌 " : ""}${item.title_en || item.title}\n${item.content_en || item.content || ""}`).join("\n\n").slice(0, 3900) || "No official announcements");
   }
   if ((name === "/token" || name === "/trades") && /^0x[0-9a-fA-F]{40}$/.test(argument || "")) {
     const path = name === "/token" ? `/v1/pump/detail?address=${argument}` : `/v1/pump/trades?token_address=${argument}&limit=10`;

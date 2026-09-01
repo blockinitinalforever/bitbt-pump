@@ -118,6 +118,71 @@ export interface PumpV3FeeReward {
   };
 }
 
+export interface PumpAnnouncement {
+  id: string;
+  title: string;
+  title_en: string;
+  content: string;
+  content_en: string;
+  content_zh: string;
+  category: string;
+  tags: string[];
+  pinned: boolean;
+  published_at: string;
+}
+
+export interface PumpPerpetualConfig {
+  enabled: boolean;
+  contractAddress?: string;
+  chainId: string;
+  feePpm: number;
+  feePercent: string;
+  minLiquidityUsd: string;
+  maxLeverage: number;
+  statusNote: string;
+}
+
+export interface PumpPerpetualMarket {
+  marketId: number;
+  tokenAddress: string;
+  tokenName: string;
+  tokenSymbol: string;
+  quoteTokenAddress: string;
+  quoteDecimals: number;
+  oracleAddress: string;
+  liquidityRaw: string;
+  lockedNotionalRaw: string;
+  totalSharesRaw: string;
+  minLiquidityRaw: string;
+  maxLeverage: number;
+  enabled: boolean;
+}
+
+export interface PumpPerpetualPosition {
+  marketId: number;
+  walletAddress: string;
+  collateralRaw: string;
+  notionalRaw: string;
+  entryPriceE18: string;
+  isLong: boolean;
+  open: boolean;
+  liquiditySharesRaw: string;
+}
+
+export interface PumpPreparedTransaction {
+  label: string;
+  to: string;
+  data: string;
+  value: string;
+  chainId: string;
+}
+
+export interface PumpPerpetualPrepareResponse {
+  marketId: number;
+  action: "deposit_liquidity" | "withdraw_liquidity" | "open_position" | "close_position" | "liquidate";
+  transactions: PumpPreparedTransaction[];
+}
+
 export interface WebhookEndpoint {
   id: string;
   endpoint_url: string;
@@ -191,6 +256,11 @@ export class BitBTPumpClient {
   prepareStrategyAction(body: Record<string, unknown>) { return this.request<unknown>("/v1/pump/strategies/action/prepare", { method: "POST", body, session: true }); }
   strategies(owner: string) { return this.request<unknown[]>("/v1/pump/strategies", { query: { creator_address: owner }, session: true }); }
   integrationStatus() { return this.request<PumpIntegrationStatus>("/v1/pump/integrations/status"); }
+  announcements() { return this.request<PumpAnnouncement[]>("/v1/pump/announcements"); }
+  perpetualConfig() { return this.request<PumpPerpetualConfig>("/v1/pump/perpetual/config"); }
+  perpetualMarkets() { return this.request<PumpPerpetualMarket[]>("/v1/pump/perpetual/markets"); }
+  perpetualPosition(wallet: string, marketId: number) { return this.request<PumpPerpetualPosition>("/v1/pump/perpetual/position", { query: { wallet_address: wallet, market_id: marketId }, session: true }); }
+  preparePerpetual(body: Record<string, unknown>) { return this.request<PumpPerpetualPrepareResponse>("/v1/pump/perpetual/prepare", { method: "POST", body, session: true }); }
   v3FeeRewards(wallet: string, tokenAddress?: string) { return this.request<PumpV3FeeReward[]>("/v1/pump/v3-fee-rewards", { query: { wallet_address: wallet, token_address: tokenAddress }, session: true }); }
   webhooks(owner: string) { return this.request<WebhookEndpoint[]>("/v1/pump/integrations/webhooks", { query: { owner_address: owner }, session: true }); }
   createWebhook(body: { owner_address: string; endpoint_url: string; events: PumpWebhookEvent[] }) { return this.request<{ webhook: WebhookEndpoint; signing_secret: string; secret_shown_once: true }>("/v1/pump/integrations/webhooks", { method: "POST", body, session: true }); }

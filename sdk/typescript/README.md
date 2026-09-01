@@ -2,6 +2,8 @@
 
 Typed, non-custodial access to BitBT Pump market data, quotes, Vaults and signed webhooks.
 
+The client also exposes official announcements and fail-closed perpetual config, market, position and wallet-transaction preparation endpoints. A prepared transaction is data, not authorization: clients must bind its chain, target, selector and amounts before showing it to a wallet.
+
 The SDK never accepts or stores private keys. Transaction preparation responses must be shown to the user and signed by their wallet. Private wallet endpoints require the existing SIWE bearer session.
 
 ```ts

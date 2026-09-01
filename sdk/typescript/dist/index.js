@@ -40,6 +40,11 @@ export class BitBTPumpClient {
     prepareStrategyAction(body) { return this.request("/v1/pump/strategies/action/prepare", { method: "POST", body, session: true }); }
     strategies(owner) { return this.request("/v1/pump/strategies", { query: { creator_address: owner }, session: true }); }
     integrationStatus() { return this.request("/v1/pump/integrations/status"); }
+    announcements() { return this.request("/v1/pump/announcements"); }
+    perpetualConfig() { return this.request("/v1/pump/perpetual/config"); }
+    perpetualMarkets() { return this.request("/v1/pump/perpetual/markets"); }
+    perpetualPosition(wallet, marketId) { return this.request("/v1/pump/perpetual/position", { query: { wallet_address: wallet, market_id: marketId }, session: true }); }
+    preparePerpetual(body) { return this.request("/v1/pump/perpetual/prepare", { method: "POST", body, session: true }); }
     v3FeeRewards(wallet, tokenAddress) { return this.request("/v1/pump/v3-fee-rewards", { query: { wallet_address: wallet, token_address: tokenAddress }, session: true }); }
     webhooks(owner) { return this.request("/v1/pump/integrations/webhooks", { query: { owner_address: owner }, session: true }); }
     createWebhook(body) { return this.request("/v1/pump/integrations/webhooks", { method: "POST", body, session: true }); }

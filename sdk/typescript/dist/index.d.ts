@@ -110,6 +110,65 @@ export interface PumpV3FeeReward {
         chain_id: string;
     };
 }
+export interface PumpAnnouncement {
+    id: string;
+    title: string;
+    title_en: string;
+    content: string;
+    content_en: string;
+    content_zh: string;
+    category: string;
+    tags: string[];
+    pinned: boolean;
+    published_at: string;
+}
+export interface PumpPerpetualConfig {
+    enabled: boolean;
+    contractAddress?: string;
+    chainId: string;
+    feePpm: number;
+    feePercent: string;
+    minLiquidityUsd: string;
+    maxLeverage: number;
+    statusNote: string;
+}
+export interface PumpPerpetualMarket {
+    marketId: number;
+    tokenAddress: string;
+    tokenName: string;
+    tokenSymbol: string;
+    quoteTokenAddress: string;
+    quoteDecimals: number;
+    oracleAddress: string;
+    liquidityRaw: string;
+    lockedNotionalRaw: string;
+    totalSharesRaw: string;
+    minLiquidityRaw: string;
+    maxLeverage: number;
+    enabled: boolean;
+}
+export interface PumpPerpetualPosition {
+    marketId: number;
+    walletAddress: string;
+    collateralRaw: string;
+    notionalRaw: string;
+    entryPriceE18: string;
+    isLong: boolean;
+    open: boolean;
+    liquiditySharesRaw: string;
+}
+export interface PumpPreparedTransaction {
+    label: string;
+    to: string;
+    data: string;
+    value: string;
+    chainId: string;
+}
+export interface PumpPerpetualPrepareResponse {
+    marketId: number;
+    action: "deposit_liquidity" | "withdraw_liquidity" | "open_position" | "close_position" | "liquidate";
+    transactions: PumpPreparedTransaction[];
+}
 export interface WebhookEndpoint {
     id: string;
     endpoint_url: string;
@@ -170,6 +229,11 @@ export declare class BitBTPumpClient {
     prepareStrategyAction(body: Record<string, unknown>): Promise<unknown>;
     strategies(owner: string): Promise<unknown[]>;
     integrationStatus(): Promise<PumpIntegrationStatus>;
+    announcements(): Promise<PumpAnnouncement[]>;
+    perpetualConfig(): Promise<PumpPerpetualConfig>;
+    perpetualMarkets(): Promise<PumpPerpetualMarket[]>;
+    perpetualPosition(wallet: string, marketId: number): Promise<PumpPerpetualPosition>;
+    preparePerpetual(body: Record<string, unknown>): Promise<PumpPerpetualPrepareResponse>;
     v3FeeRewards(wallet: string, tokenAddress?: string): Promise<PumpV3FeeReward[]>;
     webhooks(owner: string): Promise<WebhookEndpoint[]>;
     createWebhook(body: {
