@@ -21,6 +21,14 @@
     points: null,
     referral: null,
     campaigns: [],
+    announcements: [],
+    announcementFilter: "all",
+    selectedAnnouncementId: "",
+    perpConfig: null,
+    perpMarkets: [],
+    perpPosition: null,
+    preparedPerpAction: null,
+    preparedPerpRequest: null,
     kol: null,
     marketActivity: [],
     marketSummary: {},
@@ -81,6 +89,7 @@
   const SESSION_ADDRESS_KEY = "bitbt_pump_session_address";
   const PROVIDER_KIND_KEY = "bitbt_pump_provider_kind";
   const LOCALE_KEY = "bitbt_pump_locale";
+  const ANNOUNCEMENT_READ_KEY = "bitbt_pump_read_announcements";
   const PENDING_LAUNCH_CONFIRMATION_KEY = "bitbt_pump_pending_launch_confirmation";
   const charts = new Map();
   const announcedProviders = [];
@@ -481,7 +490,7 @@
   };
   const api = async (path, init) => {
     const requestToken = sessionStorage.getItem(SESSION_KEY);
-    const publicRead = !init?.method && /^(?:v1\/pump\/(?:tokens|detail|details|trades|market(?:-activity)?|candles|migration-proof|holders|economics\/config|name-check))(?:[?]|$)/.test(path);
+    const publicRead = !init?.method && /^(?:v1\/pump\/(?:tokens|detail|details|trades|market(?:-activity)?|candles|migration-proof|holders|economics\/config|name-check|announcements|perpetual\/(?:config|markets)))(?:[?]|$)/.test(path);
     const response = await fetch(`/api/pump/${path}`, {
       ...init,
       cache: publicRead ? "default" : "no-store",
@@ -556,6 +565,223 @@
       if (saved === "en" || saved === "zh") return saved;
     } catch {}
     return /^zh(?:-|$)/i.test(String(navigator?.language || "")) ? "zh" : "en";
+  };
+  const readAnnouncementIds = () => {
+    try {
+      const parsed = JSON.parse(window.localStorage?.getItem(ANNOUNCEMENT_READ_KEY) || "[]");
+      return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+    } catch {
+      return new Set();
+    }
+  };
+  const saveReadAnnouncementIds = (ids) => {
+    try {
+      window.localStorage?.setItem(ANNOUNCEMENT_READ_KEY, JSON.stringify([...ids]));
+    } catch {}
+  };
+  const announcementCopy = (announcement) => {
+    const zh = pumpLocale() === "zh";
+    return {
+      title: zh ? announcement.title : announcement.title_en || announcement.title,
+      content: zh ? announcement.content_zh || announcement.content : announcement.content_en || announcement.content,
+    };
+  };
+  const announcementCategory = (category) => {
+    const labels = {
+      product: pumpLocale() === "zh" ? "产品更新" : "Product",
+      campaign: pumpLocale() === "zh" ? "活动" : "Campaign",
+      security: pumpLocale() === "zh" ? "安全" : "Security",
+      status: pumpLocale() === "zh" ? "系统状态" : "Status",
+    };
+    return labels[category] || (pumpLocale() === "zh" ? "公告" : "Notice");
+  };
+  const renderAnnouncements = () => {
+    const list = $("[data-panel='announcements'] .announcement-list");
+    if (!list) return;
+    const readIds = readAnnouncementIds();
+    text("[data-announcement-unread]", String(state.announcements.filter((item) => !readIds.has(item.id)).length));
+    const filtered = state.announcements.filter((item) => state.announcementFilter === "all" || item.category === state.announcementFilter);
+    if (!filtered.length) {
+      list.innerHTML = `<p class="footer-note">${pumpLocale() === "zh" ? "当前分类暂无官方公告。" : "No official notices in this category."}</p>`;
+      return;
+    }
+    const cards = filtered.map((announcement) => {
+      const copy = announcementCopy(announcement);
+      const unread = !readIds.has(announcement.id);
+      return `<button class="announcement-card${unread ? " unread" : ""}" type="button" data-announcement-id="${escapeHtml(announcement.id)}"><span class="announcement-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${announcement.category === "security" ? "shield-check" : "bell"}.svg')"></i></span><span><h3>${announcement.pinned ? `${pumpLocale() === "zh" ? "置顶 · " : "Pinned · "}` : ""}${escapeHtml(copy.title)}</h3><p>${escapeHtml(copy.content).slice(0, 180)}${copy.content.length > 180 ? "…" : ""}</p></span><time>${escapeHtml(formatDate(announcement.published_at))}</time></button>`;
+    }).join("");
+    const selected = filtered.find((item) => item.id === state.selectedAnnouncementId);
+    const detail = selected ? (() => {
+      const copy = announcementCopy(selected);
+      return `<article class="announcement-detail"><div class="eyebrow">${escapeHtml(announcementCategory(selected.category))}</div><h2>${escapeHtml(copy.title)}</h2><p>${escapeHtml(copy.content).replace(/\n/g, "<br>")}</p><div class="review-row"><span>${pumpLocale() === "zh" ? "发布时间" : "Published"}</span><strong>${escapeHtml(formatDate(selected.published_at))}</strong></div></article>`;
+    })() : "";
+    list.innerHTML = cards + detail;
+    list.querySelectorAll("[data-announcement-id]").forEach((node) => node.addEventListener("click", () => {
+      const id = node.dataset.announcementId;
+      const nextRead = readAnnouncementIds();
+      nextRead.add(id);
+      saveReadAnnouncementIds(nextRead);
+      state.selectedAnnouncementId = state.selectedAnnouncementId === id ? "" : id;
+      renderAnnouncements();
+    }));
+  };
+  const loadAnnouncements = async () => {
+    state.announcements = await api("v1/pump/announcements");
+    renderAnnouncements();
+  };
+  const selectedPerpMarket = () => {
+    const selectedId = Number($("#perp-market")?.value ?? -1);
+    return state.perpMarkets.find((market) => Number(market.marketId) === selectedId) || state.perpMarkets[0] || null;
+  };
+  const renderPerpetual = () => {
+    const config = state.perpConfig;
+    const enabled = Boolean(config?.enabled);
+    text("[data-perp-menu-status]", enabled ? "已开放" : "未开放");
+    text("[data-perp-status]", config?.statusNote || "正在读取永续合约状态…");
+    text("[data-perp-fee]", config?.feePercent || "—");
+    text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
+    text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
+    const select = $("#perp-market");
+    if (select) {
+      const previous = select.value;
+      select.innerHTML = state.perpMarkets.length
+        ? state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}">${escapeHtml(market.tokenName)} (${escapeHtml(market.tokenSymbol)}) · #${Number(market.marketId)}${market.enabled ? "" : " · 已暂停"}</option>`).join("")
+        : `<option value="">当前没有已启用市场</option>`;
+      if (state.perpMarkets.some((market) => String(market.marketId) === previous)) select.value = previous;
+    }
+    const market = selectedPerpMarket();
+    if (market) {
+      const decimals = Number(market.quoteDecimals || 18);
+      text("[data-perp-market-pair]", `${market.tokenSymbol} / ${short(market.quoteTokenAddress)}`);
+      text("[data-perp-market-liquidity]", `${formatUnits(BigInt(market.liquidityRaw), decimals)} / ${formatUnits(BigInt(market.lockedNotionalRaw), decimals)}`);
+    } else {
+      text("[data-perp-market-pair], [data-perp-market-liquidity]", "—");
+    }
+    const position = state.perpPosition;
+    text("[data-perp-position]", !state.account ? "连接钱包后读取" : position?.open ? `${position.isLong ? "LONG" : "SHORT"} · ${position.notionalRaw} raw` : "当前无持仓");
+    text("[data-perp-shares]", state.account ? position?.liquiditySharesRaw || "0" : "—");
+    const action = $("#perp-action")?.value || "open_position";
+    const needsAmount = ["open_position", "deposit_liquidity"].includes(action);
+    const needsLeverage = action === "open_position";
+    const needsShares = action === "withdraw_liquidity";
+    const amountField = $("[data-perp-amount-field]");
+    const leverageField = $("[data-perp-leverage-field]");
+    const sharesField = $("[data-perp-shares-field]");
+    if (amountField) amountField.hidden = !needsAmount;
+    if (leverageField) leverageField.hidden = !needsLeverage;
+    if (sharesField) sharesField.hidden = !needsShares;
+    const prepare = $("[data-perp-prepare]");
+    if (prepare) prepare.disabled = !enabled || !state.account || !market;
+    const preview = $("[data-perp-preview]");
+    const execute = $("[data-perp-execute]");
+    if (preview) {
+      preview.hidden = !state.preparedPerpAction;
+      preview.innerHTML = state.preparedPerpAction
+        ? `<div class="section-title"><h3>链上交易快照</h3><span class="tag lime">${state.preparedPerpAction.transactions.length} 笔</span></div>${state.preparedPerpAction.transactions.map((transaction, index) => `<div class="review-row"><span>${index + 1}. ${escapeHtml(transaction.label)}</span><strong>${escapeHtml(short(transaction.to))}</strong></div>`).join("")}`
+        : "";
+    }
+    if (execute) execute.disabled = !state.preparedPerpAction || !state.account;
+  };
+  const loadPerpetualPosition = async () => {
+    const market = selectedPerpMarket();
+    if (!state.account || !market || !state.perpConfig?.enabled) {
+      state.perpPosition = null;
+      renderPerpetual();
+      return;
+    }
+    state.perpPosition = await api(`v1/pump/perpetual/position?market_id=${Number(market.marketId)}&wallet_address=${encodeURIComponent(state.account)}`);
+    renderPerpetual();
+  };
+  const loadPerpetual = async () => {
+    state.perpConfig = await api("v1/pump/perpetual/config");
+    state.perpMarkets = state.perpConfig?.enabled ? await api("v1/pump/perpetual/markets") : [];
+    renderPerpetual();
+    await loadPerpetualPosition();
+  };
+  const perpetualWord = (data, index) => {
+    if (!/^0x[0-9a-fA-F]+$/.test(data || "") || data.length < 10 + (index + 1) * 64) throw new Error("永续交易参数编码不完整");
+    return BigInt(`0x${data.slice(10 + index * 64, 10 + (index + 1) * 64)}`);
+  };
+  const validatePreparedPerpetual = (prepared, market, request) => {
+    const contract = String(state.perpConfig?.contractAddress || "").toLowerCase();
+    const quoteToken = String(market.quoteTokenAddress || "").toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(contract) || !/^0x[0-9a-f]{40}$/.test(quoteToken)) throw new Error("永续合约或报价资产地址无效");
+    if (!prepared || prepared.action !== request.action || Number(prepared.marketId) !== request.market_id || !Array.isArray(prepared.transactions) || !prepared.transactions.length) throw new Error("永续交易快照与请求不一致");
+    const actionSelectors = {
+      deposit_liquidity: "0x34a860e4",
+      withdraw_liquidity: "0x95e17d84",
+      open_position: "0xf483ee07",
+      close_position: "0xa126d601",
+      liquidate: "0x5fae8b3d",
+    };
+    const expectedSelector = actionSelectors[request.action];
+    let actionTransaction = null;
+    const approvals = [];
+    for (const transaction of prepared.transactions) {
+      const to = String(transaction.to || "").toLowerCase();
+      const data = String(transaction.data || "").toLowerCase();
+      const selector = data.slice(0, 10);
+      if (normalizeChainId(transaction.chainId || transaction.chain_id || "") !== "0x38" || BigInt(transaction.value || "0x0") !== 0n) throw new Error("永续交易网络或转账金额不安全");
+      if (to === quoteToken && selector === "0x095ea7b3") {
+        const spender = `0x${data.slice(34, 74)}`;
+        if (spender !== contract) throw new Error("永续授权接收方与合约不一致");
+        approvals.push(perpetualWord(data, 1));
+      } else if (to === contract && selector === expectedSelector && !actionTransaction) {
+        actionTransaction = transaction;
+      } else throw new Error("永续交易目标或方法不在允许范围内");
+    }
+    if (!actionTransaction || perpetualWord(actionTransaction.data, 0) !== BigInt(request.market_id)) throw new Error("永续 marketId 绑定失败");
+    let requiredApproval = 0n;
+    if (request.action === "deposit_liquidity") {
+      requiredApproval = BigInt(request.amount_raw);
+      if (perpetualWord(actionTransaction.data, 1) !== requiredApproval) throw new Error("永续流动性金额绑定失败");
+    }
+    if (request.action === "open_position") {
+      const collateral = BigInt(request.amount_raw);
+      const leverage = BigInt(request.leverage);
+      const fee = collateral * leverage * 50n / 1_000_000n;
+      requiredApproval = collateral + fee;
+      if (perpetualWord(actionTransaction.data, 1) !== collateral || perpetualWord(actionTransaction.data, 2) !== leverage || perpetualWord(actionTransaction.data, 3) !== (request.is_long ? 1n : 0n)) throw new Error("永续仓位参数绑定失败");
+    }
+    if (request.action === "withdraw_liquidity") {
+      if (perpetualWord(actionTransaction.data, 1) !== BigInt(request.shares_raw) || `0x${actionTransaction.data.slice(10 + 2 * 64 + 24, 10 + 3 * 64)}` !== state.account) throw new Error("永续提取参数绑定失败");
+    }
+    if (requiredApproval > 0n && approvals.length && (approvals.at(-1) !== requiredApproval || approvals.slice(0, -1).some((amount) => amount !== 0n))) throw new Error("永续授权额度绑定失败");
+    if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
+  };
+  const preparePerpetualAction = async () => {
+    if (!state.account) await connectWallet();
+    const market = selectedPerpMarket();
+    if (!market || !state.perpConfig?.enabled) throw new Error("永续市场尚未开放");
+    const action = $("#perp-action")?.value || "open_position";
+    const body = { wallet_address: state.account, market_id: Number(market.marketId), action };
+    if (["open_position", "deposit_liquidity"].includes(action)) body.amount_raw = parseUnits($("#perp-amount")?.value, Number(market.quoteDecimals || 18)).toString();
+    if (action === "open_position") {
+      body.leverage = Number($("#perp-leverage")?.value || 0);
+      body.is_long = $("#perp-side")?.value !== "short";
+    }
+    if (action === "withdraw_liquidity") body.shares_raw = String($("#perp-shares")?.value || "").trim();
+    const prepared = await api("v1/pump/perpetual/prepare", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    validatePreparedPerpetual(prepared, market, body);
+    state.preparedPerpAction = prepared;
+    state.preparedPerpRequest = body;
+    renderPerpetual();
+    toast("永续交易参数已加载，请逐笔核对");
+  };
+  const executePerpetualAction = async () => {
+    if (!state.preparedPerpAction || !state.preparedPerpRequest) return;
+    const market = selectedPerpMarket();
+    if (!market) throw new Error("永续市场已变化，请重新加载参数");
+    validatePreparedPerpetual(state.preparedPerpAction, market, state.preparedPerpRequest);
+    for (const transaction of state.preparedPerpAction.transactions) await sendVaultTransaction(transaction, transaction.label || "永续操作");
+    state.preparedPerpAction = null;
+    state.preparedPerpRequest = null;
+    await loadPerpetual();
+    toast("永续操作链上回执成功");
   };
   const pumpBasePath = () => "/pump";
   const routeTokenAddress = () => {
@@ -2129,6 +2355,9 @@
     state.creatorRewards = [];
     state.holderDividends = [];
     state.v3FeeRewards = [];
+    state.perpPosition = null;
+    state.preparedPerpAction = null;
+    state.preparedPerpRequest = null;
     state.vaults = [];
     state.preparedVault = null;
     state.strategies = [];
@@ -3703,6 +3932,11 @@
     target.scrollTop = 0;
     routeHistory()?.replaceState?.(null, "", `${pumpBasePath()}?screen=${encodeURIComponent(name)}`);
     if (name === "create-review") void autoPrepareLaunch();
+    if (name === "announcements") {
+      renderAnnouncements();
+      if (!state.announcements.length) void loadAnnouncements().catch((error) => toastError(error, "公告加载失败，请稍后重试"));
+    }
+    if (name === "perpetual") void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
     if (name === "alerts" && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
     if (name === "revenue-center") {
       renderVaults();
@@ -3747,11 +3981,43 @@
         } catch {}
         document.documentElement.lang = target === "zh" ? "zh-CN" : "en";
         text("[data-lang-current]", target === "zh" ? "简体中文" : "English");
+        renderAnnouncements();
         toast(target === "zh" ? "语言偏好已保存" : "Language preference saved");
       }),
     );
   };
   const bind = () => {
+    $("[data-perp-refresh]")?.addEventListener("click", () => loadPerpetual().catch((error) => toastError(error, "永续市场刷新失败")));
+    $("#perp-market")?.addEventListener("change", () => {
+      state.preparedPerpAction = null;
+      state.preparedPerpRequest = null;
+      state.perpPosition = null;
+      renderPerpetual();
+      void loadPerpetualPosition().catch((error) => toastError(error, "永续仓位读取失败"));
+    });
+    $("#perp-action")?.addEventListener("change", () => {
+      state.preparedPerpAction = null;
+      state.preparedPerpRequest = null;
+      renderPerpetual();
+    });
+    $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select').forEach((node) => node.addEventListener("input", () => {
+      state.preparedPerpAction = null;
+      state.preparedPerpRequest = null;
+      renderPerpetual();
+    }));
+    $("[data-perp-prepare]")?.addEventListener("click", () => preparePerpetualAction().catch((error) => toastError(error, "永续交易参数加载失败")));
+    $("[data-perp-execute]")?.addEventListener("click", () => executePerpetualAction().catch((error) => toastError(error, "永续操作失败")));
+    $$('[data-announcement-filter]').forEach((node) => node.addEventListener("click", () => {
+      state.announcementFilter = node.dataset.announcementFilter || "all";
+      $$('[data-announcement-filter]').forEach((button) => button.classList.toggle("active", button === node));
+      state.selectedAnnouncementId = "";
+      renderAnnouncements();
+    }));
+    $("[data-announcements-read-all]")?.addEventListener("click", () => {
+      saveReadAnnouncementIds(new Set(state.announcements.map((item) => item.id)));
+      renderAnnouncements();
+      toast(pumpLocale() === "zh" ? "所有公告已标为已读" : "All notices marked as read");
+    });
     $$("[data-wallet-label], .connect-global, .connect").forEach((node) => {
       node.dataset.walletBound = "1";
       node.addEventListener("click", () => connectWallet().catch((error) => toastError(error, "钱包连接失败，请重试")));

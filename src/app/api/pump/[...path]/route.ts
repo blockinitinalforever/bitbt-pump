@@ -22,6 +22,7 @@ const SIWE_REQUIRED_ENDPOINTS = new Set([
   "v1/pump/vault-store/action/prepare",
   "v1/pump/integrations/webhooks",
   "v1/pump/v3-fee-rewards",
+  "v1/pump/perpetual/prepare",
 ]);
 const SIWE_REQUIRED_READ_ENDPOINTS = new Set([
   "v1/pump/wallet-activity",
@@ -32,6 +33,7 @@ const SIWE_REQUIRED_READ_ENDPOINTS = new Set([
   "v1/pump/strategies",
   "v1/pump/integrations/webhooks",
   "v1/pump/v3-fee-rewards",
+  "v1/pump/perpetual/position",
 ]);
 const PUBLIC_SHORT_CACHE_ENDPOINTS = new Set([
   "v1/pump/tokens",
@@ -44,9 +46,13 @@ const PUBLIC_SHORT_CACHE_ENDPOINTS = new Set([
   "v1/pump/market-activity",
   "v1/pump/holders",
   "v1/pump/economics/config",
+  "v1/pump/announcements",
+  "v1/pump/perpetual/config",
+  "v1/pump/perpetual/markets",
   "v1/pump/name-check",
   "v1/pump/integrations/status",
   "v1/token/launch-options",
+  "v1/token/status",
 ]);
 const ALLOWED = new Set([
   "v1/auth/siwe/nonce",
@@ -66,6 +72,11 @@ const ALLOWED = new Set([
   "v1/pump/holders",
   "v1/pump/wallet-activity",
   "v1/pump/economics/config",
+  "v1/pump/announcements",
+  "v1/pump/perpetual/config",
+  "v1/pump/perpetual/markets",
+  "v1/pump/perpetual/position",
+  "v1/pump/perpetual/prepare",
   "v1/pump/comments",
   "v1/pump/alerts",
   "v1/pump/name-check",
@@ -92,6 +103,7 @@ const ALLOWED = new Set([
   "v1/token/my-tokens",
   "v1/token/launch-fee",
   "v1/token/launch-options",
+  "v1/token/status",
   "v1/token/prepare-launch",
   "v1/token/launch",
   "v1/upload/image",

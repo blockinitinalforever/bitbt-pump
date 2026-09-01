@@ -22,6 +22,26 @@ const pumpApiSource = fs.readFileSync(path.join(root, "src/lib/pump-api.ts"), "u
 const compactHtml = html.replace(/\s+/g, "");
 const compactBridge = bridge.replace(/\s+/g, "");
 
+test("official Pump announcements and fail-closed perpetual product routes are wired", () => {
+  for (const endpoint of [
+    "v1/pump/announcements",
+    "v1/pump/perpetual/config",
+    "v1/pump/perpetual/markets",
+    "v1/pump/perpetual/position",
+    "v1/pump/perpetual/prepare",
+  ]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
+  assert.match(html, /data-panel="announcements"/);
+  assert.match(html, /data-panel="perpetual"/);
+  assert.match(html, /data-open="announcements"/);
+  assert.match(html, /data-open="perpetual"/);
+  assert.match(bridge, /state\.perpConfig\?\.enabled/);
+  assert.match(bridge, /公告加载失败/);
+  assert.match(bridge, /validatePreparedPerpetual\(prepared, market, body\)/);
+  assert.match(bridge, /永续授权接收方与合约不一致/);
+  assert.match(bridge, /永续仓位参数绑定失败/);
+  assert.match(bridge, /state\.preparedPerpRequest = null/);
+});
+
 type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {

@@ -4616,7 +4616,7 @@
                   <div class="eyebrow">BITBT UPDATES</div>
                   <strong>公告中心</strong>
                 </div>
-                <button class="icon-btn" data-toast="所有公告已标为已读" aria-label="全部已读">
+                <button class="icon-btn" data-announcements-read-all aria-label="全部已读">
                   <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/check.svg&quot;)"></i>
                 </button>
               </div>
@@ -4625,15 +4625,78 @@
                 <p>产品更新、活动、迁移安排与安全提示都会在这里发布。</p>
               </div>
               <div class="filter-row">
-                <button class="active">全部</button>
-                <button>产品更新</button>
-                <button>活动</button>
-                <button>安全</button>
-                <button>系统状态</button>
+                <button class="active" data-announcement-filter="all">全部</button>
+                <button data-announcement-filter="product">产品更新</button>
+                <button data-announcement-filter="campaign">活动</button>
+                <button data-announcement-filter="security">安全</button>
+                <button data-announcement-filter="status">系统状态</button>
               </div>
               <div class="announcement-list">
-                <p class="footer-note">当前没有通过后台发布的公告。</p>
+                <p class="footer-note">正在读取 BitBT Pump 官方公告…</p>
               </div>
+            </section>
+
+            <section class="screen" data-panel="perpetual">
+              <div class="appbar">
+                <button class="icon-btn" data-open="profile" aria-label="返回">
+                  <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;)"></i>
+                </button>
+                <div>
+                  <div class="eyebrow">ISOLATED PERPETUAL</div>
+                  <strong>Pump 永续合约</strong>
+                </div>
+                <button class="icon-btn" type="button" data-perp-refresh aria-label="刷新永续市场">
+                  <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/refresh-cw.svg&quot;)"></i>
+                </button>
+              </div>
+              <div class="page-title">
+                <h1>项目独立保证金市场。</h1>
+                <p>报价资产保证金、1–100x 杠杆、链上 LP 份额与钱包签名回执。</p>
+              </div>
+              <div class="risk-note" data-perp-status>永续合约尚未开放；完成测试网部署、预言机审查与合约审计前，所有操作保持禁用。</div>
+              <div class="card-metrics">
+                <div><span>交易费率</span><strong data-perp-fee>—</strong></div>
+                <div><span>最低池子</span><strong data-perp-min-liquidity>—</strong></div>
+                <div><span>最高杠杆</span><strong data-perp-max-leverage>—</strong></div>
+              </div>
+              <div class="profile-card">
+                <div class="form-group">
+                  <label>永续市场</label>
+                  <select class="field" id="perp-market"><option value="">当前没有已启用市场</option></select>
+                </div>
+                <div class="review-row"><span>标的 / 报价资产</span><strong data-perp-market-pair>—</strong></div>
+                <div class="review-row"><span>池子 / 锁定名义价值</span><strong data-perp-market-liquidity>—</strong></div>
+                <div class="review-row"><span>我的仓位</span><strong data-perp-position>连接钱包后读取</strong></div>
+                <div class="review-row"><span>我的 LP 份额</span><strong data-perp-shares>—</strong></div>
+              </div>
+              <div class="profile-card">
+                <div class="form-group">
+                  <label>操作</label>
+                  <select class="field" id="perp-action">
+                    <option value="open_position">开仓</option>
+                    <option value="close_position">平仓</option>
+                    <option value="deposit_liquidity">注入流动性</option>
+                    <option value="withdraw_liquidity">提取流动性</option>
+                  </select>
+                </div>
+                <div class="form-group" data-perp-amount-field>
+                  <label>数量（报价资产）</label>
+                  <input class="field" id="perp-amount" inputmode="decimal" placeholder="0.00" />
+                </div>
+                <div class="form-group" data-perp-leverage-field>
+                  <label>杠杆</label>
+                  <input class="field" id="perp-leverage" type="number" min="1" max="100" value="2" />
+                  <select class="field" id="perp-side"><option value="long">做多 Long</option><option value="short">做空 Short</option></select>
+                </div>
+                <div class="form-group" data-perp-shares-field hidden>
+                  <label>提取 LP 份额（链上原始值）</label>
+                  <input class="field" id="perp-shares" inputmode="numeric" placeholder="0" />
+                </div>
+                <button class="primary black" type="button" data-perp-prepare disabled>加载并检查交易参数</button>
+                <div class="review-block" data-perp-preview hidden></div>
+                <button class="primary black" type="button" data-perp-execute disabled>确认并依次发送交易</button>
+              </div>
+              <p class="footer-note">永续属于高风险衍生品。界面不会代签或托管资产；每笔授权、开仓、平仓和 LP 操作都必须由当前钱包确认并等待链上成功回执。</p>
             </section>
 
             <section class="screen" data-panel="detail">
@@ -6015,9 +6078,19 @@
                   <span>SDK、Webhook 与 Bot</span>
                   <i class="ico sm" style="--icon: url(&quot;./assets/icons/lucide/chevron-right.svg&quot;)"></i>
                 </button>
+                <button class="menu-row" data-open="perpetual">
+                  <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/chart-candlestick.svg&quot;)"></i>
+                  <span>Pump 永续合约</span>
+                  <strong data-perp-menu-status>未开放</strong>
+                </button>
               </div>
               <div class="section-title"><h3>成长与安全</h3></div>
               <div class="profile-card">
+                <button class="menu-row" type="button" data-open="announcements">
+                  <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/info.svg&quot;)"></i>
+                  <span>官方公告</span>
+                  <strong data-announcement-unread>—</strong>
+                </button>
                 <button class="menu-row" type="button" data-open="growth">
                   <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/share-2.svg&quot;)"></i>
                   <span>邀请、活动与 KOL</span>
