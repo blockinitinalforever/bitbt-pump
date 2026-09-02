@@ -134,6 +134,9 @@ export interface PumpAnnouncement {
 export interface PumpPerpetualConfig {
   enabled: boolean;
   contractAddress?: string;
+  contractVersion?: number;
+  openingsPaused: boolean;
+  permissionlessMarketCreation: boolean;
   chainId: string;
   feePpm: number;
   feePercent: string;
@@ -156,6 +159,15 @@ export interface PumpPerpetualMarket {
   minLiquidityRaw: string;
   maxLeverage: number;
   enabled: boolean;
+  maxOpenInterestRaw: string;
+  maxLongNotionalRaw: string;
+  maxShortNotionalRaw: string;
+  maxPositionNotionalRaw: string;
+  maxUtilizationPpm: number;
+  closeOnly: boolean;
+  longNotionalRaw: string;
+  shortNotionalRaw: string;
+  creatorAddress: string;
 }
 
 export interface PumpPerpetualPosition {

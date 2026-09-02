@@ -634,6 +634,9 @@
         margin-top: 10px;
         padding-top: 9px;
       }
+      .card-metrics.perp-metrics {
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      }
       .card-metrics span,
       .card-metrics strong {
         display: block;
@@ -4669,10 +4672,11 @@
                 <p>报价资产保证金、1–100x 杠杆、链上 LP 份额与钱包签名回执。</p>
               </div>
               <div class="risk-note" data-perp-status>永续合约尚未开放；完成测试网部署、预言机审查与合约审计前，所有操作保持禁用。</div>
-              <div class="card-metrics">
-                <div><span>交易费率</span><strong data-perp-fee>—</strong></div>
+              <div class="card-metrics perp-metrics">
+                <div><span>开 / 平仓费率</span><strong data-perp-fee>—</strong></div>
                 <div><span>最低池子</span><strong data-perp-min-liquidity>—</strong></div>
                 <div><span>最高杠杆</span><strong data-perp-max-leverage>—</strong></div>
+                <div><span>合约版本</span><strong data-perp-version>—</strong></div>
               </div>
               <div class="profile-card">
                 <div class="form-group">
@@ -4681,6 +4685,9 @@
                 </div>
                 <div class="review-row"><span>标的 / 报价资产</span><strong data-perp-market-pair>—</strong></div>
                 <div class="review-row"><span>池子 / 锁定名义价值</span><strong data-perp-market-liquidity>—</strong></div>
+                <div class="review-row"><span>多头 / 空头名义价值</span><strong data-perp-market-exposure>—</strong></div>
+                <div class="review-row"><span>单仓 / 总持仓上限</span><strong data-perp-market-limits>—</strong></div>
+                <div class="review-row"><span>最高资金利用率</span><strong data-perp-market-utilization>—</strong></div>
                 <div class="review-row"><span>我的仓位</span><strong data-perp-position>连接钱包后读取</strong></div>
                 <div class="review-row"><span>我的 LP 份额</span><strong data-perp-shares>—</strong></div>
               </div>

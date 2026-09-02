@@ -636,11 +636,12 @@
   const renderPerpetual = () => {
     const config = state.perpConfig;
     const enabled = Boolean(config?.enabled);
-    text("[data-perp-menu-status]", enabled ? "已开放" : "未开放");
+    text("[data-perp-menu-status]", enabled ? (config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
     text("[data-perp-status]", config?.statusNote || "正在读取永续合约状态…");
     text("[data-perp-fee]", config?.feePercent || "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
+    text("[data-perp-version]", config?.contractVersion ? `V${config.contractVersion}` : "—");
     const select = $("#perp-market");
     if (select) {
       const previous = select.value;
@@ -654,13 +655,20 @@
       const decimals = Number(market.quoteDecimals || 18);
       text("[data-perp-market-pair]", `${market.tokenSymbol} / ${short(market.quoteTokenAddress)}`);
       text("[data-perp-market-liquidity]", `${formatUnits(BigInt(market.liquidityRaw), decimals)} / ${formatUnits(BigInt(market.lockedNotionalRaw), decimals)}`);
+      text("[data-perp-market-exposure]", `${formatUnits(BigInt(market.longNotionalRaw), decimals)} / ${formatUnits(BigInt(market.shortNotionalRaw), decimals)}`);
+      text("[data-perp-market-limits]", `${formatUnits(BigInt(market.maxPositionNotionalRaw), decimals)} / ${formatUnits(BigInt(market.maxOpenInterestRaw), decimals)}`);
+      text("[data-perp-market-utilization]", `${(Number(market.maxUtilizationPpm || 0) / 10_000).toFixed(2)}%${market.closeOnly ? " · 只减仓" : ""}`);
     } else {
-      text("[data-perp-market-pair], [data-perp-market-liquidity]", "—");
+      text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization]", "—");
     }
     const position = state.perpPosition;
-    text("[data-perp-position]", !state.account ? "连接钱包后读取" : position?.open ? `${position.isLong ? "LONG" : "SHORT"} · ${position.notionalRaw} raw` : "当前无持仓");
-    text("[data-perp-shares]", state.account ? position?.liquiditySharesRaw || "0" : "—");
+    const quoteDecimals = Number(market?.quoteDecimals || 18);
+    text("[data-perp-position]", !state.account ? "连接钱包后读取" : position?.open ? `${position.isLong ? "LONG" : "SHORT"} · 保证金 ${formatUnits(BigInt(position.collateralRaw), quoteDecimals)} · 名义 ${formatUnits(BigInt(position.notionalRaw), quoteDecimals)}` : "当前无持仓");
+    text("[data-perp-shares]", state.account ? formatUnits(BigInt(position?.liquiditySharesRaw || "0"), quoteDecimals) : "—");
     const action = $("#perp-action")?.value || "open_position";
+    const addsRisk = ["open_position", "deposit_liquidity"].includes(action);
+    const changesLiquidity = ["deposit_liquidity", "withdraw_liquidity"].includes(action);
+    const hasOpenInterest = BigInt(market?.lockedNotionalRaw || "0") > 0n;
     const needsAmount = ["open_position", "deposit_liquidity"].includes(action);
     const needsLeverage = action === "open_position";
     const needsShares = action === "withdraw_liquidity";
@@ -671,7 +679,7 @@
     if (leverageField) leverageField.hidden = !needsLeverage;
     if (sharesField) sharesField.hidden = !needsShares;
     const prepare = $("[data-perp-prepare]");
-    if (prepare) prepare.disabled = !enabled || !state.account || !market;
+    if (prepare) prepare.disabled = !enabled || !state.account || !market || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (changesLiquidity && hasOpenInterest);
     const preview = $("[data-perp-preview]");
     const execute = $("[data-perp-execute]");
     if (preview) {
@@ -754,6 +762,8 @@
     const market = selectedPerpMarket();
     if (!market || !state.perpConfig?.enabled) throw new Error("永续市场尚未开放");
     const action = $("#perp-action")?.value || "open_position";
+    if (["open_position", "deposit_liquidity"].includes(action) && (state.perpConfig?.openingsPaused || market.closeOnly)) throw new Error("永续市场当前只允许平仓、清算和安全提取");
+    if (["deposit_liquidity", "withdraw_liquidity"].includes(action) && BigInt(market.lockedNotionalRaw || "0") > 0n) throw new Error("当前市场存在未平仓仓位，LP 份额暂时锁定以防未实现盈亏套利");
     const body = { wallet_address: state.account, market_id: Number(market.marketId), action };
     if (["open_position", "deposit_liquidity"].includes(action)) body.amount_raw = parseUnits($("#perp-amount")?.value, Number(market.quoteDecimals || 18)).toString();
     if (action === "open_position") {
