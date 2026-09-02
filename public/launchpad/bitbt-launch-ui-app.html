@@ -199,6 +199,20 @@
         background: var(--ink);
         color: var(--surface);
       }
+      .screen-switcher .nav-unread {
+        display: inline-grid;
+        min-width: 18px;
+        height: 18px;
+        margin-left: 5px;
+        padding: 0 5px;
+        place-items: center;
+        border-radius: 999px;
+        background: var(--yellow);
+        color: #101112;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 1;
+      }
       .workbench {
         position: relative;
         z-index: 1;
@@ -4395,6 +4409,7 @@
         <button data-open="discover" aria-pressed="true">发现市场</button>
         <button data-open="live">实时链上</button>
         <button data-open="rank">排行榜</button>
+        <button data-open="announcements">公告 <span class="nav-unread" data-announcement-unread>—</span></button>
         <button data-open="create-mode">创建代币</button>
         <button data-open="profile">我的</button>
       </nav>

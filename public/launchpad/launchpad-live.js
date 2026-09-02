@@ -3928,6 +3928,9 @@
     if (name === "create-mode" || (name === "create-basic" && state.launchTerminal)) resetLaunchFlow();
     else if (!state.launchSnapshot || name !== "create-review") invalidateLaunchSnapshot();
     $$(`[data-panel]`).forEach((panel) => panel.classList.toggle("active", panel === target));
+    $$(".screen-switcher [data-open]").forEach((button) =>
+      button.setAttribute("aria-pressed", button.dataset.open === name ? "true" : "false"),
+    );
     target.classList.add("has-bottom-nav");
     target.scrollTop = 0;
     routeHistory()?.replaceState?.(null, "", `${pumpBasePath()}?screen=${encodeURIComponent(name)}`);
@@ -4415,6 +4418,9 @@
     .catch(() => {});
   void restoreSession();
   void load();
+  void loadAnnouncements().catch(() => {
+    text("[data-announcement-unread]", "!");
+  });
   void loadFavorites();
   connectMarketSocket();
   document.addEventListener("visibilitychange", () => {
