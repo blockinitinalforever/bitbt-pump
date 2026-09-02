@@ -31,11 +31,15 @@ test("official Pump announcements and fail-closed perpetual product routes are w
     "v1/pump/perpetual/prepare",
   ]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   assert.match(html, /data-panel="announcements"/);
+  assert.match(html, /data-open="announcements">公告/);
+  assert.match(html, /class="nav-unread" data-announcement-unread/);
   assert.match(html, /data-panel="perpetual"/);
   assert.match(html, /data-open="announcements"/);
   assert.match(html, /data-open="perpetual"/);
   assert.match(bridge, /state\.perpConfig\?\.enabled/);
   assert.match(bridge, /公告加载失败/);
+  assert.match(bridge, /void loadAnnouncements\(\)/);
+  assert.match(bridge, /button\.dataset\.open === name/);
   assert.match(bridge, /validatePreparedPerpetual\(prepared, market, body\)/);
   assert.match(bridge, /永续授权接收方与合约不一致/);
   assert.match(bridge, /永续仓位参数绑定失败/);
