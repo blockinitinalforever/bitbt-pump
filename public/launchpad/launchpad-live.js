@@ -658,12 +658,18 @@
       text("[data-perp-market-exposure]", `${formatUnits(BigInt(market.longNotionalRaw), decimals)} / ${formatUnits(BigInt(market.shortNotionalRaw), decimals)}`);
       text("[data-perp-market-limits]", `${formatUnits(BigInt(market.maxPositionNotionalRaw), decimals)} / ${formatUnits(BigInt(market.maxOpenInterestRaw), decimals)}`);
       text("[data-perp-market-utilization]", `${(Number(market.maxUtilizationPpm || 0) / 10_000).toFixed(2)}%${market.closeOnly ? " · 只减仓" : ""}`);
+      text("[data-perp-market-funding]", `${(Number(market.maxFundingRatePpmPerDay || 0) / 10_000).toFixed(4)}%`);
+      text("[data-perp-market-epoch]", market.epochEnd ? new Date(Number(market.epochEnd) * 1000).toLocaleString() : "—");
+      text("[data-perp-market-duration]", market.maxPositionDurationSeconds ? `${(Number(market.maxPositionDurationSeconds) / 86400).toFixed(2)} 天` : "—");
+      text("[data-perp-market-keeper]", formatUnits(BigInt(market.minKeeperRewardRaw || "0"), decimals));
+      text("[data-perp-market-emergency]", market.emergencySettlementActive ? `已启用 · ${formatUnits(BigInt(market.emergencySettlementPriceE18 || "0"), 18)}` : market.emergencySettlementActivateAfter ? `等待至 ${new Date(Number(market.emergencySettlementActivateAfter) * 1000).toLocaleString()}` : "未启用");
     } else {
-      text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization]", "—");
+      text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization], [data-perp-market-funding], [data-perp-market-epoch], [data-perp-market-duration], [data-perp-market-keeper], [data-perp-market-emergency]", "—");
     }
     const position = state.perpPosition;
     const quoteDecimals = Number(market?.quoteDecimals || 18);
     text("[data-perp-position]", !state.account ? "连接钱包后读取" : position?.open ? `${position.isLong ? "LONG" : "SHORT"} · 保证金 ${formatUnits(BigInt(position.collateralRaw), quoteDecimals)} · 名义 ${formatUnits(BigInt(position.notionalRaw), quoteDecimals)}` : "当前无持仓");
+    text("[data-perp-position-pnl]", position?.open ? formatUnits(BigInt(position.currentPnlRaw || "0"), quoteDecimals) : "—");
     text("[data-perp-shares]", state.account ? formatUnits(BigInt(position?.liquiditySharesRaw || "0"), quoteDecimals) : "—");
     const action = $("#perp-action")?.value || "open_position";
     const addsRisk = ["open_position", "deposit_liquidity"].includes(action);
@@ -672,14 +678,18 @@
     const needsAmount = ["open_position", "deposit_liquidity"].includes(action);
     const needsLeverage = action === "open_position";
     const needsShares = action === "withdraw_liquidity";
+    const needsTrader = ["liquidate", "expire_position"].includes(action);
     const amountField = $("[data-perp-amount-field]");
     const leverageField = $("[data-perp-leverage-field]");
     const sharesField = $("[data-perp-shares-field]");
+    const traderField = $("[data-perp-trader-field]");
     if (amountField) amountField.hidden = !needsAmount;
     if (leverageField) leverageField.hidden = !needsLeverage;
     if (sharesField) sharesField.hidden = !needsShares;
+    if (traderField) traderField.hidden = !needsTrader;
     const prepare = $("[data-perp-prepare]");
-    if (prepare) prepare.disabled = !enabled || !state.account || !market || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (changesLiquidity && hasOpenInterest);
+    const epochEnded = Number(market?.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000;
+    if (prepare) prepare.disabled = !enabled || !state.account || !market || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
     const preview = $("[data-perp-preview]");
     const execute = $("[data-perp-execute]");
     if (preview) {
@@ -721,6 +731,7 @@
       open_position: "0xf483ee07",
       close_position: "0xa126d601",
       liquidate: "0x5fae8b3d",
+      expire_position: "0x15589527",
     };
     const expectedSelector = actionSelectors[request.action];
     let actionTransaction = null;
@@ -754,6 +765,9 @@
     if (request.action === "withdraw_liquidity") {
       if (perpetualWord(actionTransaction.data, 1) !== BigInt(request.shares_raw) || `0x${actionTransaction.data.slice(10 + 2 * 64 + 24, 10 + 3 * 64)}` !== state.account) throw new Error("永续提取参数绑定失败");
     }
+    if (["liquidate", "expire_position"].includes(request.action)) {
+      if (`0x${actionTransaction.data.slice(10 + 64 + 24, 10 + 2 * 64)}` !== String(request.recipient || "").toLowerCase()) throw new Error("永续 Keeper 目标仓位绑定失败");
+    }
     if (requiredApproval > 0n && approvals.length && (approvals.at(-1) !== requiredApproval || approvals.slice(0, -1).some((amount) => amount !== 0n))) throw new Error("永续授权额度绑定失败");
     if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
   };
@@ -763,6 +777,7 @@
     if (!market || !state.perpConfig?.enabled) throw new Error("永续市场尚未开放");
     const action = $("#perp-action")?.value || "open_position";
     if (["open_position", "deposit_liquidity"].includes(action) && (state.perpConfig?.openingsPaused || market.closeOnly)) throw new Error("永续市场当前只允许平仓、清算和安全提取");
+    if (action === "open_position" && Number(market.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000) throw new Error("当前风险周期已结束，等待存量仓位结算和下一周期开启");
     if (["deposit_liquidity", "withdraw_liquidity"].includes(action) && BigInt(market.lockedNotionalRaw || "0") > 0n) throw new Error("当前市场存在未平仓仓位，LP 份额暂时锁定以防未实现盈亏套利");
     const body = { wallet_address: state.account, market_id: Number(market.marketId), action };
     if (["open_position", "deposit_liquidity"].includes(action)) body.amount_raw = parseUnits($("#perp-amount")?.value, Number(market.quoteDecimals || 18)).toString();
@@ -771,6 +786,10 @@
       body.is_long = $("#perp-side")?.value !== "short";
     }
     if (action === "withdraw_liquidity") body.shares_raw = String($("#perp-shares")?.value || "").trim();
+    if (["liquidate", "expire_position"].includes(action)) {
+      body.recipient = String($("#perp-trader")?.value || "").trim().toLowerCase();
+      if (!/^0x[0-9a-f]{40}$/.test(body.recipient) || /^0x0{40}$/.test(body.recipient)) throw new Error("请输入有效的目标仓位钱包地址");
+    }
     const prepared = await api("v1/pump/perpetual/prepare", {
       method: "POST",
       headers: { "content-type": "application/json" },
