@@ -43,6 +43,13 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /validatePreparedPerpetual\(prepared, market, body\)/);
   assert.match(bridge, /永续授权接收方与合约不一致/);
   assert.match(bridge, /永续仓位参数绑定失败/);
+  assert.match(bridge, /config\?\.openingsPaused/);
+  assert.match(bridge, /market\.maxOpenInterestRaw/);
+  assert.match(bridge, /LP 份额暂时锁定以防未实现盈亏套利/);
+  assert.doesNotMatch(html, /value="create_market"/);
+  assert.doesNotMatch(bridge, /action:\s*["']create_market["']/);
+  assert.match(html, /data-perp-market-exposure/);
+  assert.match(html, /data-perp-market-limits/);
   assert.match(bridge, /state\.preparedPerpRequest = null/);
 });
 
