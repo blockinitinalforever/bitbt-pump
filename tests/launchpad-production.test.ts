@@ -45,11 +45,20 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /永续仓位参数绑定失败/);
   assert.match(bridge, /config\?\.openingsPaused/);
   assert.match(bridge, /market\.maxOpenInterestRaw/);
+  assert.match(bridge, /market\.maxFundingRatePpmPerDay/);
+  assert.match(bridge, /market\.epochEnd/);
+  assert.match(bridge, /currentPnlRaw/);
+  assert.match(html, /value="liquidate"/);
+  assert.match(html, /value="expire_position"/);
+  assert.match(bridge, /请输入有效的目标仓位钱包地址/);
   assert.match(bridge, /LP 份额暂时锁定以防未实现盈亏套利/);
   assert.doesNotMatch(html, /value="create_market"/);
   assert.doesNotMatch(bridge, /action:\s*["']create_market["']/);
   assert.match(html, /data-perp-market-exposure/);
   assert.match(html, /data-perp-market-limits/);
+  assert.match(html, /data-perp-market-funding/);
+  assert.match(html, /data-perp-market-epoch/);
+  assert.match(html, /仓位盈利最高为 1 倍名义价值/);
   assert.match(bridge, /state\.preparedPerpRequest = null/);
 });
 

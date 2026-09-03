@@ -4669,7 +4669,7 @@
               </div>
               <div class="page-title">
                 <h1>项目独立保证金市场。</h1>
-                <p>报价资产保证金、1–100x 杠杆、链上 LP 份额与钱包签名回执。</p>
+                <p>报价资产保证金、按预言机质量限制杠杆、链上 LP 份额与钱包签名回执。</p>
               </div>
               <div class="risk-note" data-perp-status>永续合约尚未开放；完成测试网部署、预言机审查与合约审计前，所有操作保持禁用。</div>
               <div class="card-metrics perp-metrics">
@@ -4688,7 +4688,13 @@
                 <div class="review-row"><span>多头 / 空头名义价值</span><strong data-perp-market-exposure>—</strong></div>
                 <div class="review-row"><span>单仓 / 总持仓上限</span><strong data-perp-market-limits>—</strong></div>
                 <div class="review-row"><span>最高资金利用率</span><strong data-perp-market-utilization>—</strong></div>
+                <div class="review-row"><span>资金费率上限 / 日</span><strong data-perp-market-funding>—</strong></div>
+                <div class="review-row"><span>风险周期结束</span><strong data-perp-market-epoch>—</strong></div>
+                <div class="review-row"><span>最长单仓时间</span><strong data-perp-market-duration>—</strong></div>
+                <div class="review-row"><span>Keeper 最低奖励</span><strong data-perp-market-keeper>—</strong></div>
+                <div class="review-row"><span>应急结算</span><strong data-perp-market-emergency>未启用</strong></div>
                 <div class="review-row"><span>我的仓位</span><strong data-perp-position>连接钱包后读取</strong></div>
+                <div class="review-row"><span>当前未实现盈亏（含资金费）</span><strong data-perp-position-pnl>—</strong></div>
                 <div class="review-row"><span>我的 LP 份额</span><strong data-perp-shares>—</strong></div>
               </div>
               <div class="profile-card">
@@ -4699,6 +4705,8 @@
                     <option value="close_position">平仓</option>
                     <option value="deposit_liquidity">注入流动性</option>
                     <option value="withdraw_liquidity">提取流动性</option>
+                    <option value="liquidate">清算风险仓位</option>
+                    <option value="expire_position">结算到期仓位</option>
                   </select>
                 </div>
                 <div class="form-group" data-perp-amount-field>
@@ -4714,10 +4722,15 @@
                   <label>提取 LP 份额（链上原始值）</label>
                   <input class="field" id="perp-shares" inputmode="numeric" placeholder="0" />
                 </div>
+                <div class="form-group" data-perp-trader-field hidden>
+                  <label>目标仓位钱包</label>
+                  <input class="field" id="perp-trader" inputmode="text" placeholder="0x..." autocomplete="off" />
+                </div>
                 <button class="primary black" type="button" data-perp-prepare disabled>加载并检查交易参数</button>
                 <div class="review-block" data-perp-preview hidden></div>
                 <button class="primary black" type="button" data-perp-execute disabled>确认并依次发送交易</button>
               </div>
+              <div class="risk-note">重要规则：逐仓保证金；多空拥挤方向按时间支付资金费；仓位盈利最高为 1 倍名义价值；风险周期结束后停止新开仓并允许 Keeper 结算到期仓位；预言机故障时只能在 48 小时公开延迟后启用固定应急结算价。该产品不是全仓交易所永续。</div>
               <p class="footer-note">永续属于高风险衍生品。界面不会代签或托管资产；每笔授权、开仓、平仓和 LP 操作都必须由当前钱包确认并等待链上成功回执。</p>
             </section>
 

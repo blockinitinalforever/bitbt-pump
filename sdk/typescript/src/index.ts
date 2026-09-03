@@ -142,6 +142,12 @@ export interface PumpPerpetualConfig {
   feePercent: string;
   minLiquidityUsd: string;
   maxLeverage: number;
+  maintenanceMarginPpm: number;
+  liquidationRewardPpm: number;
+  emergencySettlementDelaySeconds: number;
+  fundingEnabled: boolean;
+  profitCapNotionalMultiple: number;
+  marginModel: string;
   statusNote: string;
 }
 
@@ -168,6 +174,14 @@ export interface PumpPerpetualMarket {
   longNotionalRaw: string;
   shortNotionalRaw: string;
   creatorAddress: string;
+  maxFundingRatePpmPerDay: number;
+  maxPositionDurationSeconds: number;
+  epochEnd: number;
+  minKeeperRewardRaw: string;
+  cumulativeFundingIndexE18: string;
+  emergencySettlementPriceE18: string;
+  emergencySettlementActivateAfter: number;
+  emergencySettlementActive: boolean;
 }
 
 export interface PumpPerpetualPosition {
@@ -178,6 +192,9 @@ export interface PumpPerpetualPosition {
   entryPriceE18: string;
   isLong: boolean;
   open: boolean;
+  entryFundingIndexE18: string;
+  openedAt: number;
+  currentPnlRaw: string;
   liquiditySharesRaw: string;
 }
 
