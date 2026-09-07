@@ -16,7 +16,7 @@ let providerPromise: Promise<EthereumProvider> | null = null;
 const createProvider = (projectId: string) => EthereumProvider.init({
   projectId,
   chains: [56],
-  optionalChains: [56],
+  optionalChains: [56, 4663, 46630],
   methods: ["personal_sign", "eth_sendTransaction"],
   optionalMethods: [
     "eth_accounts",
@@ -31,7 +31,11 @@ const createProvider = (projectId: string) => EthereumProvider.init({
   ],
   events: ["accountsChanged", "chainChanged"],
   optionalEvents: ["connect", "disconnect", "message"],
-  rpcMap: { 56: "https://bsc-dataseed.binance.org" },
+  rpcMap: {
+    56: "https://bsc-dataseed.binance.org",
+    4663: "https://rpc.mainnet.chain.robinhood.com",
+    46630: "https://rpc.testnet.chain.robinhood.com",
+  },
   showQrModal: true,
   qrModalOptions: {
     themeMode: "dark",
@@ -39,7 +43,7 @@ const createProvider = (projectId: string) => EthereumProvider.init({
   },
   metadata: {
     name: "BitBT Pump",
-    description: "BitBT Pump — BNB Chain launch and trading terminal",
+    description: "BitBT Pump — multi-chain launch and trading terminal",
     url: "https://bitbt.fun",
     icons: ["https://bitbt.fun/launchpad/assets/branding/bitbt-logo.png"],
   },
