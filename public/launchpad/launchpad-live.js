@@ -2,6 +2,18 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
+  const readLocalPreference = (key) => {
+    try {
+      return window.localStorage?.getItem(key) || "";
+    } catch {
+      return "";
+    }
+  };
+  const writeLocalPreference = (key, value) => {
+    try {
+      window.localStorage?.setItem(key, value);
+    } catch {}
+  };
   const state = {
     tokens: [],
     tokenFilter: "trending",
@@ -65,6 +77,7 @@
     quoteKey: "",
     account: "",
     chainId: "",
+    selectedChain: readLocalPreference("bitbt_pump_chain") || "bsc",
     sessionExpiresAt: 0,
     provider: null,
     balances: { quote: null, token: null, gas: null },
@@ -86,6 +99,7 @@
     tradesRefreshPromise: null,
   };
   const SESSION_KEY = "bitbt_pump_session";
+  const CHAIN_KEY = "bitbt_pump_chain";
   const SESSION_ADDRESS_KEY = "bitbt_pump_session_address";
   const PROVIDER_KIND_KEY = "bitbt_pump_provider_kind";
   const LOCALE_KEY = "bitbt_pump_locale";
@@ -112,6 +126,21 @@
   let walletConnectProviderPromise = null;
   let walletConfigPromise = null;
   let walletConnectBridgePromise = null;
+  const NETWORKS = {
+    bsc: { id: "bsc", chainId: 56, chainIdHex: "0x38", name: "BNB Smart Chain", shortName: "BNB Chain", native: "BNB", rpcUrls: ["https://bsc-dataseed.binance.org"], explorer: "https://bscscan.com", wrappedNative: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", maxGasPriceWei: 5_000_000_000n },
+    robinhood: { id: "robinhood", chainId: 4663, chainIdHex: "0x1237", name: "Robinhood Chain", shortName: "Robinhood", native: "ETH", rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"], explorer: "https://robinhoodchain.blockscout.com", wrappedNative: "0x0bd7d308f8e1639fab988df18a8011f41eacad73", maxGasPriceWei: 1_000_000_000n },
+    "robinhood-testnet": { id: "robinhood-testnet", chainId: 46630, chainIdHex: "0xb626", name: "Robinhood Chain Testnet", shortName: "Robinhood Testnet", native: "ETH", rpcUrls: ["https://rpc.testnet.chain.robinhood.com"], explorer: "https://explorer.testnet.chain.robinhood.com", wrappedNative: "", maxGasPriceWei: 1_000_000_000n },
+  };
+  if (!NETWORKS[state.selectedChain]) state.selectedChain = "bsc";
+  const selectedNetwork = () => NETWORKS[state.selectedChain] || NETWORKS.bsc;
+  const isBscFeatureChain = () => state.selectedChain === "bsc";
+  const launchEnabledForSelectedChain = () => {
+    const advertised = state.launchOptions?.network?.launch_enabled;
+    if (typeof advertised === "boolean") return advertised;
+    // Compatibility for an older BSC API response during rolling deploys.
+    // Robinhood must always receive the explicit capability flag.
+    return isBscFeatureChain() && Boolean(state.launchOptions?.dex_profiles?.some((profile) => profile.enabled));
+  };
   const isEvmProvider = (provider) => {
     try {
       return Boolean(provider && typeof provider.request === "function");
@@ -476,7 +505,7 @@
     if (error?.code === "SESSION_EXPIRED" || status === 401 || /登录已过期|SIWE session|unauthorized/i.test(message)) return "登录已过期，请重新连接钱包";
     if (code === 4001 || /user rejected|user denied|provider rejected/i.test(message)) return "已取消钱包操作";
     if (code === -32002 || /already pending|request.*pending/i.test(message)) return "钱包中已有待处理请求，请先在钱包中处理";
-    if (/insufficient funds|exceeds balance|余额不足/i.test(message)) return /[\u3400-\u9fff]/.test(message) ? message : "BNB 余额不足，请补充发射费和 Gas 后重试";
+    if (/insufficient funds|exceeds balance|余额不足/i.test(message)) return /[\u3400-\u9fff]/.test(message) ? message : `${selectedNetwork().native} 余额不足，请补充发射费和 Gas 后重试`;
     if (/Address must end with 8888|CREATE2 failed|Factory token bytecode mismatch|发币参数与链上工厂不一致/i.test(message)) return "发币参数与链上 Factory 不一致，请重新加载发币参数";
     if (/Below min threshold/i.test(message)) return "迁移阈值低于链上最低要求，请重新加载发币参数";
     if (/migration_threshold_quote/i.test(message)) return "自定义迁移目标超出当前 Factory 允许范围，请按提示调整后重试";
@@ -489,9 +518,15 @@
     return /[\u3400-\u9fff]/.test(message) ? message : fallback;
   };
   const api = async (path, init) => {
+    const chainScoped = (path.startsWith("v1/pump/") && !path.startsWith("v1/pump/announcements"))
+      || /^v1\/token\/(?:launch-options|launch-fee|status|my-tokens|prepare-launch|launch)(?:[?]|$)/.test(path);
+    let scopedPath = path;
+    if (chainScoped && !/[?&]chain_id=/.test(path)) {
+      scopedPath += `${path.includes("?") ? "&" : "?"}chain_id=${encodeURIComponent(state.selectedChain)}`;
+    }
     const requestToken = sessionStorage.getItem(SESSION_KEY);
     const publicRead = !init?.method && /^(?:v1\/pump\/(?:tokens|detail|details|trades|market(?:-activity)?|candles|migration-proof|holders|economics\/config|name-check|announcements|perpetual\/(?:config|markets)))(?:[?]|$)/.test(path);
-    const response = await fetch(`/api/pump/${path}`, {
+    const response = await fetch(`/api/pump/${scopedPath}`, {
       ...init,
       cache: publicRead ? "default" : "no-store",
       headers: {
@@ -711,6 +746,13 @@
     renderPerpetual();
   };
   const loadPerpetual = async () => {
+    if (!isBscFeatureChain()) {
+      state.perpConfig = { enabled: false, statusNote: `永续市场当前仅部署在 BNB Smart Chain；${selectedNetwork().shortName} 尚未部署。` };
+      state.perpMarkets = [];
+      state.perpPosition = null;
+      renderPerpetual();
+      return;
+    }
     state.perpConfig = await api("v1/pump/perpetual/config");
     state.perpMarkets = state.perpConfig?.enabled ? await api("v1/pump/perpetual/markets") : [];
     renderPerpetual();
@@ -946,7 +988,7 @@
     text("[data-market-launches]", launches.toLocaleString("en-US"));
     text("[data-market-trades]", trades.toLocaleString("en-US"));
     text("[data-market-live-count]", `LIVE ${state.marketActivity.length}`);
-    text("[data-market-stream-status]", `BNB Chain 数据流已连接 · 最近 ${state.marketActivity.length} 条真实动态`);
+    text("[data-market-stream-status]", `${selectedNetwork().shortName} 数据流已连接 · 最近 ${state.marketActivity.length} 条真实动态`);
     const banner = $("[data-api-status]");
     if (banner) banner.textContent = `实时 Pump 数据已连接 · ${total} 个项目 · ${state.marketActivity.length} 条最新动态`;
   };
@@ -1158,10 +1200,10 @@
   };
   const deviceId = () => {
     try {
-      let id = localStorage.getItem("bitbt_pump_device");
+      let id = readLocalPreference("bitbt_pump_device");
       if (!id) {
         id = crypto.randomUUID();
-        localStorage.setItem("bitbt_pump_device", id);
+        writeLocalPreference("bitbt_pump_device", id);
       }
       return id;
     } catch {
@@ -1192,7 +1234,7 @@
           const amount = kind === "create" ? `${tx.symbol || tx.token_name || "—"} · ${short(tx.token_address)}` : `${decimal(tx.quote_amount)} ${tx.quote_token || "BNB"} · ${decimal(tx.token_amount)} ${tx.symbol || tx.token_name || "TOKEN"}`;
           const txHash = validTxHash(tx.tx_hash);
           const content = `<span class="activity-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${kind === "sell" ? "arrow-up-right" : kind === "buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><div><strong>${escapeHtml(label)} · ${escapeHtml(tx.token_name || tx.symbol || "—")}</strong><small>${escapeHtml(amount)} · ${escapeHtml(tx.status || "—")}</small></div><div class="right"><strong>${escapeHtml(txHash ? short(txHash) : "—")}</strong><small>${escapeHtml(age(tx.created_at))}</small></div>`;
-          return txHash ? `<a class="activity-card" href="https://bscscan.com/tx/${txHash}" target="_blank" rel="noopener noreferrer">${content}</a>` : `<div class="activity-card">${content}</div>`;
+          return txHash ? `<a class="activity-card" href="${escapeHtml(selectedNetwork().explorer)}/tx/${txHash}" target="_blank" rel="noopener noreferrer">${content}</a>` : `<div class="activity-card">${content}</div>`;
         })
         .join("");
       activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">暂无真实交易记录。</p>`);
@@ -1201,7 +1243,7 @@
     profilePanel?.querySelector("[data-profile-summary]")?.remove();
     profilePanel?.querySelector("[data-reward-summary]")?.remove();
     if (profilePanel) {
-      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("beforebegin", `<div class="profile-card" data-profile-summary><div class="profile-head"><span class="profile-avatar">${state.account ? state.account.slice(2, 4).toUpperCase() : "—"}</span><div><h2>${state.account ? short(state.account) : "请连接钱包"}</h2><p>${state.account ? "BNB CHAIN · 实时数据" : "连接钱包后显示账户数据"}</p></div><span class="tag lime">PUMP</span></div><div class="card-metrics"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>交易次数</span><strong>${state.history.length}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div>${state.account ? `<div class="points-summary"><div><span>PUMP 积分</span><strong>${Number(state.points?.wallet_points || 0).toLocaleString("en-US")}</strong></div><div><span>积分排名</span><strong>${state.points?.wallet_rank ? `#${state.points.wallet_rank}` : "—"}</strong></div></div>` : ""}</div>`);
+      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("beforebegin", `<div class="profile-card" data-profile-summary><div class="profile-head"><span class="profile-avatar">${state.account ? state.account.slice(2, 4).toUpperCase() : "—"}</span><div><h2>${state.account ? short(state.account) : "请连接钱包"}</h2><p>${state.account ? `${escapeHtml(selectedNetwork().shortName.toUpperCase())} · 实时数据` : "连接钱包后显示账户数据"}</p></div><span class="tag lime">PUMP</span></div><div class="card-metrics"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>交易次数</span><strong>${state.history.length}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div>${state.account ? `<div class="points-summary"><div><span>PUMP 积分</span><strong>${Number(state.points?.wallet_points || 0).toLocaleString("en-US")}</strong></div><div><span>积分排名</span><strong>${state.points?.wallet_rank ? `#${state.points.wallet_rank}` : "—"}</strong></div></div>` : ""}</div>`);
       const rewards = state.creatorRewards.map((reward) => `<div class="review-row"><span>${escapeHtml(reward.quote_symbol || "BNB")} · ${escapeHtml(reward.status === "accrued" ? "可签署凭证" : reward.status === "pending_contract_upgrade" ? "待曲线合约升级" : reward.status)}</span><strong>${escapeHtml(baseUnits(reward.amount_wei))} ${escapeHtml(reward.quote_symbol || "BNB")}</strong></div>`).join("");
       profilePanel.querySelector(".section-title")?.insertAdjacentHTML("afterend", `<div class="profile-card" data-reward-summary><div class="section-title"><h3>创作者奖励账本</h3><span class="tag lime">API</span></div>${rewards || `<p class="footer-note">${state.account ? "暂无已记录的创作者奖励。" : "连接钱包后显示奖励账本。"}</p>`}<p class="footer-note">这里只展示后端真实累计；未执行链上兑付的金额不会标记为已到账。</p></div>`);
     }
@@ -1303,6 +1345,12 @@
     $$(`[data-vault-claim]`).forEach((button) => button.addEventListener("click", () => claimVault(button.dataset.vaultClaim).catch((error) => toastError(error, "Vault 领取失败"))));
   };
   const loadVaultConfig = async () => {
+    if (!isBscFeatureChain()) {
+      state.vaultConfig = { enabled: false };
+      state.vaults = [];
+      renderVaults();
+      return;
+    }
     try {
       state.vaultConfig = await api("v1/pump/vaults/config");
     } catch {
@@ -1351,7 +1399,8 @@
   const sendVaultTransaction = async (transaction, label) => {
     if (!state.account) await connectWallet();
     const provider = selectedProvider();
-    await ensureBscChain(provider);
+    if (state.selectedChain !== "bsc") throw new Error("Split Vault 当前仅支持 BNB Smart Chain");
+    await ensureSelectedChain(provider);
     await assertProviderState();
     const request = {
       from: state.account,
@@ -1469,7 +1518,7 @@
     }
   };
   const loadV3FeeRewards = async () => {
-    if (!state.account) {
+    if (!state.account || !isBscFeatureChain()) {
       state.v3FeeRewards = [];
       renderVaults();
       return;
@@ -1641,6 +1690,13 @@
     execute.disabled = !state.account || !state.preparedStrategyAction.transactions.length;
   }
   const loadStrategyConfig = async () => {
+    if (!isBscFeatureChain()) {
+      state.strategyConfig = { enabled: false, templates: [] };
+      state.vaultRegistry = [];
+      state.strategies = [];
+      renderStrategyStore();
+      return;
+    }
     try {
       const [templates, registry] = await Promise.all([
         api("v1/pump/vault-store/templates"),
@@ -1851,7 +1907,7 @@
     const requestSequence = ++userDataRequestSequence;
     const account = state.account;
     try {
-      const favorites = await api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`);
+      const favorites = await api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}&chain_id=${encodeURIComponent(state.selectedChain)}`);
       if (requestSequence !== userDataRequestSequence || state.account !== account) return;
       state.favorites = favorites;
     } catch {
@@ -1864,7 +1920,17 @@
     if (!state.account) return loadFavorites();
     const requestSequence = ++userDataRequestSequence;
     const account = state.account;
-    const [activity, favorites, alerts, points, referral, campaigns, kol, v3Rewards] = await Promise.allSettled([api(`v1/pump/wallet-activity?address=${encodeURIComponent(account)}&limit=500`), api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}`), api(`v1/pump/alerts?wallet_address=${encodeURIComponent(account)}`), api(`v1/pump/points?address=${encodeURIComponent(account)}&limit=100`), api(`v1/pump/referral?wallet_address=${encodeURIComponent(account)}`), api(`v1/pump/campaigns?wallet_address=${encodeURIComponent(account)}`), api(`v1/pump/kol?wallet_address=${encodeURIComponent(account)}`), api(`v1/pump/v3-fee-rewards?wallet_address=${encodeURIComponent(account)}`)]);
+    const bscOnly = isBscFeatureChain();
+    const [activity, favorites, alerts, points, referral, campaigns, kol, v3Rewards] = await Promise.allSettled([
+      api(`v1/pump/wallet-activity?address=${encodeURIComponent(account)}&limit=500`),
+      api(`v1/market/favorites?device_id=${encodeURIComponent(deviceId())}&chain_id=${encodeURIComponent(state.selectedChain)}`),
+      bscOnly ? api(`v1/pump/alerts?wallet_address=${encodeURIComponent(account)}`) : Promise.resolve([]),
+      bscOnly ? api(`v1/pump/points?address=${encodeURIComponent(account)}&limit=100`) : Promise.resolve(null),
+      bscOnly ? api(`v1/pump/referral?wallet_address=${encodeURIComponent(account)}`) : Promise.resolve(null),
+      bscOnly ? api(`v1/pump/campaigns?wallet_address=${encodeURIComponent(account)}`) : Promise.resolve([]),
+      bscOnly ? api(`v1/pump/kol?wallet_address=${encodeURIComponent(account)}`) : Promise.resolve(null),
+      bscOnly ? api(`v1/pump/v3-fee-rewards?wallet_address=${encodeURIComponent(account)}`) : Promise.resolve([]),
+    ]);
     if (requestSequence !== userDataRequestSequence || state.account !== account) return;
     if (activity.status === "fulfilled") {
       state.myLaunches = Array.isArray(activity.value?.launches) ? activity.value.launches : [];
@@ -1875,7 +1941,7 @@
       state.creatorRewards = Array.isArray(activity.value?.creator_rewards) ? activity.value.creator_rewards : [];
       state.holderDividends = Array.isArray(activity.value?.holder_dividends) ? activity.value.holder_dividends : [];
     } else {
-      const [launches, history] = await Promise.allSettled([api(`v1/token/my-tokens?address=${encodeURIComponent(account)}`), api(`v1/wallet/tx/history?address=${encodeURIComponent(account)}&chain_id=bsc&limit=100`)]);
+      const [launches, history] = await Promise.allSettled([api(`v1/token/my-tokens?address=${encodeURIComponent(account)}`), api(`v1/wallet/tx/history?address=${encodeURIComponent(account)}&chain_id=${encodeURIComponent(state.selectedChain)}&limit=100`)]);
       if (requestSequence !== userDataRequestSequence || state.account !== account) return;
       state.myLaunches = launches.status === "fulfilled" ? launches.value : [];
       state.history = history.status === "fulfilled" ? history.value : [];
@@ -1894,6 +1960,19 @@
     state.kol = kol.status === "fulfilled" ? kol.value : null;
     state.v3FeeRewards = v3Rewards.status === "fulfilled" && Array.isArray(v3Rewards.value) ? v3Rewards.value : [];
     renderMyPanels();
+    if (!bscOnly) {
+      state.vaultConfig = { enabled: false };
+      state.strategyConfig = { enabled: false, templates: [] };
+      state.vaults = [];
+      state.strategies = [];
+      renderVaults();
+      renderStrategyStore();
+      await loadWebhooks().catch(() => {
+        state.webhooks = [];
+        renderWebhooks();
+      });
+      return;
+    }
     await loadVaults().catch((error) => {
       state.vaults = [];
       renderVaults();
@@ -2112,7 +2191,7 @@
       body: JSON.stringify({
         device_id: deviceId(),
         symbol: token.symbol || token.token_name,
-        chain_id: "bsc",
+        chain_id: state.selectedChain,
         contract_address: tokenAddress(token),
       }),
     });
@@ -2123,7 +2202,7 @@
           ...state.favorites,
           {
             symbol: token.symbol,
-            chain_id: "bsc",
+            chain_id: state.selectedChain,
             contract_address: tokenAddress(token),
           },
         ];
@@ -2203,26 +2282,32 @@
   };
   const launchQuoteTokens = () => new Set((state.launchOptions?.quotes || [{ symbol: "BNB" }, { symbol: "USDT" }, { symbol: "USDC" }, { symbol: "USD1" }]).map((item) => String(item.symbol || "").toUpperCase()));
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-  const WBNB_ADDRESS = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+  const wrappedNativeAddress = () => selectedNetwork().wrappedNative;
   const USER_SLIPPAGE_BPS = 200;
-  const PRIORITY_FEE_WEI = 50_000_000n;
+  const BSC_PRIORITY_FEE_WEI = 50_000_000n;
   const getFeePolicy = async (provider = selectedProvider()) => {
-    const fallbackBaseFee = 2_000_000_000n;
+    const network = selectedNetwork();
     try {
-      const latest = await provider.request({
-        method: "eth_getBlockByNumber",
-        params: ["latest", false],
-      });
-      const baseFee = latest?.baseFeePerGas ? BigInt(latest.baseFeePerGas) : 0n;
+      const [latestResult, gasPriceResult] = await Promise.allSettled([
+        provider.request({ method: "eth_getBlockByNumber", params: ["latest", false] }),
+        provider.request({ method: "eth_gasPrice" }),
+      ]);
+      const latest = latestResult.status === "fulfilled" ? latestResult.value : null;
+      const gasPriceRaw = gasPriceResult.status === "fulfilled" ? gasPriceResult.value : latest?.baseFeePerGas;
+      if (gasPriceRaw == null) throw new Error("Gas price unavailable");
+      const gasPrice = BigInt(gasPriceRaw);
+      if (gasPrice <= 0n || gasPrice > network.maxGasPriceWei) throw new Error(`当前 Gas 报价超出 ${network.shortName} 安全上限，请稍后重试`);
+      const baseFee = latest?.baseFeePerGas ? BigInt(latest.baseFeePerGas) : gasPrice;
+      const priority = network.id === "bsc" ? BSC_PRIORITY_FEE_WEI : 0n;
+      const maxFee = (baseFee * 120n) / 100n + priority;
+      if (maxFee > network.maxGasPriceWei) throw new Error(`当前 Gas 报价超出 ${network.shortName} 安全上限，请稍后重试`);
       return {
-        maxPriorityFeePerGas: PRIORITY_FEE_WEI,
-        maxFeePerGas: (baseFee > 0n ? baseFee * 2n : fallbackBaseFee) + PRIORITY_FEE_WEI,
+        maxPriorityFeePerGas: priority,
+        maxFeePerGas: maxFee,
       };
-    } catch {
-      return {
-        maxPriorityFeePerGas: PRIORITY_FEE_WEI,
-        maxFeePerGas: fallbackBaseFee + PRIORITY_FEE_WEI,
-      };
+    } catch (error) {
+      if (/安全上限/.test(String(error?.message || ""))) throw error;
+      throw new Error("无法读取当前 Gas 报价，已停止交易以避免支付异常网络费");
     }
   };
   const normalizeChainId = (value) => {
@@ -2230,18 +2315,23 @@
       .trim()
       .toLowerCase();
     if (normalized === "0x38" || normalized === "56" || normalized === "bsc" || normalized === "bnb") return "0x38";
+    if (normalized === "0x1237" || normalized === "4663" || normalized === "robinhood") return "0x1237";
+    if (normalized === "0xb626" || normalized === "46630" || normalized === "robinhood-testnet") return "0xb626";
     return "";
   };
-  const ensureBscChain = async (provider) => {
+  const ensureSelectedChain = async (provider) => {
+    const network = selectedNetwork();
     let chainId = normalizeChainId(await provider.request({ method: "eth_chainId" }));
-    if (chainId !== "0x38") {
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0x38" }],
-      });
+    if (chainId !== network.chainIdHex) {
+      try {
+        await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: network.chainIdHex }] });
+      } catch (error) {
+        if (Number(error?.code) !== 4902 && !/unrecognized chain|unknown chain/i.test(String(error?.message || ""))) throw error;
+        await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: network.chainIdHex, chainName: network.name, nativeCurrency: { name: network.native, symbol: network.native, decimals: 18 }, rpcUrls: network.rpcUrls, blockExplorerUrls: [network.explorer] }] });
+      }
       chainId = normalizeChainId(await provider.request({ method: "eth_chainId" }));
     }
-    if (chainId !== "0x38") throw new Error("钱包未切换到 BSC，请在钱包中选择 BNB Smart Chain");
+    if (chainId !== network.chainIdHex) throw new Error(`钱包未切换到 ${network.name}`);
     state.chainId = chainId;
   };
   const rpc = (to, data, provider = selectedProvider()) => provider.request({ method: "eth_call", params: [{ to, data }, "latest"] }).then((value) => BigInt(value));
@@ -2344,7 +2434,7 @@
     text("[data-preview-name], [data-launch-review-name]", prepared.launch.token_name);
     text("[data-preview-ticker], [data-launch-review-quote]", prepared.launch.symbol);
     text("[data-preview-symbol]", prepared.launch.symbol.slice(0, 2).toUpperCase());
-    text("[data-launch-review-chain]", `BSC Chain · ${prepared.launch.quote_token}`);
+    text("[data-launch-review-chain]", `${selectedNetwork().name} · ${prepared.launch.quote_token}`);
     text("[data-launch-review-description]", description);
     text("[data-launch-review-mode]", `${state.launchMode === "community" ? "社区收益 · " : ""}${state.curveMode === "custom" ? "自定义线性曲线" : "标准线性曲线"}`);
     text("[data-launch-review-quote-address]", prepared.quote_token_address);
@@ -2352,7 +2442,7 @@
     text("[data-launch-review-threshold]", `${formatUnits(BigInt(prepared.migration_threshold_wei))} ${prepared.launch.quote_token}`);
     text("[data-launch-review-dex]", state.launchOptions?.dex_profiles?.find((profile) => profile.id === prepared.dex_profile)?.name || prepared.dex_profile || "PancakeSwap V2");
     text("[data-launch-review-initial-buy]", BigInt(prepared.initial_buy_wei || 0) > 0n ? `${formatUnits(BigInt(prepared.initial_buy_wei))} ${prepared.launch.quote_token} · 原子执行` : "0 · 无初始买入");
-    text("[data-launch-review-fee]", `${formatUnits(BigInt(fee.fee_wei))} BNB`);
+    text("[data-launch-review-fee]", `${formatUnits(BigInt(fee.fee_wei))} ${fee.native_symbol || selectedNetwork().native}`);
     text("[data-launch-review-recipient]", prepared.fee_recipient);
     text("[data-launch-review-factory]", prepared.factory_address);
     text("[data-launch-review-id]", prepared.launch.id);
@@ -2439,15 +2529,15 @@
         resetProviderState("钱包账户已变化，请重新连接");
         return false;
       }
-      if (providerAddress && normalizedChain !== "0x38") {
-        resetProviderState("网络已变化，请重新连接 BSC 钱包");
+      if (providerAddress && normalizedChain !== selectedNetwork().chainIdHex) {
+        resetProviderState(`网络已变化，请重新连接 ${selectedNetwork().name} 钱包`);
         return false;
       }
       state.account = providerAddress || sessionAddress;
-      state.chainId = normalizedChain || "0x38";
+      state.chainId = normalizedChain || selectedNetwork().chainIdHex;
       state.sessionExpiresAt = Date.now() + Number(session.expires_in || 0) * 1000;
       sessionStorage.setItem(SESSION_ADDRESS_KEY, sessionAddress);
-      setLaunchAvailability(Boolean(providerAddress && normalizedChain === "0x38"));
+      setLaunchAvailability(Boolean(providerAddress && normalizedChain === selectedNetwork().chainIdHex && launchEnabledForSelectedChain()));
       renderWalletState();
       await loadUserPanels().catch(() => undefined);
       if (state.selected && providerAddress) await refreshBalances().catch(() => undefined);
@@ -2470,9 +2560,9 @@
     const [accounts, chainId] = await Promise.all([provider.request({ method: "eth_accounts" }), provider.request({ method: "eth_chainId" })]);
     const account = String(accounts?.[0] || "").toLowerCase();
     const normalizedChain = normalizeChainId(chainId);
-    if (account !== state.account || normalizedChain !== "0x38") {
+    if (account !== state.account || normalizedChain !== selectedNetwork().chainIdHex) {
       resetProviderState();
-      throw new Error("钱包账户或网络已变化，请重新连接 BSC 钱包");
+      throw new Error(`钱包账户或网络已变化，请重新连接 ${selectedNetwork().name} 钱包`);
     }
     state.chainId = normalizedChain;
     return { account, chainId: state.chainId };
@@ -2533,15 +2623,15 @@
     provider.on("chainChanged", (value) => {
       if (provider !== state.provider) return;
       const chainId = normalizeChainId(value);
-      if (chainId === "0x38") {
+      if (chainId === selectedNetwork().chainIdHex) {
         state.chainId = chainId;
         if (state.account && sessionStorage.getItem(SESSION_KEY)) {
-          setLaunchAvailability(true);
+          setLaunchAvailability(launchEnabledForSelectedChain());
           renderWalletState();
         }
         return;
       }
-      resetProviderState("网络已变化，请重新连接 BSC");
+      resetProviderState(`网络已变化，请重新连接 ${selectedNetwork().name}`);
     });
     provider.on("disconnect", () => {
       if (provider !== state.provider) return;
@@ -2564,11 +2654,11 @@
     const accounts = await provider.request({ method: "eth_requestAccounts" });
     const address = accounts?.[0];
     if (!address) throw new Error("钱包未返回账户");
-    await ensureBscChain(provider);
+    await ensureSelectedChain(provider);
     const noncePayload = await api("v1/auth/siwe/nonce");
     const domain = String(noncePayload.domain || "").toLowerCase();
     if (domain !== "bitbt.fun") throw new Error("SIWE domain 不受信任");
-    const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: 56\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
+    const message = `bitbt.fun wants you to sign in with your Ethereum account:\n${address}\n\nSign in to BitBT PUMP.\n\nURI: https://bitbt.fun\nVersion: 1\nChain ID: ${selectedNetwork().chainId}\nNonce: ${noncePayload.nonce}\nIssued At: ${new Date().toISOString()}`;
     const signature = await provider.request({
       method: "personal_sign",
       params: [message, address],
@@ -2582,9 +2672,9 @@
     sessionStorage.setItem(PROVIDER_KIND_KEY, provider.isWalletConnect ? "walletconnect" : "injected");
     state.account = String(verified.address || address).toLowerCase();
     sessionStorage.setItem(SESSION_ADDRESS_KEY, state.account);
-    state.chainId = "0x38";
+    state.chainId = selectedNetwork().chainIdHex;
     state.sessionExpiresAt = Date.now() + Number(verified.expires_in || 3600) * 1000;
-    setLaunchAvailability(true);
+    setLaunchAvailability(launchEnabledForSelectedChain());
     invalidateQuote();
     renderWalletState();
     await assertProviderState();
@@ -2920,7 +3010,7 @@
     text("[data-active-symbol]", detail.symbol || token.symbol);
     text("[data-active-quote]", quote);
     text("[data-active-status]", selectedStatus.toUpperCase());
-    text("[data-active-address]", `${short(address)} · BNB CHAIN`);
+    text("[data-active-address]", `${short(address)} · ${selectedNetwork().shortName.toUpperCase()}`);
     text("[data-active-price-label]", hasNumber(token.current_price_usd) ? "PRICE / USD" : `PRICE / ${quote}`);
     text("[data-active-price]", priceDisplay);
     text("[data-active-market]", marketCapDisplay);
@@ -2992,7 +3082,7 @@
     const expiry = Number(response?.expires_at) * (Number(response?.expires_at) < 1e12 ? 1000 : 1);
     const detailQuote = String(state.detail?.quote_token_address || ZERO_ADDRESS).toLowerCase();
     const quoteToken = String(response?.quote_token || "").toUpperCase();
-    const quoteKind = quoteToken === "BNB" ? "native" : "erc20";
+    const quoteKind = quoteAddressValue === ZERO_ADDRESS ? "native" : "erc20";
     const routeType = String(response?.route_type || "bonding_curve").toLowerCase();
     const routerAddress = String(response?.router_address || "").toLowerCase();
     const pairAddress = String(response?.pair_address || "").toLowerCase();
@@ -3016,7 +3106,7 @@
     const expectedV3Selector = state.side === "buy" ? (quoteKind === "native" ? "0xd29d34e3" : "0x68080507") : quoteKind === "native" ? "0x438698ac" : "0xb9b74f5d";
     const v3RouteValid = dexKind === "v3" && !pairAddress && state.migrationProof?.v3_trade_adapter_verified === true && state.migrationProof?.v3_quoter_verified === true && executionTarget === String(state.migrationProof?.v3_trade_adapter || "").toLowerCase() && approvalSpender === executionTarget && /^0x[0-9a-f]+$/.test(executionData) && executionData.startsWith(expectedV3Selector);
     const routeValid = migratedRoute ? state.detail?.migrated === true && routeType === String(state.detail?.dex_profile || "pancakeswap_v2").toLowerCase() && routerAddress === String(state.detail?.dex_router || "").toLowerCase() && state.migrationProof?.router_verified === true && state.migrationProof?.factory_verified === true && state.migrationProof?.wrapped_native_verified === true && state.migrationProof?.pair_init_hash_verified === true && (v2RouteValid || v3RouteValid) : routeType === "bonding_curve" && state.detail?.migrated !== true && !routerAddress && !pairAddress && !executionData;
-    if (!response || !/^0x[0-9a-fA-F]{40}$/.test(response.token_address || "") || response.token_address.toLowerCase() !== address.toLowerCase() || !/^0x[0-9a-fA-F]{40}$/.test(response.curve_address || "") || response.curve_address.toLowerCase() !== String(state.detail.curve_address || "").toLowerCase() || !addressKindValid || !routeValid || chainId !== "0x38" || !response.quote_id || !Number.isFinite(expiry) || expiry <= Date.now() || expiry > Date.now() + 35000 || !response.quote_token || quoteToken !== String(state.detail.quote_token).toUpperCase() || !/^\d+$/.test(outputRaw) || !minOutValid) throw new Error("报价缺少有效且完整的链、代币、路由、计价币或滑点保护");
+    if (!response || !/^0x[0-9a-fA-F]{40}$/.test(response.token_address || "") || response.token_address.toLowerCase() !== address.toLowerCase() || !/^0x[0-9a-fA-F]{40}$/.test(response.curve_address || "") || response.curve_address.toLowerCase() !== String(state.detail.curve_address || "").toLowerCase() || !addressKindValid || !routeValid || chainId !== selectedNetwork().chainIdHex || !response.quote_id || !Number.isFinite(expiry) || expiry <= Date.now() || expiry > Date.now() + 35000 || !response.quote_token || quoteToken !== String(state.detail.quote_token).toUpperCase() || !/^\d+$/.test(outputRaw) || !minOutValid) throw new Error("报价缺少有效且完整的链、代币、路由、计价币或滑点保护");
     return {
       response,
       quoteId: String(response.quote_id),
@@ -3051,7 +3141,7 @@
     const address = tokenAddress(state.selected).toLowerCase();
     const detailCurve = String(state.detail?.curve_address || "").toLowerCase();
     const detailQuote = String(state.detail?.quote_token_address || ZERO_ADDRESS).toLowerCase();
-    const currentQuoteKind = String(state.detail?.quote_token || "").toUpperCase() === "BNB" ? "native" : "erc20";
+    const currentQuoteKind = detailQuote === ZERO_ADDRESS ? "native" : "erc20";
     const currentRoute = state.detail?.migrated === true ? String(state.detail?.dex_profile || "pancakeswap_v2").toLowerCase() : "bonding_curve";
     const expectedMin = state.quote.output ? (BigInt(state.quote.output) * BigInt(10000 - USER_SLIPPAGE_BPS)) / 10000n : 0n;
     if (!state.quote.quoteId || state.quote.tokenAddress !== address || state.quote.curveAddress !== detailCurve || state.quote.quoteTokenAddress !== detailQuote || state.quote.quoteKind !== currentQuoteKind || state.quote.routeType !== currentRoute || (currentRoute !== "bonding_curve" && state.quote.routerAddress !== String(state.detail?.dex_router || "").toLowerCase()) || (state.quote.dexKind === "v3" && (state.quote.executionTarget !== String(state.migrationProof?.v3_trade_adapter || "").toLowerCase() || state.quote.approvalSpender !== state.quote.executionTarget)) || state.quote.account !== provider.account || state.quote.chainId !== provider.chainId || state.quote.side !== state.side || state.quote.amount !== $("#trade-amount")?.value?.trim() || state.quote.quoteToken !== String(state.detail.quote_token).toUpperCase() || state.quote.slippageBps !== USER_SLIPPAGE_BPS || state.quote.minOut <= 0n || state.quote.minOut !== expectedMin) {
@@ -3113,7 +3203,7 @@
   };
   const abiAddressArray = (addresses) => `${word(BigInt(addresses.length))}${addresses.map((address) => addressWord(address)).join("")}`;
   const pancakeSwapData = ({ side, quoteAddress, token, account, amountIn, minOut }) => {
-    const routeQuote = quoteAddress || WBNB_ADDRESS;
+    const routeQuote = quoteAddress || wrappedNativeAddress();
     const path = side === "buy" ? [routeQuote, token] : [token, routeQuote];
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 120);
     const pathData = abiAddressArray(path);
@@ -3185,7 +3275,7 @@
             await report({
               user_address: tradeContext.account,
               tx_hash: approval,
-              chain_id: "bsc",
+              chain_id: state.selectedChain,
               tx_type: "approve",
               from_token: fromToken,
               status: "pending",
@@ -3201,7 +3291,7 @@
             await report({
               user_address: tradeContext.account,
               tx_hash: approval,
-              chain_id: "bsc",
+              chain_id: state.selectedChain,
               tx_type: "approve",
               from_token: fromToken,
               status: ok ? "success" : "failed",
@@ -3217,7 +3307,7 @@
               await report({
                 user_address: tradeContext.account,
                 tx_hash: approval,
-                chain_id: "bsc",
+                chain_id: state.selectedChain,
                 tx_type: "approve",
                 from_token: fromToken,
                 status: "failed",
@@ -3269,7 +3359,7 @@
       await report({
         user_address: tradeContext.account,
         tx_hash: hash,
-        chain_id: "bsc",
+        chain_id: state.selectedChain,
         tx_type: txType,
         from_token: fromToken,
         to_token: toToken,
@@ -3284,7 +3374,7 @@
       await report({
         user_address: tradeContext.account,
         tx_hash: hash,
-        chain_id: "bsc",
+        chain_id: state.selectedChain,
         tx_type: txType,
         from_token: fromToken,
         to_token: toToken,
@@ -3304,7 +3394,7 @@
         await report({
           user_address: tradeContext.account,
           tx_hash: hash,
-          chain_id: "bsc",
+          chain_id: state.selectedChain,
           tx_type: txType,
           from_token: fromToken,
           to_token: toToken,
@@ -3461,10 +3551,11 @@
     return `0xe7754a3e${launchWord(nameOffset)}${launchWord(symbolOffset)}${base}${taxWords}${lifecycleWords}${launchWord(initial)}${launchWord(minimum)}${name}${symbol}`;
   };
   const launchPreflight = async ({ from, to, data, value }) => {
+    const native = selectedNetwork().native;
     const balance = await walletNativeBalance();
     if (balance < value) {
       const missing = value - balance;
-      throw new Error(`BNB 余额不足：当前 ${formatUnits(balance)} BNB，发射费为 ${formatUnits(value)} BNB（另需 Gas），至少还差 ${formatUnits(missing)} BNB`);
+      throw new Error(`${native} 余额不足：当前 ${formatUnits(balance)} ${native}，发射费为 ${formatUnits(value)} ${native}（另需 Gas），至少还差 ${formatUnits(missing)} ${native}`);
     }
     const fee = await getFeePolicy();
     const estimateTx = {
@@ -3486,13 +3577,13 @@
     } catch (error) {
       const message = String(error?.message || error?.data?.message || error?.data?.originalError?.message || "");
       if (/Address must end with 8888|CREATE2 failed/i.test(message)) throw new Error("发币参数与链上 Factory 不一致，请重新加载发币参数");
-      if (/insufficient funds/i.test(message)) throw new Error(`BNB 余额不足：当前 ${formatUnits(balance)} BNB，请补充发射费和 Gas 后重试`);
+      if (/insufficient funds/i.test(message)) throw new Error(`${native} 余额不足：当前 ${formatUnits(balance)} ${native}，请补充发射费和 Gas 后重试`);
       throw error;
     }
     const gas = (estimatedGas * 120n + 99n) / 100n;
     const required = value + gas * fee.maxFeePerGas;
     if (balance < required) {
-      throw new Error(`BNB 余额不足：当前 ${formatUnits(balance)} BNB，发射费和预估 Gas 至少需要 ${formatUnits(required)} BNB，还差 ${formatUnits(required - balance)} BNB`);
+      throw new Error(`${native} 余额不足：当前 ${formatUnits(balance)} ${native}，发射费和预估 Gas 至少需要 ${formatUnits(required)} ${native}，还差 ${formatUnits(required - balance)} ${native}`);
     }
     return { fee, gas, balance, required };
   };
@@ -3505,11 +3596,11 @@
     const expectedQuote = quoteAddress(quote) || ZERO_ADDRESS;
     if (!prepared?.launch?.id || !isNonZeroAddress(address) || !isNonZeroAddress(fee?.factory_address) || !isNonZeroAddress(prepared?.factory_address) || prepared.factory_address.toLowerCase() !== fee.factory_address.toLowerCase()) throw new Error("发币准备工厂绑定无效");
     if (!isNonZeroAddress(fee.receive_address) || !isNonZeroAddress(prepared.fee_recipient) || prepared.fee_recipient.toLowerCase() !== fee.receive_address.toLowerCase()) throw new Error("发币手续费接收地址绑定无效");
-    if (normalizedFeeChain !== "0x38" || normalizedPreparedChain !== "0x38") throw new Error("发币准备网络无效");
+    if (normalizedFeeChain !== selectedNetwork().chainIdHex || normalizedPreparedChain !== selectedNetwork().chainIdHex) throw new Error("发币准备网络无效");
     if (!isUint(fee.fee_wei) || !isUint(prepared.fee_wei) || fee.fee_wei !== prepared.fee_wei || BigInt(prepared.fee_wei) <= 0n || !isUint(prepared.migration_threshold_wei) || BigInt(prepared.migration_threshold_wei) <= 0n || !isUint(prepared.initial_buy_wei) || !isUint(prepared.initial_buy_min_tokens_out) || !isUint(prepared.transaction_value_wei) || BigInt(prepared.initial_buy_wei) !== initial.wei) throw new Error("发币准备金额无效");
     const allowedMethods = ["launchTokenWithQuotePaid(string,string,uint256,bytes32,address)", "launchTokenWithQuotePaidAndBuy(string,string,uint256,bytes32,address,uint256,uint256)", "launchTaxTokenV2WithQuotePaid(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address),(uint32,uint32,uint16,uint16,uint32))", "launchTaxTokenV2WithQuotePaidAndBuy(string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address),(uint32,uint32,uint16,uint16,uint32),uint256,uint256)", "launchTokenWithDexProfilePaid((string,string,address,uint256,bytes32,address,bytes32,uint256,uint256))", "launchTaxTokenV2WithDexProfilePaid((string,string,uint256,bytes32,address,(uint16,uint16,uint16,uint16,uint16,uint16,uint256,address),(uint32,uint32,uint16,uint16,uint32),bytes32,address,uint256,uint256))"];
     if (!allowedMethods.includes(prepared.method) || !/^0x[0-9a-fA-F]{64}$/.test(String(prepared.salt || ""))) throw new Error("发币准备方法或随机盐无效");
-    const expectedValue = BigInt(fee.fee_wei) + (quote === "BNB" ? initial.wei : 0n);
+    const expectedValue = BigInt(fee.fee_wei) + (quote === selectedNetwork().native ? initial.wei : 0n);
     if (BigInt(prepared.transaction_value_wei) !== expectedValue) throw new Error("发币交易金额绑定无效");
     if (!isAddress(prepared.predicted_token_address) || prepared.predicted_token_address.toLowerCase() === ZERO_ADDRESS || !isAddress(prepared.curve_address) || prepared.curve_address.toLowerCase() === ZERO_ADDRESS || !isAddress(prepared.quote_token_address) || prepared.quote_token_address.toLowerCase() !== expectedQuote.toLowerCase() || prepared.curve_address.toLowerCase() === prepared.predicted_token_address.toLowerCase()) throw new Error("发币准备资产地址绑定无效");
     if (prepared.launch.creator_address?.toLowerCase() !== address.toLowerCase() || prepared.launch.token_name !== name || prepared.launch.symbol !== symbol || prepared.launch.quote_token?.toUpperCase() !== quote) throw new Error("发币准备参数与钱包或表单不匹配");
@@ -3662,7 +3753,8 @@
     const address = state.account || (await connectWallet());
     await assertProviderState();
     const quote = state.launchQuote;
-    if (!launchQuoteTokens().has(quote) || (!quoteAddress(quote) && quote !== "BNB")) throw new Error("不支持的发币计价资产");
+    if (!launchEnabledForSelectedChain()) throw new Error(`${selectedNetwork().name} 尚未配置已审核的 Factory，当前不可发币`);
+    if (!launchQuoteTokens().has(quote) || (!quoteAddress(quote) && quote !== selectedNetwork().native)) throw new Error("不支持的发币计价资产");
     const description = $("#token-story")?.value?.trim() || "";
     const logoSelectionKey = window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || "";
     const metadata = {
@@ -3722,7 +3814,7 @@
           decimals: 18,
           mintable: false,
           burnable: false,
-          chain_id: "bsc",
+          chain_id: state.selectedChain,
           quote_token: quote,
           migration_threshold_quote: curveTarget || undefined,
           initial_buy_quote: initial.wei > 0n ? initial.value : undefined,
@@ -3764,14 +3856,14 @@
       throw new Error("发币确认快照已过期，请重新加载");
     }
     const provider = selectedProvider();
-    await ensureBscChain(provider);
+    await ensureSelectedChain(provider);
     await assertProviderState();
     const accounts = await provider.request({ method: "eth_accounts" });
     if (String(accounts?.[0] || "").toLowerCase() !== address.toLowerCase()) throw new Error("钱包账户已变化，请重新连接");
     const launchData = encodeLaunch(prepared, tax);
     const launchValue = BigInt(prepared.transaction_value_wei);
     const initialWei = BigInt(prepared.initial_buy_wei || 0);
-    if (initialWei > 0n && quote !== "BNB") {
+    if (initialWei > 0n && quote !== selectedNetwork().native) {
       const asset = prepared.quote_token_address;
       const balance = await walletTokenBalance(asset, address, provider);
       if (balance < initialWei) throw new Error(`${quote} 余额不足：初始买入需要 ${formatUnits(initialWei)} ${quote}`);
@@ -3892,7 +3984,7 @@
     const unit = $("[data-migration-threshold-unit]");
     if (unit) unit.textContent = state.launchQuote;
     const input = $("#migration-threshold-quote");
-    if (input && state.curveMode === "custom" && !input.value) input.value = state.launchQuote === "BNB" ? "115" : "69000";
+    if (input && state.curveMode === "custom" && !input.value) input.value = state.launchQuote === selectedNetwork().native ? "115" : "69000";
     invalidateLaunchSnapshot();
   };
   const applyTaxDefaults = () => {
@@ -4161,7 +4253,7 @@
     state.marketSummary = {};
     const banner = $("[data-api-status]");
     if (banner) banner.textContent = "实时 Pump 数据暂不可用";
-    text("[data-market-stream-status]", "BNB Chain 数据流暂不可用");
+    text("[data-market-stream-status]", `${selectedNetwork().shortName} 数据流暂不可用`);
     toastError(error, "实时 Pump 数据暂不可用，请稍后重试");
   };
   const applyLaunchOptions = (options) => {
@@ -4171,15 +4263,24 @@
       node.hidden = !allowed.has(String(node.dataset.launchQuote || "").toUpperCase());
     });
     if (!allowed.has(state.launchQuote)) {
-      state.launchQuote = "BNB";
+      state.launchQuote = selectedNetwork().native;
     }
+    $$('[data-launch-quote]').forEach((node) => {
+      node.classList.toggle('active', String(node.dataset.launchQuote || '').toUpperCase() === state.launchQuote);
+    });
+    text('[data-migration-threshold-unit]', state.launchQuote);
+    text('[data-initial-buy-unit]', state.launchQuote);
     const select = $("#launch-dex-profile");
     const profiles = (options?.dex_profiles || []).filter((profile) => profile.enabled);
     if (select && profiles.length) {
       select.innerHTML = profiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)} · ${escapeHtml(profile.lp_policy === "burn" ? "LP 销毁" : "LP 奖励")}</option>`).join("");
       state.launchDexProfile = profiles.some((profile) => profile.id === state.launchDexProfile) ? state.launchDexProfile : profiles[0].id;
       select.value = state.launchDexProfile;
+    } else if (select) {
+      select.innerHTML = `<option value="">${escapeHtml(selectedNetwork().shortName)} 暂无可用 DEX</option>`;
+      state.launchDexProfile = "";
     }
+    setLaunchAvailability(Boolean(state.account && state.chainId === selectedNetwork().chainIdHex && launchEnabledForSelectedChain()));
   };
   const load = async () => {
     try {
@@ -4304,13 +4405,13 @@
     if (document.visibilityState === "hidden" || marketSocket?.readyState === WebSocket.OPEN || marketSocket?.readyState === WebSocket.CONNECTING) return;
     window.clearTimeout(marketSocketTimer);
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/market`);
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/market?chain_id=${encodeURIComponent(state.selectedChain)}`);
     marketSocket = socket;
-    text("[data-market-stream-status]", "正在连接 BNB Chain 实时数据流…");
+    text("[data-market-stream-status]", `正在连接 ${selectedNetwork().shortName} 实时数据流…`);
     socket.addEventListener("open", () => {
       if (marketSocket !== socket) return;
       marketSocketRetry = 0;
-      text("[data-market-stream-status]", "BNB Chain 实时数据流已连接");
+      text("[data-market-stream-status]", `${selectedNetwork().shortName} 实时数据流已连接`);
     });
     socket.addEventListener("message", handlePumpSocketMessage);
     socket.addEventListener("close", () => {
@@ -4330,7 +4431,7 @@
       const initialUnit = $("[data-initial-buy-unit]");
       if (initialUnit) initialUnit.textContent = state.launchQuote;
       const target = $("#migration-threshold-quote");
-      if (target && state.curveMode === "custom") target.value = state.launchQuote === "BNB" ? "115" : "69000";
+      if (target && state.curveMode === "custom") target.value = state.launchQuote === selectedNetwork().native ? "115" : "69000";
       invalidateLaunchSnapshot();
       $$("[data-launch-quote]").forEach((choice) => choice.classList.toggle("active", choice === node));
     }),
@@ -4409,6 +4510,43 @@
       renderMyPanels();
     }),
   );
+  const chainSelect = $("[data-chain-select]");
+  if (chainSelect) {
+    chainSelect.value = state.selectedChain;
+    chainSelect.addEventListener("change", async (event) => {
+      const next = String(event.target.value || "bsc");
+      if (!NETWORKS[next] || next === state.selectedChain) return;
+      state.selectedChain = next;
+      writeLocalPreference(CHAIN_KEY, next);
+      if (marketSocket) {
+        const oldSocket = marketSocket;
+        marketSocket = null;
+        oldSocket.close();
+      }
+      window.clearTimeout(marketSocketTimer);
+      state.tokens = [];
+      state.details = {};
+      state.selected = null;
+      state.detail = null;
+      state.marketActivity = [];
+      state.launchOptions = null;
+      state.launchQuote = selectedNetwork().native;
+      state.perpConfig = null;
+      state.perpMarkets = [];
+      state.vaultConfig = null;
+      state.vaults = [];
+      state.strategyConfig = null;
+      state.vaultRegistry = [];
+      state.strategies = [];
+      invalidateQuote();
+      invalidateLaunchSnapshot();
+      if (state.account) resetProviderState(`已切换至 ${selectedNetwork().name}，请重新连接钱包`);
+      routeHistory()?.replaceState?.(null, "", pumpBasePath());
+      renderTokens();
+      await load();
+      connectMarketSocket();
+    });
+  }
   routeWindow.addEventListener("popstate", () => {
     const address = routeTokenAddress();
     if (address) {

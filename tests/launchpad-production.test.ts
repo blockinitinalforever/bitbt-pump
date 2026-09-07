@@ -62,11 +62,13 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /state\.preparedPerpRequest = null/);
 });
 
-type BootOptions = { account?: string; chainId?: string | number; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(html);
   const storage = new Map<string, string>();
+  const localPreferences = new Map<string, string>();
+  if (options.selectedChain) localPreferences.set("bitbt_pump_chain", options.selectedChain);
   if (options.session) {
     storage.set("bitbt_pump_session", options.session.token);
     storage.set("bitbt_pump_session_address", options.session.address.toLowerCase());
@@ -112,11 +114,14 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   if (providerTarget === "eip6963") window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "EIP Wallet", rdns: "wallet.example" }, provider: ethereum } })));
   if (options.walletConnect) Object.defineProperty(window, "BitBTWalletConnect", { configurable: true, value: { getProvider: async () => Object.assign(ethereum, { isWalletConnect: true, connected: false, connect: async () => undefined }) } });
   if (options.maliciousAnnouncement) window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "OKX Wallet", rdns: "com.okex.wallet" }, provider: untrustedProvider } })));
-  const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
+  const localStorage = { getItem: (key: string) => localPreferences.get(key) ?? null, setItem: (key: string, value: string) => localPreferences.set(key, value), removeItem: (key: string) => localPreferences.delete(key) };
+  Object.defineProperty(window, "localStorage", { configurable: true, value: localStorage });
+  const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, localStorage, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   const windowContext = { ...context };
   delete windowContext.history;
   delete windowContext.location;
   delete windowContext.navigator;
+  delete windowContext.localStorage;
   Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), addHistogramSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), priceScale: () => ({ applyOptions: () => undefined }) }), applyOptions: () => undefined, remove: () => undefined, timeScale: () => ({ fitContent: () => undefined }) }) } });
   vm.runInNewContext(bridge, context);
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -128,6 +133,28 @@ test("production HTML boots with API failure without exposing prototype financia
   const body = window.document.body.textContent || "";
   for (const sample of ["842.63", "1,284", "18.6M", "64,812,904", "AGENT404", "2.84M LIVE TOKEN", "12,842", "$0.000721", "0.005 BNB"]) assert.equal(body.includes(sample), false, `sample financial data leaked after API failure: ${sample}`);
   assert.match(body, /实时 Pump 数据暂不可用/);
+});
+
+test("Robinhood selection scopes reads to chain 4663 and stays fail-closed before deployment", async () => {
+  const requests: string[] = [];
+  const response = async (input: string) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/token/launch-options")) return { ok: true, json: async () => ({ data: { network: { id: "robinhood", chain_id: 4663, chain_id_hex: "0x1237", native_symbol: "ETH", launch_enabled: false, trade_enabled: false }, quotes: [{ symbol: "ETH", address: "0x0000000000000000000000000000000000000000" }], dex_profiles: [] } }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/pump/announcements") || url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response, { selectedChain: "robinhood", chainId: "0x1237" });
+  assert.ok(window.document.querySelector('[data-chain-select] option[value="robinhood"]'));
+  assert.ok(requests.some((url) => url.includes("v1/pump/market?chain_id=robinhood")));
+  assert.ok(requests.some((url) => url.includes("v1/token/launch-options?chain_id=robinhood")));
+  assert.equal(requests.some((url) => /[?&]chain_id=bsc(?:&|$)/.test(url)), false);
+  assert.equal(requests.some((url) => /v3-fee-rewards|vaults\/config|perpetual/.test(url)), false);
+  assert.equal((window.document.querySelector('[data-open="create-mode"]') as HTMLButtonElement).disabled, true);
+  assert.match(walletConnectBridge, /optionalChains:\s*\[56, 4663, 46630\]/);
 });
 
 test("global Pump API failures show actionable prompts instead of raw transport errors", async () => {
@@ -1162,7 +1189,7 @@ test("web launch exposes quote, metadata, and on-chain DEX transfer-tax configur
   for (const marker of ["autoPrepareLaunch", "正在自动准备发币参数", "发币参数已自动准备", '"#buy-tax-rate": "5"', '"#sell-tax-rate": "5"', '"#tax-recipient-wallet": state.account']) assert.match(bridge, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(html, /data-launch-load/);
   assert.match(html, /默认使用当前 Owner（连接钱包）地址；这是可编辑的默认值/);
-  assert.match(html, /迁移 PancakeSwap 后对 Pair 买卖持续执行所选税率/);
+  assert.match(html, /迁移已审核 DEX 后对 Pair 买卖持续执行所选税率/);
   assert.match(compactHtml, /创建者初始买入.*可选·与发币原子执行/);
   assert.doesNotMatch(html, /预计获得 16\.84M MOON/);
 });
