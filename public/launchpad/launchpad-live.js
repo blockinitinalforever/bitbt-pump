@@ -673,7 +673,7 @@
     const enabled = Boolean(config?.enabled);
     text("[data-perp-menu-status]", enabled ? (config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
     text("[data-perp-status]", config?.statusNote || "正在读取永续合约状态…");
-    text("[data-perp-fee]", config?.feePercent || "—");
+    text("[data-perp-fee]", config?.feePercent ? `默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
     text("[data-perp-version]", config?.contractVersion ? `V${config.contractVersion}` : "—");
@@ -697,15 +697,25 @@
       text("[data-perp-market-epoch]", market.epochEnd ? new Date(Number(market.epochEnd) * 1000).toLocaleString() : "—");
       text("[data-perp-market-duration]", market.maxPositionDurationSeconds ? `${(Number(market.maxPositionDurationSeconds) / 86400).toFixed(2)} 天` : "—");
       text("[data-perp-market-keeper]", formatUnits(BigInt(market.minKeeperRewardRaw || "0"), decimals));
+      const openFeePercent = (Number(market.openFeePpm || 0) / 10_000).toFixed(4);
+      const closeFeePercent = (Number(market.closeFeePpm || 0) / 10_000).toFixed(4);
+      const platformSharePercent = (Number(market.platformFeeSharePpm || 0) / 10_000).toFixed(2);
+      const lpSharePercent = (Number(market.lpFeeSharePpm || 0) / 10_000).toFixed(2);
+      text("[data-perp-fee]", `${openFeePercent}% / ${closeFeePercent}%`);
+      text("[data-perp-market-fees]", `${openFeePercent}% / ${closeFeePercent}%`);
+      text("[data-perp-market-fee-split]", `${platformSharePercent}% / ${lpSharePercent}%`);
+      text("[data-perp-market-fee-recipient]", short(market.platformFeeRecipient || ""));
+      text("[data-perp-market-fee-claimable]", `${formatUnits(BigInt(market.platformFeeClaimableRaw || "0"), decimals)} / ${formatUnits(BigInt(market.platformFeeLiabilityRaw || "0"), decimals)}`);
       text("[data-perp-market-emergency]", market.emergencySettlementActive ? `已启用 · ${formatUnits(BigInt(market.emergencySettlementPriceE18 || "0"), 18)}` : market.emergencySettlementActivateAfter ? `等待至 ${new Date(Number(market.emergencySettlementActivateAfter) * 1000).toLocaleString()}` : "未启用");
     } else {
-      text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization], [data-perp-market-funding], [data-perp-market-epoch], [data-perp-market-duration], [data-perp-market-keeper], [data-perp-market-emergency]", "—");
+      text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization], [data-perp-market-funding], [data-perp-market-epoch], [data-perp-market-duration], [data-perp-market-keeper], [data-perp-market-fees], [data-perp-market-fee-split], [data-perp-market-fee-recipient], [data-perp-market-fee-claimable], [data-perp-market-emergency]", "—");
     }
     const position = state.perpPosition;
     const quoteDecimals = Number(market?.quoteDecimals || 18);
     text("[data-perp-position]", !state.account ? "连接钱包后读取" : position?.open ? `${position.isLong ? "LONG" : "SHORT"} · 保证金 ${formatUnits(BigInt(position.collateralRaw), quoteDecimals)} · 名义 ${formatUnits(BigInt(position.notionalRaw), quoteDecimals)}` : "当前无持仓");
     text("[data-perp-position-pnl]", position?.open ? formatUnits(BigInt(position.currentPnlRaw || "0"), quoteDecimals) : "—");
     text("[data-perp-shares]", state.account ? formatUnits(BigInt(position?.liquiditySharesRaw || "0"), quoteDecimals) : "—");
+    text("[data-perp-wallet-fee-claimable]", state.account ? formatUnits(BigInt(position?.platformFeeClaimableRaw || "0"), quoteDecimals) : "连接钱包后读取");
     const action = $("#perp-action")?.value || "open_position";
     const addsRisk = ["open_position", "deposit_liquidity"].includes(action);
     const changesLiquidity = ["deposit_liquidity", "withdraw_liquidity"].includes(action);
@@ -724,7 +734,8 @@
     if (traderField) traderField.hidden = !needsTrader;
     const prepare = $("[data-perp-prepare]");
     const epochEnded = Number(market?.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000;
-    if (prepare) prepare.disabled = !enabled || !state.account || !market || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
+    const canClaimPlatformFees = action !== "claim_platform_fees" || BigInt(position?.platformFeeClaimableRaw || "0") > 0n;
+    if (prepare) prepare.disabled = !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
     const preview = $("[data-perp-preview]");
     const execute = $("[data-perp-execute]");
     if (preview) {
@@ -774,6 +785,7 @@
       close_position: "0xa126d601",
       liquidate: "0x5fae8b3d",
       expire_position: "0x15589527",
+      claim_platform_fees: "0x5fa65a04",
     };
     const expectedSelector = actionSelectors[request.action];
     let actionTransaction = null;
@@ -791,7 +803,8 @@
         actionTransaction = transaction;
       } else throw new Error("永续交易目标或方法不在允许范围内");
     }
-    if (!actionTransaction || perpetualWord(actionTransaction.data, 0) !== BigInt(request.market_id)) throw new Error("永续 marketId 绑定失败");
+    if (!actionTransaction) throw new Error("永续交易方法缺失");
+    if (request.action !== "claim_platform_fees" && perpetualWord(actionTransaction.data, 0) !== BigInt(request.market_id)) throw new Error("永续 marketId 绑定失败");
     let requiredApproval = 0n;
     if (request.action === "deposit_liquidity") {
       requiredApproval = BigInt(request.amount_raw);
@@ -800,7 +813,7 @@
     if (request.action === "open_position") {
       const collateral = BigInt(request.amount_raw);
       const leverage = BigInt(request.leverage);
-      const fee = collateral * leverage * 50n / 1_000_000n;
+      const fee = collateral * leverage * BigInt(market.openFeePpm || 0) / 1_000_000n;
       requiredApproval = collateral + fee;
       if (perpetualWord(actionTransaction.data, 1) !== collateral || perpetualWord(actionTransaction.data, 2) !== leverage || perpetualWord(actionTransaction.data, 3) !== (request.is_long ? 1n : 0n)) throw new Error("永续仓位参数绑定失败");
     }
@@ -809,6 +822,10 @@
     }
     if (["liquidate", "expire_position"].includes(request.action)) {
       if (`0x${actionTransaction.data.slice(10 + 64 + 24, 10 + 2 * 64)}` !== String(request.recipient || "").toLowerCase()) throw new Error("永续 Keeper 目标仓位绑定失败");
+    }
+    if (request.action === "claim_platform_fees") {
+      const encodedQuote = `0x${actionTransaction.data.slice(10 + 24, 10 + 64)}`;
+      if (encodedQuote !== quoteToken || actionTransaction.data.length !== 74) throw new Error("平台手续费领取参数绑定失败");
     }
     if (requiredApproval > 0n && approvals.length && (approvals.at(-1) !== requiredApproval || approvals.slice(0, -1).some((amount) => amount !== 0n))) throw new Error("永续授权额度绑定失败");
     if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
