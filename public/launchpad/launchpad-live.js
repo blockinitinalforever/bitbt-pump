@@ -599,6 +599,14 @@
   })();
   const routeLocation = () => routeWindow.location || location;
   const routeHistory = () => routeWindow.history || history;
+  const routeScreen = () => {
+    try {
+      const screen = new URLSearchParams(routeLocation()?.search || "").get("screen") || "";
+      return root.querySelector(`[data-panel="${CSS.escape(screen)}"]`) ? screen : "";
+    } catch {
+      return "";
+    }
+  };
   const pumpLocale = () => {
     try {
       const saved = window.localStorage?.getItem(LOCALE_KEY);
@@ -4120,6 +4128,7 @@
     $$(".screen-switcher [data-open]").forEach((button) =>
       button.setAttribute("aria-pressed", button.dataset.open === name ? "true" : "false"),
     );
+    $$('[data-nav]').forEach((button) => button.classList.toggle("active", button.dataset.nav === name));
     target.classList.add("has-bottom-nav");
     target.scrollTop = 0;
     routeHistory()?.replaceState?.(null, "", `${pumpBasePath()}?screen=${encodeURIComponent(name)}`);
@@ -4621,6 +4630,11 @@
       void openTokenAddress(address, { historyMode: null }).catch((error) => toastError(error, "代币详情恢复失败"));
       return;
     }
+    const screen = routeScreen();
+    if (screen) {
+      show(screen);
+      return;
+    }
     const discover = $('[data-panel="discover"]');
     if (discover) {
       $$("[data-panel]").forEach((panel) => panel.classList.toggle("active", panel === discover));
@@ -4647,6 +4661,8 @@
   renderMyPanels();
   bindProviderEvents();
   bindNavigation();
+  const initialScreen = routeScreen();
+  if (initialScreen) show(initialScreen);
   bind();
   bindGrowth();
   bindVaults();
