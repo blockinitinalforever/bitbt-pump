@@ -2,6 +2,7 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
+  const ui20260911 = root.dataset.uiVersion === "20260911";
   const readLocalPreference = (key) => {
     try {
       return window.localStorage?.getItem(key) || "";
@@ -132,6 +133,10 @@
     "robinhood-testnet": { id: "robinhood-testnet", chainId: 46630, chainIdHex: "0xb626", name: "Robinhood Chain Testnet", shortName: "Robinhood Testnet", native: "ETH", rpcUrls: ["https://rpc.testnet.chain.robinhood.com"], explorer: "https://explorer.testnet.chain.robinhood.com", wrappedNative: "", maxGasPriceWei: 1_000_000_000n },
   };
   if (!NETWORKS[state.selectedChain]) state.selectedChain = "bsc";
+  if (ui20260911 && state.selectedChain !== "bsc") {
+    state.selectedChain = "bsc";
+    writeLocalPreference(CHAIN_KEY, "bsc");
+  }
   const selectedNetwork = () => NETWORKS[state.selectedChain] || NETWORKS.bsc;
   const isBscFeatureChain = () => state.selectedChain === "bsc";
   const launchEnabledForSelectedChain = () => {
@@ -671,9 +676,10 @@
   const renderPerpetual = () => {
     const config = state.perpConfig;
     const enabled = Boolean(config?.enabled);
+    text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')} 个`);
     text("[data-perp-menu-status]", enabled ? (config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
     text("[data-perp-status]", config?.statusNote || "正在读取永续合约状态…");
-    text("[data-perp-fee]", config?.feePercent || "—");
+    text("[data-perp-fee]", config?.feePercent ? `默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
     text("[data-perp-version]", config?.contractVersion ? `V${config.contractVersion}` : "—");
@@ -686,6 +692,23 @@
       if (state.perpMarkets.some((market) => String(market.marketId) === previous)) select.value = previous;
     }
     const market = selectedPerpMarket();
+    if (ui20260911) {
+      const marketGrid = $('[data-market-panel="perps"] .token-grid');
+      if (marketGrid) {
+        marketGrid.innerHTML = state.perpMarkets.length
+          ? state.perpMarkets.map((item) => `<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><img class="token-logo" src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div class="token-name"><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>BNB Chain · ${escapeHtml(short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? '已开放' : '已暂停'}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
+          : `<p class="footer-note">${escapeHtml(config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
+      }
+      text('[data-perps-symbol]', market?.tokenSymbol || '—');
+      text('[data-perps-price], [data-perps-mark], [data-perps-volume], [data-perps-oi], [data-perps-funding], [data-perps-entry], [data-perps-liq]', '—');
+      text('[data-perps-position]', !state.account ? '连接钱包后读取' : state.perpPosition?.open ? `${state.perpPosition.isLong ? 'LONG' : 'SHORT'} · ${formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), Number(market?.quoteDecimals || 18))}` : '当前无持仓');
+      const submit = $('#perps-submit');
+      if (submit && !enabled) {
+        submit.disabled = true;
+        submit.textContent = '永续主网暂未开放';
+        submit.removeAttribute('data-toast');
+      }
+    }
     if (market) {
       const decimals = Number(market.quoteDecimals || 18);
       text("[data-perp-market-pair]", `${market.tokenSymbol} / ${short(market.quoteTokenAddress)}`);
@@ -697,15 +720,25 @@
       text("[data-perp-market-epoch]", market.epochEnd ? new Date(Number(market.epochEnd) * 1000).toLocaleString() : "—");
       text("[data-perp-market-duration]", market.maxPositionDurationSeconds ? `${(Number(market.maxPositionDurationSeconds) / 86400).toFixed(2)} 天` : "—");
       text("[data-perp-market-keeper]", formatUnits(BigInt(market.minKeeperRewardRaw || "0"), decimals));
+      const openFeePercent = (Number(market.openFeePpm || 0) / 10_000).toFixed(4);
+      const closeFeePercent = (Number(market.closeFeePpm || 0) / 10_000).toFixed(4);
+      const platformSharePercent = (Number(market.platformFeeSharePpm || 0) / 10_000).toFixed(2);
+      const lpSharePercent = (Number(market.lpFeeSharePpm || 0) / 10_000).toFixed(2);
+      text("[data-perp-fee]", `${openFeePercent}% / ${closeFeePercent}%`);
+      text("[data-perp-market-fees]", `${openFeePercent}% / ${closeFeePercent}%`);
+      text("[data-perp-market-fee-split]", `${platformSharePercent}% / ${lpSharePercent}%`);
+      text("[data-perp-market-fee-recipient]", short(market.platformFeeRecipient || ""));
+      text("[data-perp-market-fee-claimable]", `${formatUnits(BigInt(market.platformFeeClaimableRaw || "0"), decimals)} / ${formatUnits(BigInt(market.platformFeeLiabilityRaw || "0"), decimals)}`);
       text("[data-perp-market-emergency]", market.emergencySettlementActive ? `已启用 · ${formatUnits(BigInt(market.emergencySettlementPriceE18 || "0"), 18)}` : market.emergencySettlementActivateAfter ? `等待至 ${new Date(Number(market.emergencySettlementActivateAfter) * 1000).toLocaleString()}` : "未启用");
     } else {
-      text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization], [data-perp-market-funding], [data-perp-market-epoch], [data-perp-market-duration], [data-perp-market-keeper], [data-perp-market-emergency]", "—");
+      text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization], [data-perp-market-funding], [data-perp-market-epoch], [data-perp-market-duration], [data-perp-market-keeper], [data-perp-market-fees], [data-perp-market-fee-split], [data-perp-market-fee-recipient], [data-perp-market-fee-claimable], [data-perp-market-emergency]", "—");
     }
     const position = state.perpPosition;
     const quoteDecimals = Number(market?.quoteDecimals || 18);
     text("[data-perp-position]", !state.account ? "连接钱包后读取" : position?.open ? `${position.isLong ? "LONG" : "SHORT"} · 保证金 ${formatUnits(BigInt(position.collateralRaw), quoteDecimals)} · 名义 ${formatUnits(BigInt(position.notionalRaw), quoteDecimals)}` : "当前无持仓");
     text("[data-perp-position-pnl]", position?.open ? formatUnits(BigInt(position.currentPnlRaw || "0"), quoteDecimals) : "—");
     text("[data-perp-shares]", state.account ? formatUnits(BigInt(position?.liquiditySharesRaw || "0"), quoteDecimals) : "—");
+    text("[data-perp-wallet-fee-claimable]", state.account ? formatUnits(BigInt(position?.platformFeeClaimableRaw || "0"), quoteDecimals) : "连接钱包后读取");
     const action = $("#perp-action")?.value || "open_position";
     const addsRisk = ["open_position", "deposit_liquidity"].includes(action);
     const changesLiquidity = ["deposit_liquidity", "withdraw_liquidity"].includes(action);
@@ -724,7 +757,8 @@
     if (traderField) traderField.hidden = !needsTrader;
     const prepare = $("[data-perp-prepare]");
     const epochEnded = Number(market?.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000;
-    if (prepare) prepare.disabled = !enabled || !state.account || !market || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
+    const canClaimPlatformFees = action !== "claim_platform_fees" || BigInt(position?.platformFeeClaimableRaw || "0") > 0n;
+    if (prepare) prepare.disabled = !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
     const preview = $("[data-perp-preview]");
     const execute = $("[data-perp-execute]");
     if (preview) {
@@ -774,6 +808,7 @@
       close_position: "0xa126d601",
       liquidate: "0x5fae8b3d",
       expire_position: "0x15589527",
+      claim_platform_fees: "0x5fa65a04",
     };
     const expectedSelector = actionSelectors[request.action];
     let actionTransaction = null;
@@ -791,7 +826,8 @@
         actionTransaction = transaction;
       } else throw new Error("永续交易目标或方法不在允许范围内");
     }
-    if (!actionTransaction || perpetualWord(actionTransaction.data, 0) !== BigInt(request.market_id)) throw new Error("永续 marketId 绑定失败");
+    if (!actionTransaction) throw new Error("永续交易方法缺失");
+    if (request.action !== "claim_platform_fees" && perpetualWord(actionTransaction.data, 0) !== BigInt(request.market_id)) throw new Error("永续 marketId 绑定失败");
     let requiredApproval = 0n;
     if (request.action === "deposit_liquidity") {
       requiredApproval = BigInt(request.amount_raw);
@@ -800,7 +836,7 @@
     if (request.action === "open_position") {
       const collateral = BigInt(request.amount_raw);
       const leverage = BigInt(request.leverage);
-      const fee = collateral * leverage * 50n / 1_000_000n;
+      const fee = collateral * leverage * BigInt(market.openFeePpm || 0) / 1_000_000n;
       requiredApproval = collateral + fee;
       if (perpetualWord(actionTransaction.data, 1) !== collateral || perpetualWord(actionTransaction.data, 2) !== leverage || perpetualWord(actionTransaction.data, 3) !== (request.is_long ? 1n : 0n)) throw new Error("永续仓位参数绑定失败");
     }
@@ -809,6 +845,10 @@
     }
     if (["liquidate", "expire_position"].includes(request.action)) {
       if (`0x${actionTransaction.data.slice(10 + 64 + 24, 10 + 2 * 64)}` !== String(request.recipient || "").toLowerCase()) throw new Error("永续 Keeper 目标仓位绑定失败");
+    }
+    if (request.action === "claim_platform_fees") {
+      const encodedQuote = `0x${actionTransaction.data.slice(10 + 24, 10 + 64)}`;
+      if (encodedQuote !== quoteToken || actionTransaction.data.length !== 74) throw new Error("平台手续费领取参数绑定失败");
     }
     if (requiredApproval > 0n && approvals.length && (approvals.at(-1) !== requiredApproval || approvals.slice(0, -1).some((amount) => amount !== 0n))) throw new Error("永续授权额度绑定失败");
     if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
@@ -959,7 +999,7 @@
       .filter((token) => tokenAddress(token))
       .map(tokenCard)
       .join("");
-    $$(".token-grid").forEach((node) => {
+    $$(ui20260911 ? '[data-market-panel="spot"] .token-grid' : ".token-grid").forEach((node) => {
       node.innerHTML = html || `<p class="footer-note">暂无真实 Pump 项目数据。</p>`;
     });
     bindLiveTokenSelection();
@@ -985,6 +1025,7 @@
     const launches = Number.isFinite(Number(summary.launches_24h)) ? Number(summary.launches_24h) : 0;
     const trades = Number.isFinite(Number(summary.trades_24h)) ? Number(summary.trades_24h) : 0;
     text("[data-market-total]", total.toLocaleString("en-US"));
+    text("[data-market-spot-count]", `${total.toLocaleString("en-US")} 个`);
     text("[data-market-launches]", launches.toLocaleString("en-US"));
     text("[data-market-trades]", trades.toLocaleString("en-US"));
     text("[data-market-live-count]", `LIVE ${state.marketActivity.length}`);
@@ -2221,7 +2262,7 @@
     const rankPanel = $('[data-panel="rank"]');
     if (rankPanel) [...rankPanel.querySelectorAll(".rank-row")].forEach((node) => node.remove());
     ["[data-panel='live'] .live-row", "[data-panel='rank'] .rank-row", "[data-panel='activity'] .activity-card", "[data-panel='announcements'] .announcement-card", "[data-panel='announcements'] .announcement-detail", "[data-panel='detail'] [data-detail-panel='trades'] .live-row", "[data-panel='detail'] [data-detail-panel='holders'] .data-table", "[data-panel='success'] .launch-card", "[data-panel='success'] .review-block", "[data-panel='create-review'] .review-block", "[data-panel='my-launches'] .summary-hero", "[data-panel='my-launches'] .launch-card", "[data-panel='profile'] [data-profile-summary]", "[data-panel='watchlist'] .token-card"].forEach((selector) => $$(selector).forEach((node) => node.remove()));
-    ["[data-active-symbol]", "[data-active-address]", "[data-active-price]", "[data-active-market]", "[data-active-rank]", "[data-active-change]", "[data-active-curve]", "[data-holding-amount]", "[data-holding-short]", "[data-holding-value]", "[data-holding-cost]", "[data-holding-pnl]", "[data-holding-return]", "[data-holding-share]", "[data-quote-output]", "[data-quote-min]", "[data-order-balance]"].forEach((selector) => text(selector, "—"));
+    ["[data-active-symbol]", "[data-active-quote]", "[data-active-address]", "[data-active-price]", "[data-active-market]", "[data-active-rank]", "[data-active-change]", "[data-active-curve]", "[data-holding-amount]", "[data-holding-short]", "[data-holding-value]", "[data-holding-cost]", "[data-holding-pnl]", "[data-holding-return]", "[data-holding-share]", "[data-quote-output]", "[data-quote-min]", "[data-quote-route]", "[data-quote-fee]", "[data-token-tax]", "[data-price-impact]", "[data-slippage-value]", "[data-order-unit]", "[data-order-balance]"].forEach((selector) => text(selector, "—"));
     $$("[data-active-curve-bar], [data-holding-bar]").forEach((node) => {
       node.style.width = "0%";
     });
@@ -2242,6 +2283,33 @@
     $$("[data-panel^='create-'] input").forEach((node) => {
       node.value = "";
     });
+    if (ui20260911) {
+      $('[data-market-panel="perps"] .token-grid')?.replaceChildren();
+      $$('[data-panel="perps"] .perps-pairs, [data-panel="perps"] [data-perps-panel="orders"], [data-panel="perps"] [data-perps-panel="triggers"], [data-panel="perps"] [data-perps-panel="onchain"], [data-panel="perps"] .perps-search-item, [data-panel="perps"] .perps-action-bar, [data-panel="perps"] .perps-action-guide, [data-panel="rank"] .curve-panel').forEach((node) => node.remove());
+      const perpsSearch = $('#perps-market-search');
+      if (perpsSearch) {
+        perpsSearch.value = '';
+        perpsSearch.disabled = true;
+        perpsSearch.placeholder = '正在读取真实永续市场…';
+      }
+      const perpsWorkspace = $('[data-panel="perps"] .perps-workspace');
+      if (perpsWorkspace) perpsWorkspace.innerHTML = `<section class="perps-content-panel active"><div class="section-title"><h3>真实链上状态</h3><span class="tag">READ ONLY</span></div><p class="footer-note" data-perp-status>正在读取永续合约状态…</p><p class="risk-note">主网交易开关开启并完成实盘门禁前，本候选版不会生成或广播永续交易。</p></section>`;
+      text('[data-perps-symbol], [data-perps-price], [data-perps-change], [data-perps-mark], [data-perps-volume], [data-perps-oi], [data-perps-funding], [data-perps-position], [data-perps-entry], [data-perps-liq], [data-perps-notional], [data-perps-est-liq]', '—');
+      $$('[data-panel="perps"] .perps-pnl strong, [data-panel="perps"] .perps-pnl small, [data-panel="perps"] .perps-position-grid strong, [data-panel="perps"] .account-equity strong, [data-panel="perps"] .order-label strong').forEach((node) => { node.textContent = '—'; });
+      const perpsSubmit = $('#perps-submit');
+      if (perpsSubmit) {
+        perpsSubmit.disabled = true;
+        perpsSubmit.textContent = '正在读取永续市场状态…';
+        perpsSubmit.removeAttribute('data-toast');
+      }
+      const pendingPanels = ['perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain', 'success', 'my-launches', 'activity', 'watchlist', 'profile', 'income-center', 'developer-tools', 'invite-center', 'alert-center', 'protection', 'language-center'];
+      pendingPanels.forEach((name) => {
+        const panel = root.querySelector(`[data-panel="${name}"]`);
+        if (!panel) return;
+        panel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="discover" aria-label="返回发现市场">←</button><div><div class="eyebrow">LIVE INTEGRATION</div><strong>功能接入中</strong></div><span class="tag">不展示样例数据</span></div><div class="page-title"><h1>该模块正在接入真实 API</h1><p>当前候选版不会展示原型金额、模拟持仓或模拟交易，也不会发送链上写交易。</p></div>`;
+      });
+      $$('.chart').forEach((node) => node.replaceChildren());
+    }
     $$("#launch-kline, #trade-kline").forEach((node) => {
       node.replaceChildren();
     });
@@ -4060,9 +4128,9 @@
       renderAnnouncements();
       if (!state.announcements.length) void loadAnnouncements().catch((error) => toastError(error, "公告加载失败，请稍后重试"));
     }
-    if (name === "perpetual") void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
-    if (name === "alerts" && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
-    if (name === "revenue-center") {
+    if (name === "perpetual" || name === "perps") void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
+    if ((name === "alerts" || name === "alert-center") && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
+    if (name === "revenue-center" || name === "income-center") {
       renderVaults();
       if (state.account) void loadVaults().catch((error) => toastError(error, "Vault 数据读取失败"));
     }
@@ -4124,7 +4192,7 @@
       state.preparedPerpRequest = null;
       renderPerpetual();
     });
-    $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select').forEach((node) => node.addEventListener("input", () => {
+    $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select, [data-panel="perps"] input, [data-panel="perps"] select').forEach((node) => node.addEventListener("input", () => {
       state.preparedPerpAction = null;
       state.preparedPerpRequest = null;
       renderPerpetual();
@@ -4560,7 +4628,18 @@
       discover.scrollTop = 0;
     }
   });
+  const prepare20260911Dom = () => {
+    if (!ui20260911) return;
+    const intervals = [60, 300, 900, 3600, 14400, 86400];
+    $$('[data-panel="detail"] .time-row, [data-panel="trade"] .time-row').forEach((row) => {
+      [...row.querySelectorAll('button')].forEach((button, index) => {
+        if (intervals[index]) button.dataset.chartInterval = String(intervals[index]);
+      });
+    });
+    $$('[data-panel="detail"] .chart-fallback, [data-panel="trade"] .chart-fallback').forEach((node) => node.setAttribute('data-chart-empty', ''));
+  };
   let refreshCycle = 0;
+  prepare20260911Dom();
   setLaunchAvailability(false);
   invalidateLaunchSnapshot();
   clearPrototype();
@@ -4588,6 +4667,7 @@
   void loadAnnouncements().catch(() => {
     text("[data-announcement-unread]", "!");
   });
+  if (ui20260911) void loadPerpetual().catch((error) => toastError(error, "永续市场状态读取失败"));
   void loadFavorites();
   connectMarketSocket();
   document.addEventListener("visibilitychange", () => {

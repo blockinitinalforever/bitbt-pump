@@ -1,3 +1,15 @@
+# BitBT Pump Web
+
+The production Pump UI, wallet bridge, and API proxy live in this repository.
+
+The verified 2026-09-11 UI delivery is available as an isolated, non-production preview at:
+
+```text
+/launchpad/bitbt-ui-20260911-preview.html
+```
+
+It intentionally retains prototype data and must not replace the production entry until the integration checklist in `docs/PUMP-UI-20260911-INTEGRATION.md` is complete.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

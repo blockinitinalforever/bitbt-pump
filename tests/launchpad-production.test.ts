@@ -7,6 +7,7 @@ import { parseHTML } from "linkedom";
 
 const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
+const candidateHtml = fs.readFileSync(path.join(root, "public/launchpad/bitbt-ui-20260911-candidate.html"), "utf8");
 const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
@@ -47,6 +48,18 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /market\.maxOpenInterestRaw/);
   assert.match(bridge, /market\.maxFundingRatePpmPerDay/);
   assert.match(bridge, /market\.epochEnd/);
+  assert.match(bridge, /market\.openFeePpm/);
+  assert.match(bridge, /market\.closeFeePpm/);
+  assert.match(bridge, /market\.platformFeeSharePpm/);
+  assert.match(bridge, /market\.lpFeeSharePpm/);
+  assert.match(bridge, /market\.platformFeeRecipient/);
+  assert.match(bridge, /market\.platformFeeClaimableRaw/);
+  assert.match(bridge, /market\.platformFeeLiabilityRaw/);
+  assert.match(bridge, /position\?\.platformFeeClaimableRaw/);
+  assert.match(bridge, /collateral \* leverage \* BigInt\(market\.openFeePpm \|\| 0\) \/ 1_000_000n/);
+  assert.match(html, /value="claim_platform_fees"/);
+  assert.match(bridge, /claim_platform_fees: "0x5fa65a04"/);
+  assert.match(bridge, /平台手续费领取参数绑定失败/);
   assert.match(bridge, /currentPnlRaw/);
   assert.match(html, /value="liquidate"/);
   assert.match(html, /value="expire_position"/);
@@ -58,14 +71,19 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(html, /data-perp-market-limits/);
   assert.match(html, /data-perp-market-funding/);
   assert.match(html, /data-perp-market-epoch/);
+  assert.match(html, /data-perp-market-fees/);
+  assert.match(html, /data-perp-market-fee-split/);
+  assert.match(html, /data-perp-market-fee-recipient/);
+  assert.match(html, /data-perp-market-fee-claimable/);
+  assert.match(html, /data-perp-wallet-fee-claimable/);
   assert.match(html, /仓位盈利最高为 1 倍名义价值/);
   assert.match(bridge, /state\.preparedPerpRequest = null/);
 });
 
-type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean; sourceHtml?: string };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
-  const { window } = parseHTML(html);
+  const { window } = parseHTML(options.sourceHtml || html);
   const storage = new Map<string, string>();
   const localPreferences = new Map<string, string>();
   if (options.selectedChain) localPreferences.set("bitbt_pump_chain", options.selectedChain);
@@ -127,6 +145,41 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   await new Promise((resolve) => setTimeout(resolve, 20));
   return { window, providerCalls, untrustedProviderCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites, storage };
 };
+
+test("2026-09-11 UI candidate clears prototype data and binds the first live-data batch", async () => {
+  const tokenAddress = "0x1111111111111111111111111111111111111111";
+  const token = { token_name: "Real Alpha", symbol: "RALPHA", contract_address: tokenAddress, creator_address: "0x2222222222222222222222222222222222222222", quote_token: "BNB", status: "bonding", submitted_at: new Date().toISOString(), progress_percent: 42, current_price_quote: "0.0001", market_cap_quote: "10", volume_quote_24h: "2", trade_count_24h: 3 };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: { total_tokens: 1, launches_24h: 1, trades_24h: 3 } } }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [token] }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...token, creator: token.creator_address, curve_address: "0x3333333333333333333333333333333333333333", total_raised_quote: "1" } }) };
+    if (url.includes("v1/pump/trades") || url.includes("v1/pump/candles") || url.includes("v1/pump/announcements") || url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/token/launch-options")) return { ok: true, json: async () => ({ data: { network: { id: "bsc", chain_id: 56, chain_id_hex: "0x38", native_symbol: "BNB", launch_enabled: true, trade_enabled: true }, quotes: [{ symbol: "BNB", address: "0x0000000000000000000000000000000000000000" }], dex_profiles: [{ id: "pancakeswap_v2", name: "PancakeSwap V2", enabled: true, lp_policy: "burn" }] } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response, { sourceHtml: candidateHtml, pathname: "/launchpad/bitbt-ui-20260911-candidate.html" });
+  const candidate = window.document.querySelector('[data-ui-version="20260911"]');
+  assert.ok(candidate);
+  assert.equal(window.document.body.classList.contains("runtime-pending"), false);
+  assert.equal(candidate.querySelectorAll('[data-market-panel="spot"] [data-live-token]').length, 1);
+  assert.equal(candidate.querySelector('[data-market-panel="spot"] [data-live-token]')?.textContent?.includes("RALPHA"), true);
+  assert.equal(candidate.querySelector("[data-market-total]")?.textContent, "1");
+  assert.equal(candidate.querySelector("[data-market-launches]")?.textContent, "1");
+  assert.equal(candidate.querySelector("[data-market-trades]")?.textContent, "3");
+  assert.equal(candidate.querySelector('[data-market-panel="perps"]')?.textContent?.includes("CASHCAT"), false);
+  assert.equal(candidate.querySelectorAll('[data-panel="trade"] [data-chart-interval]').length, 6);
+  assert.ok(candidate.querySelector('[data-panel="trade"] #trade-submit'));
+  assert.ok(candidate.querySelector('[data-panel="trade"] [data-quote-output]'));
+  assert.ok(candidate.querySelector('[data-panel="trade"] [data-quote-min]'));
+  assert.equal(candidate.querySelector('[data-panel="create-mode"]')?.textContent?.includes("功能接入中"), false);
+  for (const selector of ["#token-logo-file", "[data-launch-file]", "#token-name", "#token-symbol", "#token-story", "#token-classification", "#token-twitter", "#token-telegram", "#token-website", "#token-discord", '[data-launch-quote="BNB"]', '[data-launch-quote="USDT"]', '[data-launch-quote="USDC"]', '[data-launch-quote="USD1"]', '[data-curve-mode="standard"]', '[data-curve-mode="custom"]', "#migration-threshold-quote", "#launch-dex-profile", '[data-tax-mode="standard"]', '[data-tax-mode="tax"]', "#buy-tax-rate", "#sell-tax-rate", "#tax-recipient-wallet", "#initial-buy-quote", "[data-launch-review-predicted]", "[data-launch-review-factory]", "[data-launch-review-salt]", "[data-launch-publish]"]) assert.ok(candidate.querySelector(selector), `candidate launch hook missing: ${selector}`);
+  assert.equal((candidate.querySelector('[data-launch-chain="robinhood"]') as HTMLButtonElement).disabled, true);
+  assert.equal((candidate.querySelector("[data-launch-publish]") as HTMLButtonElement).disabled, true);
+  assert.match(candidate.querySelector('[data-panel="profile"]')?.textContent || "", /功能接入中/);
+  for (const sample of ["1,284", "$18.6M", "$721K", "2,840.62 USDT", "CASHCAT", "MOONBUN"]) assert.equal((candidate.textContent || "").includes(sample), false, `candidate leaked prototype value: ${sample}`);
+});
 
 test("production HTML boots with API failure without exposing prototype financial data", async () => {
   const { window } = await boot(async () => { throw new Error("API unavailable"); });
