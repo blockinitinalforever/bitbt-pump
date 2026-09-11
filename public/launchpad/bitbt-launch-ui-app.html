@@ -731,7 +731,7 @@
         background: rgba(251, 250, 245, 0.97);
         border-top: 1px solid var(--ink);
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(6, 1fr);
       }
       .bottom-nav button {
         border: 0;
@@ -4431,6 +4431,7 @@
         <button data-open="live">实时链上</button>
         <button data-open="rank">排行榜</button>
         <button data-open="announcements">公告 <span class="nav-unread" data-announcement-unread>—</span></button>
+        <button data-open="perpetual">永续</button>
         <button data-open="create-mode">创建代币</button>
         <button data-open="profile">我的</button>
       </nav>
@@ -6204,6 +6205,10 @@
               <button data-nav="rank">
                 <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/trending-up.svg&quot;)"></i>
                 <span>排行</span>
+              </button>
+              <button data-nav="perpetual">
+                <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/chart-candlestick.svg&quot;)"></i>
+                <span>永续</span>
               </button>
               <button data-nav="profile">
                 <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/wallet-cards.svg&quot;)"></i>

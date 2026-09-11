@@ -23,6 +23,14 @@ const pumpApiSource = fs.readFileSync(path.join(root, "src/lib/pump-api.ts"), "u
 const compactHtml = html.replace(/\s+/g, "");
 const compactBridge = bridge.replace(/\s+/g, "");
 
+test("perpetual is a first-level desktop and mobile route that survives refresh", () => {
+  assert.match(html, /class="screen-switcher"[\s\S]*data-open="perpetual">永续/);
+  assert.match(html, /class="bottom-nav visible"[\s\S]*data-nav="perpetual"/);
+  assert.match(bridge, /const routeScreen = \(\) =>/);
+  assert.match(bridge, /const initialScreen = routeScreen\(\);\s*if \(initialScreen\) show\(initialScreen\)/);
+  assert.match(bridge, /data-nav[^\n]*classList\.toggle\("active"/);
+});
+
 test("official Pump announcements and fail-closed perpetual product routes are wired", () => {
   for (const endpoint of [
     "v1/pump/announcements",
