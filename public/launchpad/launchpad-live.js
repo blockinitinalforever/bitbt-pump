@@ -2302,7 +2302,7 @@
         perpsSubmit.textContent = '正在读取永续市场状态…';
         perpsSubmit.removeAttribute('data-toast');
       }
-      const pendingPanels = ['perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain', 'create-mode', 'create-basic', 'create-economics', 'create-tax', 'create-review', 'success', 'my-launches', 'activity', 'watchlist', 'profile', 'income-center', 'developer-tools', 'invite-center', 'alert-center', 'protection', 'language-center'];
+      const pendingPanels = ['perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain', 'success', 'my-launches', 'activity', 'watchlist', 'profile', 'income-center', 'developer-tools', 'invite-center', 'alert-center', 'protection', 'language-center'];
       pendingPanels.forEach((name) => {
         const panel = root.querySelector(`[data-panel="${name}"]`);
         if (!panel) return;

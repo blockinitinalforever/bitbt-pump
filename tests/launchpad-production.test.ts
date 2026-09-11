@@ -173,6 +173,10 @@ test("2026-09-11 UI candidate clears prototype data and binds the first live-dat
   assert.ok(candidate.querySelector('[data-panel="trade"] #trade-submit'));
   assert.ok(candidate.querySelector('[data-panel="trade"] [data-quote-output]'));
   assert.ok(candidate.querySelector('[data-panel="trade"] [data-quote-min]'));
+  assert.equal(candidate.querySelector('[data-panel="create-mode"]')?.textContent?.includes("功能接入中"), false);
+  for (const selector of ["#token-logo-file", "[data-launch-file]", "#token-name", "#token-symbol", "#token-story", "#token-classification", "#token-twitter", "#token-telegram", "#token-website", "#token-discord", '[data-launch-quote="BNB"]', '[data-launch-quote="USDT"]', '[data-launch-quote="USDC"]', '[data-launch-quote="USD1"]', '[data-curve-mode="standard"]', '[data-curve-mode="custom"]', "#migration-threshold-quote", "#launch-dex-profile", '[data-tax-mode="standard"]', '[data-tax-mode="tax"]', "#buy-tax-rate", "#sell-tax-rate", "#tax-recipient-wallet", "#initial-buy-quote", "[data-launch-review-predicted]", "[data-launch-review-factory]", "[data-launch-review-salt]", "[data-launch-publish]"]) assert.ok(candidate.querySelector(selector), `candidate launch hook missing: ${selector}`);
+  assert.equal((candidate.querySelector('[data-launch-chain="robinhood"]') as HTMLButtonElement).disabled, true);
+  assert.equal((candidate.querySelector("[data-launch-publish]") as HTMLButtonElement).disabled, true);
   assert.match(candidate.querySelector('[data-panel="profile"]')?.textContent || "", /功能接入中/);
   for (const sample of ["1,284", "$18.6M", "$721K", "2,840.62 USDT", "CASHCAT", "MOONBUN"]) assert.equal((candidate.textContent || "").includes(sample), false, `candidate leaked prototype value: ${sample}`);
 });
