@@ -169,6 +169,10 @@ test("2026-09-11 UI candidate clears prototype data and binds the first live-dat
   assert.equal(candidate.querySelector("[data-market-launches]")?.textContent, "1");
   assert.equal(candidate.querySelector("[data-market-trades]")?.textContent, "3");
   assert.equal(candidate.querySelector('[data-market-panel="perps"]')?.textContent?.includes("CASHCAT"), false);
+  assert.equal(candidate.querySelectorAll('[data-panel="trade"] [data-chart-interval]').length, 6);
+  assert.ok(candidate.querySelector('[data-panel="trade"] #trade-submit'));
+  assert.ok(candidate.querySelector('[data-panel="trade"] [data-quote-output]'));
+  assert.ok(candidate.querySelector('[data-panel="trade"] [data-quote-min]'));
   assert.match(candidate.querySelector('[data-panel="profile"]')?.textContent || "", /功能接入中/);
   for (const sample of ["1,284", "$18.6M", "$721K", "2,840.62 USDT", "CASHCAT", "MOONBUN"]) assert.equal((candidate.textContent || "").includes(sample), false, `candidate leaked prototype value: ${sample}`);
 });

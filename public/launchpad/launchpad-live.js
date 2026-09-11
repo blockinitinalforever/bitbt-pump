@@ -2262,7 +2262,7 @@
     const rankPanel = $('[data-panel="rank"]');
     if (rankPanel) [...rankPanel.querySelectorAll(".rank-row")].forEach((node) => node.remove());
     ["[data-panel='live'] .live-row", "[data-panel='rank'] .rank-row", "[data-panel='activity'] .activity-card", "[data-panel='announcements'] .announcement-card", "[data-panel='announcements'] .announcement-detail", "[data-panel='detail'] [data-detail-panel='trades'] .live-row", "[data-panel='detail'] [data-detail-panel='holders'] .data-table", "[data-panel='success'] .launch-card", "[data-panel='success'] .review-block", "[data-panel='create-review'] .review-block", "[data-panel='my-launches'] .summary-hero", "[data-panel='my-launches'] .launch-card", "[data-panel='profile'] [data-profile-summary]", "[data-panel='watchlist'] .token-card"].forEach((selector) => $$(selector).forEach((node) => node.remove()));
-    ["[data-active-symbol]", "[data-active-address]", "[data-active-price]", "[data-active-market]", "[data-active-rank]", "[data-active-change]", "[data-active-curve]", "[data-holding-amount]", "[data-holding-short]", "[data-holding-value]", "[data-holding-cost]", "[data-holding-pnl]", "[data-holding-return]", "[data-holding-share]", "[data-quote-output]", "[data-quote-min]", "[data-order-balance]"].forEach((selector) => text(selector, "—"));
+    ["[data-active-symbol]", "[data-active-quote]", "[data-active-address]", "[data-active-price]", "[data-active-market]", "[data-active-rank]", "[data-active-change]", "[data-active-curve]", "[data-holding-amount]", "[data-holding-short]", "[data-holding-value]", "[data-holding-cost]", "[data-holding-pnl]", "[data-holding-return]", "[data-holding-share]", "[data-quote-output]", "[data-quote-min]", "[data-quote-route]", "[data-quote-fee]", "[data-token-tax]", "[data-price-impact]", "[data-slippage-value]", "[data-order-unit]", "[data-order-balance]"].forEach((selector) => text(selector, "—"));
     $$("[data-active-curve-bar], [data-holding-bar]").forEach((node) => {
       node.style.width = "0%";
     });
@@ -2302,7 +2302,7 @@
         perpsSubmit.textContent = '正在读取永续市场状态…';
         perpsSubmit.removeAttribute('data-toast');
       }
-      const pendingPanels = ['trade', 'perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain', 'create-mode', 'create-basic', 'create-economics', 'create-tax', 'create-review', 'success', 'my-launches', 'activity', 'watchlist', 'profile', 'income-center', 'developer-tools', 'invite-center', 'alert-center', 'protection', 'language-center'];
+      const pendingPanels = ['perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain', 'create-mode', 'create-basic', 'create-economics', 'create-tax', 'create-review', 'success', 'my-launches', 'activity', 'watchlist', 'profile', 'income-center', 'developer-tools', 'invite-center', 'alert-center', 'protection', 'language-center'];
       pendingPanels.forEach((name) => {
         const panel = root.querySelector(`[data-panel="${name}"]`);
         if (!panel) return;
@@ -4628,7 +4628,18 @@
       discover.scrollTop = 0;
     }
   });
+  const prepare20260911Dom = () => {
+    if (!ui20260911) return;
+    const intervals = [60, 300, 900, 3600, 14400, 86400];
+    $$('[data-panel="detail"] .time-row, [data-panel="trade"] .time-row').forEach((row) => {
+      [...row.querySelectorAll('button')].forEach((button, index) => {
+        if (intervals[index]) button.dataset.chartInterval = String(intervals[index]);
+      });
+    });
+    $$('[data-panel="detail"] .chart-fallback, [data-panel="trade"] .chart-fallback').forEach((node) => node.setAttribute('data-chart-empty', ''));
+  };
   let refreshCycle = 0;
+  prepare20260911Dom();
   setLaunchAvailability(false);
   invalidateLaunchSnapshot();
   clearPrototype();
