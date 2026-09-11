@@ -2,6 +2,7 @@
 (() => {
   const root = document.getElementById("bitbt-launch");
   if (!root) return;
+  const ui20260911 = root.dataset.uiVersion === "20260911";
   const readLocalPreference = (key) => {
     try {
       return window.localStorage?.getItem(key) || "";
@@ -132,6 +133,10 @@
     "robinhood-testnet": { id: "robinhood-testnet", chainId: 46630, chainIdHex: "0xb626", name: "Robinhood Chain Testnet", shortName: "Robinhood Testnet", native: "ETH", rpcUrls: ["https://rpc.testnet.chain.robinhood.com"], explorer: "https://explorer.testnet.chain.robinhood.com", wrappedNative: "", maxGasPriceWei: 1_000_000_000n },
   };
   if (!NETWORKS[state.selectedChain]) state.selectedChain = "bsc";
+  if (ui20260911 && state.selectedChain !== "bsc") {
+    state.selectedChain = "bsc";
+    writeLocalPreference(CHAIN_KEY, "bsc");
+  }
   const selectedNetwork = () => NETWORKS[state.selectedChain] || NETWORKS.bsc;
   const isBscFeatureChain = () => state.selectedChain === "bsc";
   const launchEnabledForSelectedChain = () => {
@@ -671,6 +676,7 @@
   const renderPerpetual = () => {
     const config = state.perpConfig;
     const enabled = Boolean(config?.enabled);
+    text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')} 个`);
     text("[data-perp-menu-status]", enabled ? (config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
     text("[data-perp-status]", config?.statusNote || "正在读取永续合约状态…");
     text("[data-perp-fee]", config?.feePercent ? `默认 ${config.feePercent} / ${config.feePercent}` : "—");
@@ -686,6 +692,23 @@
       if (state.perpMarkets.some((market) => String(market.marketId) === previous)) select.value = previous;
     }
     const market = selectedPerpMarket();
+    if (ui20260911) {
+      const marketGrid = $('[data-market-panel="perps"] .token-grid');
+      if (marketGrid) {
+        marketGrid.innerHTML = state.perpMarkets.length
+          ? state.perpMarkets.map((item) => `<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><img class="token-logo" src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div class="token-name"><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>BNB Chain · ${escapeHtml(short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? '已开放' : '已暂停'}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
+          : `<p class="footer-note">${escapeHtml(config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
+      }
+      text('[data-perps-symbol]', market?.tokenSymbol || '—');
+      text('[data-perps-price], [data-perps-mark], [data-perps-volume], [data-perps-oi], [data-perps-funding], [data-perps-entry], [data-perps-liq]', '—');
+      text('[data-perps-position]', !state.account ? '连接钱包后读取' : state.perpPosition?.open ? `${state.perpPosition.isLong ? 'LONG' : 'SHORT'} · ${formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), Number(market?.quoteDecimals || 18))}` : '当前无持仓');
+      const submit = $('#perps-submit');
+      if (submit && !enabled) {
+        submit.disabled = true;
+        submit.textContent = '永续主网暂未开放';
+        submit.removeAttribute('data-toast');
+      }
+    }
     if (market) {
       const decimals = Number(market.quoteDecimals || 18);
       text("[data-perp-market-pair]", `${market.tokenSymbol} / ${short(market.quoteTokenAddress)}`);
@@ -976,7 +999,7 @@
       .filter((token) => tokenAddress(token))
       .map(tokenCard)
       .join("");
-    $$(".token-grid").forEach((node) => {
+    $$(ui20260911 ? '[data-market-panel="spot"] .token-grid' : ".token-grid").forEach((node) => {
       node.innerHTML = html || `<p class="footer-note">暂无真实 Pump 项目数据。</p>`;
     });
     bindLiveTokenSelection();
@@ -1002,6 +1025,7 @@
     const launches = Number.isFinite(Number(summary.launches_24h)) ? Number(summary.launches_24h) : 0;
     const trades = Number.isFinite(Number(summary.trades_24h)) ? Number(summary.trades_24h) : 0;
     text("[data-market-total]", total.toLocaleString("en-US"));
+    text("[data-market-spot-count]", `${total.toLocaleString("en-US")} 个`);
     text("[data-market-launches]", launches.toLocaleString("en-US"));
     text("[data-market-trades]", trades.toLocaleString("en-US"));
     text("[data-market-live-count]", `LIVE ${state.marketActivity.length}`);
@@ -2259,6 +2283,33 @@
     $$("[data-panel^='create-'] input").forEach((node) => {
       node.value = "";
     });
+    if (ui20260911) {
+      $('[data-market-panel="perps"] .token-grid')?.replaceChildren();
+      $$('[data-panel="perps"] .perps-pairs, [data-panel="perps"] [data-perps-panel="orders"], [data-panel="perps"] [data-perps-panel="triggers"], [data-panel="perps"] [data-perps-panel="onchain"], [data-panel="perps"] .perps-search-item, [data-panel="perps"] .perps-action-bar, [data-panel="perps"] .perps-action-guide, [data-panel="rank"] .curve-panel').forEach((node) => node.remove());
+      const perpsSearch = $('#perps-market-search');
+      if (perpsSearch) {
+        perpsSearch.value = '';
+        perpsSearch.disabled = true;
+        perpsSearch.placeholder = '正在读取真实永续市场…';
+      }
+      const perpsWorkspace = $('[data-panel="perps"] .perps-workspace');
+      if (perpsWorkspace) perpsWorkspace.innerHTML = `<section class="perps-content-panel active"><div class="section-title"><h3>真实链上状态</h3><span class="tag">READ ONLY</span></div><p class="footer-note" data-perp-status>正在读取永续合约状态…</p><p class="risk-note">主网交易开关开启并完成实盘门禁前，本候选版不会生成或广播永续交易。</p></section>`;
+      text('[data-perps-symbol], [data-perps-price], [data-perps-change], [data-perps-mark], [data-perps-volume], [data-perps-oi], [data-perps-funding], [data-perps-position], [data-perps-entry], [data-perps-liq], [data-perps-notional], [data-perps-est-liq]', '—');
+      $$('[data-panel="perps"] .perps-pnl strong, [data-panel="perps"] .perps-pnl small, [data-panel="perps"] .perps-position-grid strong, [data-panel="perps"] .account-equity strong, [data-panel="perps"] .order-label strong').forEach((node) => { node.textContent = '—'; });
+      const perpsSubmit = $('#perps-submit');
+      if (perpsSubmit) {
+        perpsSubmit.disabled = true;
+        perpsSubmit.textContent = '正在读取永续市场状态…';
+        perpsSubmit.removeAttribute('data-toast');
+      }
+      const pendingPanels = ['trade', 'perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain', 'create-mode', 'create-basic', 'create-economics', 'create-tax', 'create-review', 'success', 'my-launches', 'activity', 'watchlist', 'profile', 'income-center', 'developer-tools', 'invite-center', 'alert-center', 'protection', 'language-center'];
+      pendingPanels.forEach((name) => {
+        const panel = root.querySelector(`[data-panel="${name}"]`);
+        if (!panel) return;
+        panel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="discover" aria-label="返回发现市场">←</button><div><div class="eyebrow">LIVE INTEGRATION</div><strong>功能接入中</strong></div><span class="tag">不展示样例数据</span></div><div class="page-title"><h1>该模块正在接入真实 API</h1><p>当前候选版不会展示原型金额、模拟持仓或模拟交易，也不会发送链上写交易。</p></div>`;
+      });
+      $$('.chart').forEach((node) => node.replaceChildren());
+    }
     $$("#launch-kline, #trade-kline").forEach((node) => {
       node.replaceChildren();
     });
@@ -4077,9 +4128,9 @@
       renderAnnouncements();
       if (!state.announcements.length) void loadAnnouncements().catch((error) => toastError(error, "公告加载失败，请稍后重试"));
     }
-    if (name === "perpetual") void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
-    if (name === "alerts" && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
-    if (name === "revenue-center") {
+    if (name === "perpetual" || name === "perps") void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
+    if ((name === "alerts" || name === "alert-center") && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
+    if (name === "revenue-center" || name === "income-center") {
       renderVaults();
       if (state.account) void loadVaults().catch((error) => toastError(error, "Vault 数据读取失败"));
     }
@@ -4141,7 +4192,7 @@
       state.preparedPerpRequest = null;
       renderPerpetual();
     });
-    $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select').forEach((node) => node.addEventListener("input", () => {
+    $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select, [data-panel="perps"] input, [data-panel="perps"] select').forEach((node) => node.addEventListener("input", () => {
       state.preparedPerpAction = null;
       state.preparedPerpRequest = null;
       renderPerpetual();
@@ -4605,6 +4656,7 @@
   void loadAnnouncements().catch(() => {
     text("[data-announcement-unread]", "!");
   });
+  if (ui20260911) void loadPerpetual().catch((error) => toastError(error, "永续市场状态读取失败"));
   void loadFavorites();
   connectMarketSocket();
   document.addEventListener("visibilitychange", () => {

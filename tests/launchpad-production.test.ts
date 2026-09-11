@@ -7,6 +7,7 @@ import { parseHTML } from "linkedom";
 
 const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
+const candidateHtml = fs.readFileSync(path.join(root, "public/launchpad/bitbt-ui-20260911-candidate.html"), "utf8");
 const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
@@ -79,10 +80,10 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /state\.preparedPerpRequest = null/);
 });
 
-type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean };
+type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean; sourceHtml?: string };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
-  const { window } = parseHTML(html);
+  const { window } = parseHTML(options.sourceHtml || html);
   const storage = new Map<string, string>();
   const localPreferences = new Map<string, string>();
   if (options.selectedChain) localPreferences.set("bitbt_pump_chain", options.selectedChain);
@@ -144,6 +145,33 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   await new Promise((resolve) => setTimeout(resolve, 20));
   return { window, providerCalls, untrustedProviderCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites, storage };
 };
+
+test("2026-09-11 UI candidate clears prototype data and binds the first live-data batch", async () => {
+  const tokenAddress = "0x1111111111111111111111111111111111111111";
+  const token = { token_name: "Real Alpha", symbol: "RALPHA", contract_address: tokenAddress, creator_address: "0x2222222222222222222222222222222222222222", quote_token: "BNB", status: "bonding", submitted_at: new Date().toISOString(), progress_percent: 42, current_price_quote: "0.0001", market_cap_quote: "10", volume_quote_24h: "2", trade_count_24h: 3 };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: { total_tokens: 1, launches_24h: 1, trades_24h: 3 } } }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [token] }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...token, creator: token.creator_address, curve_address: "0x3333333333333333333333333333333333333333", total_raised_quote: "1" } }) };
+    if (url.includes("v1/pump/trades") || url.includes("v1/pump/candles") || url.includes("v1/pump/announcements") || url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/token/launch-options")) return { ok: true, json: async () => ({ data: { network: { id: "bsc", chain_id: 56, chain_id_hex: "0x38", native_symbol: "BNB", launch_enabled: true, trade_enabled: true }, quotes: [{ symbol: "BNB", address: "0x0000000000000000000000000000000000000000" }], dex_profiles: [{ id: "pancakeswap_v2", name: "PancakeSwap V2", enabled: true, lp_policy: "burn" }] } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response, { sourceHtml: candidateHtml, pathname: "/launchpad/bitbt-ui-20260911-candidate.html" });
+  const candidate = window.document.querySelector('[data-ui-version="20260911"]');
+  assert.ok(candidate);
+  assert.equal(window.document.body.classList.contains("runtime-pending"), false);
+  assert.equal(candidate.querySelectorAll('[data-market-panel="spot"] [data-live-token]').length, 1);
+  assert.equal(candidate.querySelector('[data-market-panel="spot"] [data-live-token]')?.textContent?.includes("RALPHA"), true);
+  assert.equal(candidate.querySelector("[data-market-total]")?.textContent, "1");
+  assert.equal(candidate.querySelector("[data-market-launches]")?.textContent, "1");
+  assert.equal(candidate.querySelector("[data-market-trades]")?.textContent, "3");
+  assert.equal(candidate.querySelector('[data-market-panel="perps"]')?.textContent?.includes("CASHCAT"), false);
+  assert.match(candidate.querySelector('[data-panel="profile"]')?.textContent || "", /功能接入中/);
+  for (const sample of ["1,284", "$18.6M", "$721K", "2,840.62 USDT", "CASHCAT", "MOONBUN"]) assert.equal((candidate.textContent || "").includes(sample), false, `candidate leaked prototype value: ${sample}`);
+});
 
 test("production HTML boots with API failure without exposing prototype financial data", async () => {
   const { window } = await boot(async () => { throw new Error("API unavailable"); });
