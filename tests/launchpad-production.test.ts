@@ -60,6 +60,18 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /showErrorDialog/);
   assert.match(html, /data-operation-error/);
   assert.match(html, /role="alertdialog"/);
+  for (const [action, selector] of Object.entries({
+    deposit_liquidity: "0x34a860e4",
+    withdraw_liquidity: "0x95e17d84",
+    open_position: "0xd7449e6b",
+    close_position: "0x391cb5af",
+    liquidate: "0x5fae8b3d",
+    expire_position: "0x15589527",
+    claim_platform_fees: "0x5fa65a04",
+  })) {
+    assert.match(bridge, new RegExp(`${action}: "${selector}"`));
+  }
+  assert.doesNotMatch(bridge, /0xf483ee07|0xa126d601/);
   assert.match(bridge, /market\.maxOpenInterestRaw/);
   assert.match(bridge, /market\.maxFundingRatePpmPerDay/);
   assert.match(bridge, /market\.epochEnd/);

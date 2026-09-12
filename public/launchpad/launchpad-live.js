@@ -867,10 +867,11 @@
     if (!/^0x[0-9a-f]{40}$/.test(contract) || !/^0x[0-9a-f]{40}$/.test(quoteToken)) throw new Error("永续合约或报价资产地址无效");
     if (!prepared || prepared.action !== request.action || Number(prepared.marketId) !== request.market_id || !Array.isArray(prepared.transactions) || !prepared.transactions.length) throw new Error("永续交易快照与请求不一致");
     const actionSelectors = {
+      // PumpPerpetual v6 ABI selectors. Keep these signatures aligned with the API encoder.
       deposit_liquidity: "0x34a860e4",
       withdraw_liquidity: "0x95e17d84",
-      open_position: "0xf483ee07",
-      close_position: "0xa126d601",
+      open_position: "0xd7449e6b",
+      close_position: "0x391cb5af",
       liquidate: "0x5fae8b3d",
       expire_position: "0x15589527",
       claim_platform_fees: "0x5fa65a04",
