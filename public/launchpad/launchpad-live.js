@@ -39,10 +39,15 @@
     selectedAnnouncementId: "",
     perpConfig: null,
     perpMarkets: [],
+    selectedPerpMarketId: null,
     perpPosition: null,
     preparedPerpAction: null,
     preparedPerpRequest: null,
     perpSubmitting: false,
+    perpModernAction: "open_position",
+    perpActivity: [],
+    perpServiceRequests: [],
+    perpServiceBusy: false,
     kol: null,
     marketActivity: [],
     marketSummary: {},
@@ -134,10 +139,6 @@
     "robinhood-testnet": { id: "robinhood-testnet", chainId: 46630, chainIdHex: "0xb626", name: "Robinhood Chain Testnet", shortName: "Robinhood Testnet", native: "ETH", rpcUrls: ["https://rpc.testnet.chain.robinhood.com"], explorer: "https://explorer.testnet.chain.robinhood.com", wrappedNative: "", maxGasPriceWei: 1_000_000_000n },
   };
   if (!NETWORKS[state.selectedChain]) state.selectedChain = "bsc";
-  if (ui20260911 && state.selectedChain !== "bsc") {
-    state.selectedChain = "bsc";
-    writeLocalPreference(CHAIN_KEY, "bsc");
-  }
   const selectedNetwork = () => NETWORKS[state.selectedChain] || NETWORKS.bsc;
   const isBscFeatureChain = () => state.selectedChain === "bsc";
   const launchEnabledForSelectedChain = () => {
@@ -589,12 +590,19 @@
     window.clearTimeout(node._hideTimer);
     node._hideTimer = window.setTimeout(() => node.classList.remove("show"), duration);
   };
-  const showErrorDialog = (message) => {
+  const showOperationDialog = (message, { title = "请调整参数后重试", tag = "操作未完成", success = false } = {}) => {
     const overlay = $("[data-operation-error]");
     const content = $("[data-operation-error-message]");
     const dismiss = $("[data-operation-error-dismiss]");
+    const titleNode = $("[data-operation-dialog-title]");
+    const tagNode = $("[data-operation-dialog-tag]");
     if (!overlay || !content || !dismiss) return toast(message, 6000);
     content.textContent = message;
+    if (titleNode) titleNode.textContent = title;
+    if (tagNode) {
+      tagNode.textContent = tag;
+      tagNode.classList.toggle("lime", success);
+    }
     overlay.hidden = false;
     if (!overlay.dataset.bound) {
       overlay.dataset.bound = "1";
@@ -609,6 +617,7 @@
     }
     dismiss.focus();
   };
+  const showErrorDialog = (message) => showOperationDialog(message);
   const toastError = (error, fallback) => {
     const message = friendlyError(error, fallback);
     toast(message, 6000);
@@ -712,6 +721,10 @@
     renderAnnouncements();
   };
   const selectedPerpMarket = () => {
+    if (state.selectedPerpMarketId != null) {
+      const selected = state.perpMarkets.find((market) => Number(market.marketId) === Number(state.selectedPerpMarketId));
+      if (selected) return selected;
+    }
     const selectedId = Number($("#perp-market")?.value ?? -1);
     return state.perpMarkets.find((market) => Number(market.marketId) === selectedId) || state.perpMarkets[0] || null;
   };
@@ -746,13 +759,31 @@
           ? state.perpMarkets.map((item) => `<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><img class="token-logo" src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div class="token-name"><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>BNB Chain · ${escapeHtml(short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? '已开放' : '已暂停'}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
           : `<p class="footer-note">${escapeHtml(config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
       }
+      const pairRow = $('[data-panel="perps"] .perps-pairs');
+      if (pairRow) {
+        pairRow.innerHTML = state.perpMarkets.map((item) => `<button type="button" class="${market && Number(item.marketId) === Number(market.marketId) ? 'active' : ''}" data-real-perp-market="${Number(item.marketId)}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="">${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')} <span>${item.enabled ? 'LIVE' : '暂停'}</span></button>`).join('');
+      }
+      const searchResults = $('[data-panel="perps"] .perps-search-results');
+      if (searchResults) {
+        searchResults.innerHTML = `<div class="perps-search-head"><span>搜索结果</span><span>市场状态</span></div>${state.perpMarkets.map((item) => `<div class="perps-search-item ready" data-real-perp-search data-search="${escapeHtml(`${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase())}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>${escapeHtml(short(item.tokenAddress || ''))} · BSC · <span class="pool-state">${item.enabled ? '可交易' : '已暂停'}</span></small></div><button type="button" data-real-perp-market="${Number(item.marketId)}">选择交易</button></div>`).join('')}<div class="perps-search-empty" data-perps-search-empty>未找到已接入的真实 MEME 永续市场。</div>`;
+      }
       text('[data-perps-symbol]', market?.tokenSymbol || '—');
       text('[data-perps-price], [data-perps-mark], [data-perps-volume], [data-perps-oi], [data-perps-funding], [data-perps-entry], [data-perps-liq]', '—');
       text('[data-perps-position]', !state.account ? '连接钱包后读取' : state.perpPosition?.open ? `${state.perpPosition.isLong ? 'LONG' : 'SHORT'} · ${formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), Number(market?.quoteDecimals || 18))}` : '当前无持仓');
+      const modernPosition = $('[data-panel="perps"] [data-perps-panel="positions"]');
+      if (modernPosition) {
+        const decimals = Number(market?.quoteDecimals || 18);
+        modernPosition.innerHTML = !state.account
+          ? `<p class="footer-note">连接钱包后读取当前真实仓位。</p>`
+          : !state.perpPosition?.open
+            ? `<p class="footer-note">当前钱包在该市场没有未平仓仓位。</p>`
+            : `<div class="perps-position-head"><div class="perps-position-name"><img src="${escapeHtml(market?.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(market?.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(market?.tokenSymbol || 'MEME')}-PERP <span class="tag lime">${state.perpPosition.isLong ? '多' : '空'}</span></strong><small>逐仓 · Quote Token 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(new Date(Number(state.perpPosition.openedAt) * 1000).toLocaleString()) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
+      }
       const submit = $('#perps-submit');
-      if (submit && !enabled) {
-        submit.disabled = true;
-        submit.textContent = '永续主网暂未开放';
+      if (submit) {
+        const side = $('[data-perps-side="short"]')?.classList.contains('active') ? '空' : '多';
+        submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly));
+        submit.textContent = state.perpSubmitting ? '正在准备链上参数…' : !state.account ? '连接钱包后开仓' : state.perpModernAction === 'close_position' ? '确认市价平仓' : `确认开${side}`;
         submit.removeAttribute('data-toast');
       }
     }
@@ -809,7 +840,11 @@
     const epochEnded = Number(market?.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000;
     const canClaimPlatformFees = action !== "claim_platform_fees" || BigInt(position?.platformFeeClaimableRaw || "0") > 0n;
     if (submit) {
-      submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
+      // A stale keeper heartbeat is an idle state, not a dead end. Keep the
+      // risk-adding action available so the authenticated prepare request can
+      // wake the on-demand keeper. A market-level closeOnly flag remains a
+      // hard risk control and is never bypassed here.
+      submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && market?.closeOnly) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
       submit.textContent = state.perpSubmitting ? "正在校验并等待钱包确认…" : "确认并提交链上交易";
     }
     const preview = $("[data-perp-preview]");
@@ -819,6 +854,7 @@
         ? `<div class="section-title"><h3>链上交易快照</h3><span class="tag lime">${state.preparedPerpAction.transactions.length} 笔</span></div>${state.preparedPerpAction.transactions.map((transaction, index) => `<div class="review-row"><span>${index + 1}. ${escapeHtml(transaction.label)}</span><strong>${escapeHtml(short(transaction.to))}</strong></div>`).join("")}`
         : "";
     }
+    renderPerpetualServices();
   };
   const loadPerpetualPosition = async () => {
     const market = selectedPerpMarket();
@@ -842,6 +878,7 @@
     state.perpMarkets = state.perpConfig?.enabled ? await api("v1/pump/perpetual/markets") : [];
     renderPerpetual();
     await loadPerpetualPosition();
+    await loadPerpetualServiceData();
   };
   const perpetualPanelActive = () => Boolean(root.querySelector('[data-panel="perpetual"].active, [data-panel="perps"].active'));
   const refreshPerpetualStatus = async () => {
@@ -924,15 +961,16 @@
     if (!state.account) await connectWallet();
     const market = selectedPerpMarket();
     if (!market || !state.perpConfig?.enabled) throw new Error("永续市场尚未开放");
-    const action = $("#perp-action")?.value || "open_position";
-    if (["open_position", "deposit_liquidity"].includes(action) && (state.perpConfig?.openingsPaused || market.closeOnly)) throw new Error("永续市场当前只允许平仓、清算和安全提取");
+    const modernPerps = Boolean($('[data-panel="perps"].active'));
+    const action = modernPerps ? state.perpModernAction : $("#perp-action")?.value || "open_position";
+    if (["open_position", "deposit_liquidity"].includes(action) && market.closeOnly) throw new Error("永续市场当前只允许平仓、清算和安全提取");
     if (action === "open_position" && Number(market.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000) throw new Error("当前风险周期已结束，等待存量仓位结算和下一周期开启");
     if (["deposit_liquidity", "withdraw_liquidity"].includes(action) && BigInt(market.lockedNotionalRaw || "0") > 0n) throw new Error("当前市场存在未平仓仓位，LP 份额暂时锁定以防未实现盈亏套利");
     const body = { wallet_address: state.account, market_id: Number(market.marketId), action };
-    if (["open_position", "deposit_liquidity"].includes(action)) body.amount_raw = parseUnits($("#perp-amount")?.value, Number(market.quoteDecimals || 18)).toString();
+    if (["open_position", "deposit_liquidity"].includes(action)) body.amount_raw = parseUnits($(modernPerps ? "#perps-size" : "#perp-amount")?.value, Number(market.quoteDecimals || 18)).toString();
     if (action === "open_position") {
-      body.leverage = Number($("#perp-leverage")?.value || 0);
-      body.is_long = $("#perp-side")?.value !== "short";
+      body.leverage = Number($(modernPerps ? "#perps-leverage" : "#perp-leverage")?.value || 0);
+      body.is_long = modernPerps ? !$('[data-perps-side="short"]')?.classList.contains("active") : $("#perp-side")?.value !== "short";
       const notional = BigInt(body.amount_raw) * BigInt(body.leverage);
       const maxPosition = BigInt(market.maxPositionNotionalRaw || "0");
       if (maxPosition > 0n && notional > maxPosition) {
@@ -949,11 +987,24 @@
       body.recipient = String($("#perp-trader")?.value || "").trim().toLowerCase();
       if (!/^0x[0-9a-f]{40}$/.test(body.recipient) || /^0x0{40}$/.test(body.recipient)) throw new Error("请输入有效的目标仓位钱包地址");
     }
-    const prepared = await api("v1/pump/perpetual/prepare", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    let prepared = null;
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      try {
+        prepared = await api("v1/pump/perpetual/prepare", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        break;
+      } catch (error) {
+        if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
+        text("[data-perp-status]", "正在按需唤醒永续风控与预言机，请稍候，无需重复点击…");
+        if (attempt === 15) throw new Error("永续风控唤醒超时，请稍后重试；当前不会发起钱包签名或扣费");
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        state.perpConfig = await api("v1/pump/perpetual/config");
+      }
+    }
+    if (!prepared) throw new Error("永续交易参数暂未准备完成");
     validatePreparedPerpetual(prepared, market, body);
     state.preparedPerpAction = prepared;
     state.preparedPerpRequest = body;
@@ -968,6 +1019,7 @@
     for (const transaction of state.preparedPerpAction.transactions) await sendVaultTransaction(transaction, transaction.label || "永续操作");
     state.preparedPerpAction = null;
     state.preparedPerpRequest = null;
+    state.perpModernAction = "open_position";
     toast("永续操作链上回执成功");
     try {
       await loadPerpetual();
@@ -1097,7 +1149,7 @@
       .filter((token) => tokenAddress(token))
       .map(tokenCard)
       .join("");
-    $$(ui20260911 ? '[data-market-panel="spot"] .token-grid' : ".token-grid").forEach((node) => {
+    $$(ui20260911 ? '[data-panel="discover"] .token-grid, [data-market-panel="spot"] .token-grid' : ".token-grid").forEach((node) => {
       node.innerHTML = html || `<p class="footer-note">暂无真实 Pump 项目数据。</p>`;
     });
     bindLiveTokenSelection();
@@ -2318,6 +2370,145 @@
     renderWebhooks();
     void loadIntegrationStatus();
   };
+  const serviceFeeLabel = (raw) => {
+    try {
+      return `${formatUnits(BigInt(raw || "0"), 18)} BNB`;
+    } catch {
+      return "—";
+    }
+  };
+  const renderPerpetualServices = () => {
+    if (!ui20260911) return;
+    const config = state.perpConfig || {};
+    const feeRecipient = config.serviceFeeRecipient || "—";
+    const marketOptions = state.perpMarkets.length
+      ? state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}">${escapeHtml(market.tokenSymbol || market.tokenName || "MEME")}-PERP · #${Number(market.marketId)}</option>`).join("")
+      : '<option value="">当前没有可用市场</option>';
+    const resumablePools = state.perpServiceRequests
+      .filter((request) => request.requestType === "create_pool" && request.status === "paid")
+      .map((request) => `<article class="risk-note"><strong>服务费已支付 · Market #${Number(request.payload?.marketId)}</strong><span>LP 注资尚未完成，可继续执行且不会再次收取平台服务费。</span><button class="secondary" type="button" data-perp-pool-resume="${escapeHtml(request.requestId)}">继续链上注资</button></article>`)
+      .join("");
+    const addPanel = $('[data-panel="perps-add-contract"]');
+    if (addPanel) addPanel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">PERPS / ONBOARD</div><strong>添加链上 MEME 合约</strong></div><span class="tag lime">BSC</span></div><div class="page-title"><h1>由钱包直接创建永续市场</h1><p>平台安全清单锁定受信任 Oracle、报价资产、最低流动性和杠杆上限；合约还会再次执行批准名单、Oracle 风险、会计和偿付能力校验。</p></div><section class="contract-shell"><div class="form-card-title"><div><h3>01 · 输入 MEME 合约</h3><p>填写真实 BSC 代币地址。用户界面不允许自行指定 Oracle 或风险参数。</p></div><span class="tag">安全参数</span></div><div class="form-group"><label>MEME 合约地址</label><input class="field" id="perps-service-token" placeholder="0x..." autocomplete="off"></div></section><section class="contract-shell direct-chain-flow"><div class="form-card-title"><div><h3>02 · 钱包确认创建</h3><p>平台不代签、不保存 Owner 私钥，也不收取添加市场服务费。你只需支付钱包显示的 BSC 网络 Gas。</p></div><span class="tag lime">平台费 0 BNB</span></div><div class="plain-summary"><span>Oracle / 报价资产：<b>按安全清单</b></span><span>市场初始状态：<b>未开放，注资和启用分开完成</b></span><span>网络 Gas：<b>由当前钱包支付</b></span></div><button class="primary" type="button" data-perp-service-submit="add_contract" ${state.perpServiceBusy ? "disabled" : ""}>${state.account ? "校验并由钱包创建市场" : "连接钱包后创建"}</button></section>`;
+    const poolPanel = $('[data-panel="perps-create-pool"]');
+    if (poolPanel) poolPanel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">PERPS / POOL BUILDER</div><strong>创建 MEME 对手池</strong></div><span class="tag lime">真实 LP</span></div><div class="page-title"><h1>创建链上对手池</h1><p>选择已激活市场并投入报价资产。当前合约采用每个市场一个聚合 LP 池，份额和盈亏均在链上记账。</p></div>${resumablePools}<div class="pool-builder-grid"><section class="pool-form-card"><div class="form-group"><label>永续市场</label><select class="field" id="perps-pool-market">${marketOptions}</select></div><div class="two-column-form"><div class="form-group"><label>投入金额（报价资产）</label><input class="field" id="perps-pool-amount" inputmode="decimal" placeholder="0.00"></div><div class="form-group"><label>风险说明</label><input class="field" value="聚合 LP 池 · 按份额承担盈亏" readonly></div></div><div class="risk-note">市场存在未平仓仓位时，合约会锁定新增/提取流动性。请确认你理解 LP 可能承担交易者盈利和极端行情损失。</div></section><aside class="pool-summary-card"><div class="form-card-title"><div><h3>创建前确认</h3><p>平台服务费支付后执行 ERC-20 授权与真实 LP 注资。</p></div><span class="tag lime">${escapeHtml(serviceFeeLabel(config.createPoolFeeWei))}</span></div><div class="quote"><div><span>平台服务费</span><strong>${escapeHtml(serviceFeeLabel(config.createPoolFeeWei))}</strong></div><div><span>统一收款地址</span><strong>${escapeHtml(short(feeRecipient))}</strong></div><div><span>网络 Gas</span><strong>钱包实时估算</strong></div></div><button class="primary" type="button" data-perp-service-submit="create_pool" ${state.perpServiceBusy || !state.perpMarkets.length ? "disabled" : ""}>${state.account ? "付费并创建链上池子" : "连接钱包后创建"}</button></aside></div>`;
+    const market = selectedPerpMarket();
+    const poolDetail = $('[data-panel="perps-pool"]');
+    if (poolDetail) poolDetail.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">COUNTERPARTY POOL</div><strong>池子详情</strong></div></div><div class="pool-hero"><div class="pool-hero-top"><div class="pool-identity"><img src="${escapeHtml(market?.tokenImage || './assets/tokens/generic.svg')}" alt=""><div><h2>${escapeHtml(market?.tokenSymbol || "—")}-PERP · 聚合池 #${market ? Number(market.marketId) : "—"}</h2><p>BSC · Quote Token 本位 · 链上份额</p></div></div></div></div><div class="pool-metrics"><div><span>总流动性</span><strong>${market ? escapeHtml(formatUnits(BigInt(market.liquidityRaw || "0"), Number(market.quoteDecimals || 18))) : "—"}</strong></div><div><span>锁定名义价值</span><strong>${market ? escapeHtml(formatUnits(BigInt(market.lockedNotionalRaw || "0"), Number(market.quoteDecimals || 18))) : "—"}</strong></div><div><span>最高杠杆</span><strong>${market ? Number(market.maxLeverage || 0) : "—"}×</strong></div><div><span>市场状态</span><strong>${market?.enabled ? (market.closeOnly ? "只减仓" : "开放") : "未开放"}</strong></div></div><div class="perps-risk">池子不是保本产品；LP 按链上份额承担交易者盈亏、预言机及极端行情风险。</div>`;
+    const activityPanel = $('[data-panel="perps-onchain"]');
+    if (activityPanel) {
+      const rows = state.perpActivity.map((item) => {
+        const itemMarket = state.perpMarkets.find((candidate) => Number(candidate.marketId) === Number(item.marketId));
+        const hash = String(item.lastTxHash || "");
+        return `<article class="onchain-row"><div class="record-identity"><img src="${escapeHtml(itemMarket?.tokenImage || './assets/tokens/generic.svg')}" alt=""><div><strong>${escapeHtml(itemMarket?.tokenSymbol || `Market #${Number(item.marketId)}`)}-PERP</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString("en-US")}</small></div></div><div class="record-cell"><strong class="${item.isOpen ? "up" : ""}">${item.isOpen ? "持仓中" : "已平仓 / 已结算"}</strong><span>${escapeHtml(short(item.traderAddress || ""))}</span></div><div class="record-cell"><span>最后链上交易</span><strong>${escapeHtml(short(hash))}</strong></div><a class="secondary" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${hash}`)}" target="_blank" rel="noopener noreferrer">区块浏览器</a></article>`;
+      }).join("");
+      activityPanel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">ON-CHAIN POSITIONS</div><strong>链上开仓记录</strong></div><button class="icon-btn" type="button" data-perp-activity-refresh aria-label="刷新">↻</button></div><div class="page-title"><h1>每笔仓位都可核验</h1><p>数据由后端链上索引统一读取，前端不再为每个页面重复请求 RPC。</p></div><div class="ledger-toolbar"><span class="tag lime">${state.perpActivity.length} 条真实索引记录</span><button class="secondary" type="button" data-perp-activity-export ${state.perpActivity.length ? "" : "disabled"}>导出 CSV</button></div><div class="onchain-ledger">${rows || '<p class="footer-note">当前没有已索引的真实永续仓位记录。</p>'}</div>`;
+    }
+  };
+  const loadPerpetualServiceData = async () => {
+    if (!isBscFeatureChain()) {
+      state.perpActivity = [];
+      state.perpServiceRequests = [];
+      renderPerpetualServices();
+      return;
+    }
+    const tasks = [api("v1/pump/perpetual/activity?limit=200").then((rows) => { state.perpActivity = Array.isArray(rows) ? rows : []; })];
+    if (state.account) tasks.push(api(`v1/pump/perpetual/service-requests?wallet_address=${encodeURIComponent(state.account)}`).then((rows) => { state.perpServiceRequests = Array.isArray(rows) ? rows : []; }));
+    await Promise.allSettled(tasks);
+    renderPerpetualServices();
+  };
+  const completePaidPoolRequest = async (request) => {
+    const payload = request?.payload || {};
+    const market = state.perpMarkets.find((item) => Number(item.marketId) === Number(payload.marketId));
+    if (!market || !request?.requestId || request.status !== "paid") throw new Error("找不到可继续的已付费对手池申请");
+    state.selectedPerpMarketId = Number(payload.marketId);
+    const body = { wallet_address: state.account, market_id: Number(payload.marketId), action: "deposit_liquidity", amount_raw: String(payload.amountRaw || "") };
+    let action;
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      try {
+        action = await api("v1/pump/perpetual/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        break;
+      } catch (error) {
+        if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
+        if (attempt === 15) throw new Error("平台服务费已支付，但 Keeper 唤醒超时；稍后仍可从本页继续注资，不会重复收费");
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      }
+    }
+    validatePreparedPerpetual(action, market, body);
+    let depositTxHash = "";
+    for (const tx of action.transactions) depositTxHash = await sendVaultTransaction(tx, tx.label || "对手池注资");
+    const completed = await api("v1/pump/perpetual/service-requests/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ walletAddress: state.account, requestId: request.requestId, txHash: depositTxHash }) });
+    state.perpServiceRequests = [completed, ...state.perpServiceRequests.filter((item) => item.requestId !== completed.requestId)];
+    toast("对手池服务费与链上 LP 注资均已成功", 8000);
+    await loadPerpetual();
+    show("perps-pool");
+  };
+  const createPermissionlessPerpetualMarket = async () => {
+    if (state.perpServiceBusy) return;
+    if (!state.account) await connectWallet();
+    if (!isBscFeatureChain()) throw new Error("添加永续市场当前仅支持 BNB Smart Chain");
+    const tokenAddress = String($("#perps-service-token")?.value || "").trim().toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(tokenAddress) || /^0x0{40}$/.test(tokenAddress)) throw new Error("请输入有效的 BSC MEME 合约地址");
+    state.perpServiceBusy = true;
+    renderPerpetualServices();
+    try {
+      const prepared = await api("v1/pump/perpetual/prepare-market", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ walletAddress: state.account, tokenAddress }),
+      });
+      const transaction = prepared?.transaction;
+      const contract = String(state.perpConfig?.contractAddress || "").toLowerCase();
+      const quoteToken = String(prepared?.quoteTokenAddress || "").toLowerCase();
+      const oracle = String(prepared?.oracleAddress || "").toLowerCase();
+      const encodeAddressWord = (value) => String(value || "").replace(/^0x/, "").toLowerCase().padStart(64, "0");
+      const encodeUintWord = (value) => BigInt(value).toString(16).padStart(64, "0");
+      if (!/^0x[0-9a-f]{40}$/.test(quoteToken) || !/^0x[0-9a-f]{40}$/.test(oracle)) throw new Error("永续报价资产或 Oracle 地址无效");
+      const expectedData = `0x723219d3${encodeAddressWord(tokenAddress)}${encodeAddressWord(quoteToken)}${encodeAddressWord(oracle)}${encodeUintWord(prepared.maxLeverage)}${encodeUintWord(prepared.minLiquidityRaw)}`;
+      if (!transaction
+        || String(transaction.to || "").toLowerCase() !== contract
+        || normalizeChainId(transaction.chainId || transaction.chain_id || "") !== "0x38"
+        || BigInt(transaction.value || "0") !== 0n
+        || String(transaction.data || "").toLowerCase() !== expectedData) {
+        throw new Error("市场创建交易与链上安全模板不一致，已阻止签名");
+      }
+      const txHash = await sendVaultTransaction(transaction, "永续市场创建");
+      showOperationDialog(`市场已由当前钱包创建。\n交易哈希：${txHash}\n市场初始为未开放状态，仍需完成 LP 注资、备用 Oracle 和启用流程。`, { title: "市场创建成功", tag: "链上已确认", success: true });
+      await loadPerpetual();
+      show("perps");
+    } finally {
+      state.perpServiceBusy = false;
+      renderPerpetualServices();
+    }
+  };
+  const submitPerpetualService = async (requestType) => {
+    if (requestType === "add_contract") return createPermissionlessPerpetualMarket();
+    if (state.perpServiceBusy) return;
+    if (!state.account) await connectWallet();
+    if (!isBscFeatureChain()) throw new Error("永续服务当前仅在 BNB Smart Chain 开放");
+    if (requestType !== "create_pool") throw new Error("不支持的永续服务类型");
+    const marketId = Number($("#perps-pool-market")?.value);
+    const market = state.perpMarkets.find((item) => Number(item.marketId) === marketId);
+    if (!market) throw new Error("请选择有效的永续市场");
+    const amount = String($("#perps-pool-amount")?.value || "").trim();
+    const amountRaw = parseUnits(amount, Number(market.quoteDecimals || 18)).toString();
+    const payload = { tokenAddress: market.tokenAddress, marketId, amount, amountRaw };
+    state.perpServiceBusy = true;
+    renderPerpetualServices();
+    try {
+      const prepared = await api("v1/pump/perpetual/service-requests", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ walletAddress: state.account, requestType, payload }) });
+      const transaction = prepared?.transaction;
+      const expectedRecipient = String(state.perpConfig?.serviceFeeRecipient || "").toLowerCase();
+      if (!transaction || String(transaction.to || "").toLowerCase() !== expectedRecipient || String(transaction.data || "").toLowerCase() !== "0x" || BigInt(transaction.value || "0") !== BigInt(prepared.feeAmountWei || "0")) throw new Error("平台服务费交易参数与配置不一致");
+      const txHash = await sendVaultTransaction(transaction, "对手池创建服务费");
+      const confirmed = await api("v1/pump/perpetual/service-requests/confirm", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ walletAddress: state.account, requestId: prepared.requestId, txHash }) });
+      state.perpServiceRequests = [confirmed, ...state.perpServiceRequests.filter((item) => item.requestId !== confirmed.requestId)];
+      await completePaidPoolRequest(confirmed);
+    } finally {
+      state.perpServiceBusy = false;
+      renderPerpetualServices();
+    }
+  };
   const toggleFavorite = async () => {
     if (!state.selected) throw new Error("请先选择代币");
     const token = state.selected;
@@ -2383,15 +2574,13 @@
     });
     if (ui20260911) {
       $('[data-market-panel="perps"] .token-grid')?.replaceChildren();
-      $$('[data-panel="perps"] .perps-pairs, [data-panel="perps"] [data-perps-panel="orders"], [data-panel="perps"] [data-perps-panel="triggers"], [data-panel="perps"] [data-perps-panel="onchain"], [data-panel="perps"] .perps-search-item, [data-panel="perps"] .perps-action-bar, [data-panel="perps"] .perps-action-guide, [data-panel="rank"] .curve-panel').forEach((node) => node.remove());
+      $$('[data-panel="perps"] .perps-pairs, [data-panel="perps"] [data-perps-panel="orders"], [data-panel="perps"] [data-perps-panel="triggers"], [data-panel="perps"] [data-perps-panel="onchain"], [data-panel="perps"] .perps-search-results, [data-panel="rank"] .curve-panel').forEach((node) => node.replaceChildren());
       const perpsSearch = $('#perps-market-search');
       if (perpsSearch) {
         perpsSearch.value = '';
         perpsSearch.disabled = true;
         perpsSearch.placeholder = '正在读取真实永续市场…';
       }
-      const perpsWorkspace = $('[data-panel="perps"] .perps-workspace');
-      if (perpsWorkspace) perpsWorkspace.innerHTML = `<section class="perps-content-panel active"><div class="section-title"><h3>真实链上状态</h3><span class="tag">READ ONLY</span></div><p class="footer-note" data-perp-status>正在读取永续合约状态…</p><p class="risk-note">主网交易开关开启并完成实盘门禁前，本候选版不会生成或广播永续交易。</p></section>`;
       text('[data-perps-symbol], [data-perps-price], [data-perps-change], [data-perps-mark], [data-perps-volume], [data-perps-oi], [data-perps-funding], [data-perps-position], [data-perps-entry], [data-perps-liq], [data-perps-notional], [data-perps-est-liq]', '—');
       $$('[data-panel="perps"] .perps-pnl strong, [data-panel="perps"] .perps-pnl small, [data-panel="perps"] .perps-position-grid strong, [data-panel="perps"] .account-equity strong, [data-panel="perps"] .order-label strong').forEach((node) => { node.textContent = '—'; });
       const perpsSubmit = $('#perps-submit');
@@ -2400,13 +2589,28 @@
         perpsSubmit.textContent = '正在读取永续市场状态…';
         perpsSubmit.removeAttribute('data-toast');
       }
-      const pendingPanels = ['perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain', 'success', 'my-launches', 'activity', 'watchlist', 'profile', 'income-center', 'developer-tools', 'invite-center', 'alert-center', 'protection', 'language-center'];
+      // These prototype-only perpetual subpages are never allowed to leak
+      // sample balances, transaction hashes, pools, or market claims into the
+      // production shell. Real API-backed forms replace this fail-closed body
+      // when the corresponding capability is available.
+      const pendingPanels = ['perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain'];
       pendingPanels.forEach((name) => {
         const panel = root.querySelector(`[data-panel="${name}"]`);
         if (!panel) return;
         panel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="discover" aria-label="返回发现市场">←</button><div><div class="eyebrow">LIVE INTEGRATION</div><strong>功能接入中</strong></div><span class="tag">不展示样例数据</span></div><div class="page-title"><h1>该模块正在接入真实 API</h1><p>当前候选版不会展示原型金额、模拟持仓或模拟交易，也不会发送链上写交易。</p></div>`;
       });
+      renderPerpetualServices();
       $$('.chart').forEach((node) => node.replaceChildren());
+      // The supplied design file contains visual-only sample names and amounts
+      // outside the API-bound containers. Remove them before revealing the UI.
+      const prototypePattern = /CASHCAT|MOONBUN|1,284|\$18\.6M|\$721K|2,840\.62 USDT/g;
+      $$('*').forEach((node) => {
+        [...node.childNodes].filter((child) => child.nodeType === 3 && prototypePattern.test(child.textContent || '')).forEach((child) => {
+          prototypePattern.lastIndex = 0;
+          child.textContent = String(child.textContent || '').replace(prototypePattern, '—');
+        });
+        prototypePattern.lastIndex = 0;
+      });
     }
     $$("#launch-kline, #trade-kline").forEach((node) => {
       node.replaceChildren();
@@ -4228,7 +4432,7 @@
       renderAnnouncements();
       if (!state.announcements.length) void loadAnnouncements().catch((error) => toastError(error, "公告加载失败，请稍后重试"));
     }
-    if (name === "perpetual" || name === "perps") void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
+    if (["perpetual", "perps", "perps-add-contract", "perps-create-pool", "perps-pool", "perps-onchain"].includes(name)) void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
     if ((name === "alerts" || name === "alert-center") && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
     if (name === "revenue-center" || name === "income-center") {
       renderVaults();
@@ -4240,15 +4444,7 @@
     }
   };
   const bindNavigation = () => {
-    $$("[data-open]").forEach((node) =>
-      node.addEventListener("click", (event) => {
-        if (node.dataset.liveToken) return;
-        event.preventDefault();
-        if (node.dataset.launchMode) applyLaunchMode(node.dataset.launchMode);
-        show(node.dataset.open);
-        if (node.dataset.side) applySide(node.dataset.side === "sell");
-      }),
-    );
+    // data-open is delegated from root because the latest UI redraws child pages.
     $$("[data-nav]").forEach((node) => node.addEventListener("click", () => show(node.dataset.nav)));
     $$("[data-detail-tab]").forEach((node) =>
       node.addEventListener("click", () => {
@@ -4298,6 +4494,91 @@
       renderPerpetual();
     }));
     $("[data-perp-submit]")?.addEventListener("click", () => submitPerpetualAction().catch((error) => toastError(error, "永续操作失败")));
+    $("#perps-submit")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      submitPerpetualAction().catch((error) => toastError(error, "永续操作失败"));
+    });
+    root.addEventListener("click", (event) => {
+      const openButton = event.target.closest("[data-open]");
+      if (openButton && !openButton.dataset.liveToken) {
+        event.preventDefault();
+        if (openButton.dataset.launchMode) applyLaunchMode(openButton.dataset.launchMode);
+        show(openButton.dataset.open);
+        if (openButton.dataset.side) applySide(openButton.dataset.side === "sell");
+        return;
+      }
+      const serviceButton = event.target.closest("[data-perp-service-submit]");
+      if (serviceButton) {
+        event.preventDefault();
+        submitPerpetualService(serviceButton.dataset.perpServiceSubmit).catch((error) => toastError(error, "永续服务提交失败"));
+        return;
+      }
+      const resumePoolButton = event.target.closest("[data-perp-pool-resume]");
+      if (resumePoolButton) {
+        event.preventDefault();
+        if (state.perpServiceBusy) return;
+        const request = state.perpServiceRequests.find((item) => item.requestId === resumePoolButton.dataset.perpPoolResume);
+        state.perpServiceBusy = true;
+        renderPerpetualServices();
+        completePaidPoolRequest(request)
+          .catch((error) => toastError(error, "对手池注资失败"))
+          .finally(() => {
+            state.perpServiceBusy = false;
+            renderPerpetualServices();
+          });
+        return;
+      }
+      if (event.target.closest("[data-perp-activity-refresh]")) {
+        event.preventDefault();
+        loadPerpetualServiceData().catch((error) => toastError(error, "链上记录刷新失败"));
+        return;
+      }
+      if (event.target.closest("[data-perp-activity-export]")) {
+        event.preventDefault();
+        const rows = [["market_id", "trader", "status", "opened_tx_hash", "last_tx_hash", "block_number", "updated_at"], ...state.perpActivity.map((item) => [item.marketId, item.traderAddress, item.isOpen ? "open" : "closed", item.openedTxHash || "", item.lastTxHash || "", item.blockNumber, item.updatedAt])];
+        const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+        const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `bitbt-perpetual-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+      const marketButton = event.target.closest("[data-real-perp-market]");
+      if (marketButton) {
+        state.selectedPerpMarketId = Number(marketButton.dataset.realPerpMarket);
+        const legacySelect = $("#perp-market");
+        if (legacySelect) legacySelect.value = String(state.selectedPerpMarketId);
+        state.perpPosition = null;
+        state.preparedPerpAction = null;
+        state.preparedPerpRequest = null;
+        renderPerpetual();
+        void loadPerpetualPosition().catch((error) => toastError(error, "永续仓位读取失败"));
+      }
+      const sideButton = event.target.closest("[data-perps-side]");
+      if (sideButton) {
+        state.perpModernAction = "open_position";
+        $$('[data-perps-side]').forEach((node) => node.classList.toggle("active", node === sideButton));
+        renderPerpetual();
+      }
+      if (event.target.closest("[data-modern-perp-close]")) {
+        state.perpModernAction = "close_position";
+        renderPerpetual();
+        submitPerpetualAction().catch((error) => toastError(error, "永续平仓失败"));
+      }
+    });
+    $("#perps-market-search")?.addEventListener("input", (event) => {
+      const keyword = String(event.target.value || "").trim().toLowerCase();
+      let visible = 0;
+      $$('[data-real-perp-search]').forEach((node) => {
+        const match = !keyword || String(node.dataset.search || "").includes(keyword);
+        node.classList.toggle("hidden", !match);
+        if (match) visible += 1;
+      });
+      $("[data-perps-search-empty]")?.classList.toggle("show", visible === 0);
+      $("[data-perps-search-shell]")?.classList.add("open");
+    });
     $$('[data-announcement-filter]').forEach((node) => node.addEventListener("click", () => {
       state.announcementFilter = node.dataset.announcementFilter || "all";
       $$('[data-announcement-filter]').forEach((button) => button.classList.toggle("active", button === node));
@@ -4677,11 +4958,7 @@
       renderMyPanels();
     }),
   );
-  const chainSelect = $("[data-chain-select]");
-  if (chainSelect) {
-    chainSelect.value = state.selectedChain;
-    chainSelect.addEventListener("change", async (event) => {
-      const next = String(event.target.value || "bsc");
+  const switchProductChain = async (next) => {
       if (!NETWORKS[next] || next === state.selectedChain) return;
       state.selectedChain = next;
       writeLocalPreference(CHAIN_KEY, next);
@@ -4712,8 +4989,42 @@
       renderTokens();
       await load();
       connectMarketSocket();
-    });
+  };
+  const chainSelect = $("[data-chain-select]");
+  if (chainSelect) {
+    chainSelect.value = state.selectedChain;
+    chainSelect.addEventListener("change", (event) => void switchProductChain(String(event.target.value || "bsc")));
   }
+  const chainMenu = $("[data-chain-menu]");
+  const chainMenuToggle = $("[data-chain-menu-toggle]");
+  const renderChainMenu = () => {
+    const network = selectedNetwork();
+    text("[data-active-network-label]", network.shortName);
+    const logo = $("[data-global-chain-logo]");
+    if (logo) {
+      logo.src = state.selectedChain === "bsc" ? "./assets/chains/bnb-chain-brand.png" : "./assets/chains/robinhood-chain-brand.png";
+      logo.alt = network.name;
+    }
+    $$('[data-global-chain-option]').forEach((node) => node.classList.toggle("active", node.dataset.globalChainOption === state.selectedChain));
+  };
+  renderChainMenu();
+  chainMenuToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = !chainMenu?.classList.contains("open");
+    chainMenu?.classList.toggle("open", open);
+    chainMenuToggle.setAttribute("aria-expanded", String(open));
+  });
+  $$('[data-global-chain-option]').forEach((node) => node.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    chainMenu?.classList.remove("open");
+    chainMenuToggle?.setAttribute("aria-expanded", "false");
+    await switchProductChain(String(node.dataset.globalChainOption || "bsc"));
+    renderChainMenu();
+  }));
+  document.addEventListener("click", () => {
+    chainMenu?.classList.remove("open");
+    chainMenuToggle?.setAttribute("aria-expanded", "false");
+  });
   routeWindow.addEventListener("popstate", () => {
     const address = routeTokenAddress();
     if (address) {

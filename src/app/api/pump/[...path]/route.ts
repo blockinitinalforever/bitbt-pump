@@ -23,6 +23,10 @@ const SIWE_REQUIRED_ENDPOINTS = new Set([
   "v1/pump/integrations/webhooks",
   "v1/pump/v3-fee-rewards",
   "v1/pump/perpetual/prepare",
+  "v1/pump/perpetual/service-requests",
+  "v1/pump/perpetual/service-requests/confirm",
+  "v1/pump/perpetual/service-requests/complete",
+  "v1/pump/perpetual/prepare-market",
 ]);
 const SIWE_REQUIRED_READ_ENDPOINTS = new Set([
   "v1/pump/wallet-activity",
@@ -34,6 +38,7 @@ const SIWE_REQUIRED_READ_ENDPOINTS = new Set([
   "v1/pump/integrations/webhooks",
   "v1/pump/v3-fee-rewards",
   "v1/pump/perpetual/position",
+  "v1/pump/perpetual/service-requests",
 ]);
 const PUBLIC_SHORT_CACHE_ENDPOINTS = new Set([
   "v1/pump/tokens",
@@ -50,6 +55,7 @@ const PUBLIC_SHORT_CACHE_ENDPOINTS = new Set([
   "v1/pump/networks",
   "v1/pump/perpetual/config",
   "v1/pump/perpetual/markets",
+  "v1/pump/perpetual/activity",
   "v1/pump/name-check",
   "v1/pump/integrations/status",
   "v1/token/launch-options",
@@ -79,6 +85,11 @@ const ALLOWED = new Set([
   "v1/pump/perpetual/markets",
   "v1/pump/perpetual/position",
   "v1/pump/perpetual/prepare",
+  "v1/pump/perpetual/activity",
+  "v1/pump/perpetual/service-requests",
+  "v1/pump/perpetual/service-requests/confirm",
+  "v1/pump/perpetual/service-requests/complete",
+  "v1/pump/perpetual/prepare-market",
   "v1/pump/comments",
   "v1/pump/alerts",
   "v1/pump/name-check",

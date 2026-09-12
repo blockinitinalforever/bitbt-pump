@@ -4412,13 +4412,2910 @@
           font-size: 24px;
         }
       }
+      .perps-hero {
+        margin: 0 -24px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--line);
+        background: linear-gradient(
+          115deg,
+          #101213 0%,
+          #101213 67%,
+          #1b180b 100%
+        );
+      }
+      .perps-hero-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+      }
+      .perps-symbol {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+      .perps-symbol img {
+        width: 48px;
+        height: 48px;
+        border: 1px solid #36393a;
+        border-radius: 12px;
+      }
+      .perps-symbol h2,
+      .perps-symbol p {
+        margin: 0;
+      }
+      .perps-symbol h2 {
+        font-size: 21px;
+      }
+      .perps-symbol p {
+        margin-top: 4px;
+        color: #747976;
+        font:
+          9px/1.3 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-price {
+        text-align: right;
+      }
+      .perps-price strong,
+      .perps-price small {
+        display: block;
+      }
+      .perps-price strong {
+        font:
+          26px/1 "IBM Plex Sans",
+          sans-serif;
+        color: #fff;
+      }
+      .perps-price small {
+        margin-top: 6px;
+        font-size: 10px;
+      }
+      .perps-pairs {
+        display: flex;
+        gap: 7px;
+        margin-top: 15px;
+        overflow: auto;
+        scrollbar-width: none;
+      }
+      .perps-pairs button {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex: 0 0 auto;
+        border: 1px solid #303334;
+        border-radius: 9px;
+        background: #111314;
+        color: #858a86;
+        padding: 8px 10px;
+        font-size: 10px;
+      }
+      .perps-pairs button.active {
+        border-color: #685a10;
+        background: #221f0d;
+        color: var(--lime);
+      }
+      .perps-pairs img {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+      }
+      .perps-workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(310px, 0.85fr);
+        gap: 14px;
+        align-items: start;
+        margin-top: 14px;
+      }
+      .perps-market-column,
+      .perps-order-column {
+        min-width: 0;
+      }
+      .perps-order-column {
+        position: sticky;
+        top: 76px;
+      }
+      .perps-stat-strip {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid #2d3031;
+        border-radius: 13px;
+        overflow: hidden;
+        background: #101213;
+        margin-bottom: 12px;
+      }
+      .perps-stat-strip div {
+        padding: 11px 12px;
+        border-left: 1px solid #292c2d;
+      }
+      .perps-stat-strip div:first-child {
+        border-left: 0;
+      }
+      .perps-stat-strip span,
+      .perps-stat-strip strong {
+        display: block;
+      }
+      .perps-stat-strip span {
+        color: #696e6b;
+        font:
+          8px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-stat-strip strong {
+        margin-top: 5px;
+        font:
+          10px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-toolbar {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .perps-toolbar button {
+        border: 1px solid #303334;
+        border-radius: 8px;
+        background: #111314;
+        color: #999e9a;
+        padding: 7px 9px;
+        font-size: 9px;
+      }
+      .perps-toolbar button.active {
+        border-color: #5f5210;
+        background: #201d0d;
+        color: var(--lime);
+      }
+      .perps-toolbar .account-equity {
+        margin-left: auto;
+        text-align: right;
+      }
+      .perps-toolbar .account-equity span,
+      .perps-toolbar .account-equity strong {
+        display: block;
+      }
+      .perps-toolbar .account-equity span {
+        color: #6f7471;
+        font-size: 8px;
+      }
+      .perps-toolbar .account-equity strong {
+        margin-top: 3px;
+        font:
+          11px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-side {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 5px;
+        border: 1px solid #2d3031;
+        border-radius: 11px;
+        background: #0e1011;
+        padding: 4px;
+      }
+      .perps-side button {
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #777c78;
+        padding: 10px;
+      }
+      .perps-side button[data-perps-side="long"].active {
+        background: #10291c;
+        color: #52e49a;
+      }
+      .perps-side button[data-perps-side="short"].active {
+        background: #2a1419;
+        color: #ff7c91;
+      }
+      .perps-order-tabs {
+        display: flex;
+        gap: 16px;
+        border-bottom: 1px solid #2b2e2f;
+        margin-top: 14px;
+      }
+      .perps-order-tabs button {
+        border: 0;
+        background: transparent;
+        color: #747976;
+        padding: 9px 0;
+        font-size: 10px;
+      }
+      .perps-order-tabs button.active {
+        color: #fff;
+        border-bottom: 2px solid var(--lime);
+      }
+      .perps-order-box {
+        border: 1px solid #2d3031;
+        border-radius: 15px;
+        background: #101213;
+        padding: 16px;
+        margin-top: 12px;
+      }
+      .perps-field {
+        border: 1px solid #303334;
+        border-radius: 10px;
+        background: #0c0e0f;
+        padding: 11px 12px;
+        margin-top: 10px;
+      }
+      .perps-field .order-label {
+        margin-bottom: 8px;
+      }
+      .perps-field .amount-input {
+        padding: 0;
+        border: 0;
+      }
+      .perps-field .amount-input input {
+        font-size: 25px;
+      }
+      .leverage-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 15px;
+        font-size: 10px;
+      }
+      .leverage-head span {
+        color: #787d79;
+      }
+      .leverage-head strong {
+        color: var(--lime);
+        font:
+          15px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .leverage-slider {
+        width: 100%;
+        accent-color: var(--lime);
+        margin: 13px 0 4px;
+      }
+      .leverage-scale {
+        display: flex;
+        justify-content: space-between;
+        color: #606562;
+        font:
+          8px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-size-chips {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        margin-top: 11px;
+      }
+      .perps-size-chips button {
+        border: 1px solid #303334;
+        border-radius: 7px;
+        background: #17191a;
+        color: #9da19e;
+        padding: 7px 3px;
+        font-size: 9px;
+      }
+      .perps-size-chips button:hover {
+        border-color: #67590f;
+        color: var(--lime);
+      }
+      .perps-submit.long {
+        background: #35d981;
+        color: #06150e;
+      }
+      .perps-submit.short {
+        background: #ff5c73;
+        color: #19080c;
+      }
+      .perps-tabs {
+        display: flex;
+        gap: 20px;
+        border-bottom: 1px solid #292c2d;
+        margin-top: 13px;
+        padding-inline: 15px;
+      }
+      .perps-tabs button {
+        border: 0;
+        background: transparent;
+        color: #747976;
+        padding: 12px 0 10px;
+        font-size: 10px;
+      }
+      .perps-tabs button.active {
+        color: var(--lime);
+        border-bottom: 2px solid var(--lime);
+      }
+      .perps-position {
+        border: 1px solid #2d3031;
+        border-radius: 0 0 14px 14px;
+        border-top: 0;
+        background: #101213;
+        padding: 15px;
+      }
+      .perps-position-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .perps-position-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .perps-position-name img {
+        width: 34px;
+        height: 34px;
+        border: 1px solid #36393a;
+        border-radius: 9px;
+      }
+      .perps-position-name strong,
+      .perps-position-name small {
+        display: block;
+      }
+      .perps-position-name small {
+        color: #707572;
+        font-size: 8px;
+        margin-top: 3px;
+      }
+      .perps-pnl {
+        text-align: right;
+      }
+      .perps-pnl strong,
+      .perps-pnl small {
+        display: block;
+      }
+      .perps-pnl strong {
+        font:
+          15px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-pnl small {
+        color: #6f7471;
+        font-size: 8px;
+        margin-top: 3px;
+      }
+      .perps-position-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        border-top: 1px solid #292c2d;
+        margin-top: 13px;
+        padding-top: 12px;
+      }
+      .perps-position-grid span,
+      .perps-position-grid strong {
+        display: block;
+      }
+      .perps-position-grid span {
+        color: #656a67;
+        font:
+          8px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-position-grid strong {
+        margin-top: 5px;
+        font:
+          9px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-position-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 7px;
+        margin-top: 13px;
+      }
+      .perps-position-actions button {
+        border: 1px solid #343738;
+        border-radius: 8px;
+        background: #151718;
+        color: #b9bcb9;
+        padding: 8px 11px;
+        font-size: 9px;
+      }
+      .perps-risk {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        border: 1px solid #4e4518;
+        border-radius: 11px;
+        background: #17160e;
+        color: #a9a174;
+        padding: 11px;
+        margin-top: 10px;
+        font-size: 9px;
+        line-height: 1.5;
+      }
+      .perps-risk .ico {
+        color: var(--lime);
+      }
+      .perps-search-shell {
+        position: relative;
+        flex: 1;
+        min-width: 250px;
+        max-width: 470px;
+        margin-left: auto;
+      }
+      .perps-search-box {
+        height: 44px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid #393c3d;
+        border-radius: 11px;
+        background: #0d0f10;
+        padding: 0 11px;
+        color: #777c78;
+      }
+      .perps-search-box:focus-within {
+        border-color: #756512;
+        box-shadow: 0 0 0 3px rgba(255, 210, 28, 0.06);
+      }
+      .perps-search-box input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: #fff;
+        font:
+          10px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-search-box input::placeholder {
+        color: #626764;
+      }
+      .perps-search-box kbd {
+        border: 1px solid #343738;
+        border-radius: 5px;
+        background: #17191a;
+        color: #777c78;
+        padding: 3px 5px;
+        font:
+          8px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .perps-search-results {
+        display: none;
+        position: absolute;
+        z-index: 30;
+        top: 50px;
+        left: 0;
+        right: 0;
+        border: 1px solid #373a3b;
+        border-radius: 12px;
+        background: #111314;
+        box-shadow: 0 22px 50px rgba(0, 0, 0, 0.48);
+        overflow: hidden;
+      }
+      .perps-search-shell.open .perps-search-results {
+        display: block;
+      }
+      .perps-search-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #292c2d;
+        color: #6f7471;
+        font-size: 8px;
+      }
+      .perps-search-item {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-top: 1px solid #292c2d;
+      }
+      .perps-search-item:first-of-type {
+        border-top: 0;
+      }
+      .perps-search-item.hidden {
+        display: none;
+      }
+      .perps-search-item img {
+        width: 34px;
+        height: 34px;
+        border: 1px solid #353839;
+        border-radius: 9px;
+      }
+      .perps-search-item strong,
+      .perps-search-item small {
+        display: block;
+      }
+      .perps-search-item small {
+        margin-top: 4px;
+        color: #6e7370;
+        font-size: 8px;
+      }
+      .perps-search-item button {
+        width: auto;
+        margin: 0;
+        border: 1px solid #3a3d3e;
+        border-radius: 8px;
+        background: #17191a;
+        color: #d5d7d4;
+        padding: 7px 9px;
+        font-size: 8px;
+      }
+      .perps-search-item.ready button {
+        border-color: #315f48;
+        background: #10251b;
+        color: #55df98;
+      }
+      .perps-search-item.missing button {
+        border-color: #675a14;
+        background: #211e0e;
+        color: var(--lime);
+      }
+      .perps-search-empty {
+        display: none;
+        padding: 18px 12px;
+        text-align: center;
+        color: #747976;
+        font-size: 9px;
+      }
+      .perps-search-empty.show {
+        display: block;
+      }
+      .pool-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pool-state:before {
+        content: "";
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #4cdc91;
+      }
+      .missing .pool-state:before {
+        background: var(--lime);
+      }
+      .perps-action-bar {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .perps-action-bar button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 42px;
+        border: 1px solid #353839;
+        border-radius: 10px;
+        background: #111314;
+        color: #d0d3cf;
+        font-size: 10px;
+      }
+      .perps-action-bar button:first-child {
+        border-color: #67590f;
+        background: #201d0d;
+        color: var(--lime);
+      }
+      .perps-action-bar button:hover {
+        border-color: #706111;
+      }
+      .chain-dot {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #3b3e3f;
+        border-radius: 9px;
+        background: #17191a;
+        font:
+          700 12px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .chain-dot.bsc {
+        background: #f3ba2f;
+        color: #111;
+        border-color: #f3ba2f;
+      }
+      .chain-dot.robinhood {
+        background: #e6ff43;
+        color: #112109;
+        border-color: #e6ff43;
+      }
+      .chain-choice-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin: 14px 0;
+      }
+      .chain-choice {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 11px;
+        border: 1px solid #2e3132;
+        border-radius: 13px;
+        background: #101213;
+        color: #e4e6e2;
+        padding: 14px;
+        text-align: left;
+      }
+      .chain-choice.active {
+        border-color: #6b5c10;
+        background: #18170f;
+      }
+      .chain-choice strong,
+      .chain-choice small {
+        display: block;
+      }
+      .chain-choice small {
+        margin-top: 4px;
+        color: #707572;
+        font-size: 9px;
+      }
+      .contract-shell,
+      .pool-form-card,
+      .pool-summary-card {
+        border: 1px solid #2d3031;
+        border-radius: 14px;
+        background: #101213;
+        padding: 16px;
+        margin-top: 12px;
+      }
+      .contract-address {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+      .contract-address .field {
+        margin: 0;
+      }
+      .contract-address button {
+        width: auto;
+        min-width: 112px;
+        margin: 0;
+      }
+      .contract-preview {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 11px;
+        border: 1px solid #313435;
+        border-radius: 12px;
+        background: #0d0f10;
+        padding: 13px;
+        margin-top: 13px;
+      }
+      .contract-preview img {
+        width: 44px;
+        height: 44px;
+        border: 1px solid #373a3b;
+        border-radius: 11px;
+      }
+      .contract-preview strong,
+      .contract-preview small {
+        display: block;
+      }
+      .contract-preview small {
+        margin-top: 4px;
+        color: #707572;
+        font:
+          9px/1.4 "IBM Plex Sans",
+          sans-serif;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .eligibility-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .eligibility-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #292c2d;
+        border-radius: 10px;
+        background: #0d0f10;
+        padding: 10px;
+        font-size: 9px;
+        color: #9ca09d;
+      }
+      .eligibility-item .ico {
+        color: #46dc8c;
+      }
+      .eligibility-item.warn .ico {
+        color: var(--lime);
+      }
+      .two-column-form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 11px;
+      }
+      .form-card-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 13px;
+      }
+      .form-card-title h3,
+      .form-card-title p {
+        margin: 0;
+      }
+      .form-card-title h3 {
+        font-size: 14px;
+      }
+      .form-card-title p {
+        margin-top: 4px;
+        color: #747976;
+        font-size: 9px;
+      }
+      .role-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .role-card {
+        min-height: 145px;
+        border: 1px solid #2e3132;
+        border-radius: 13px;
+        background: #0f1112;
+        color: #e3e5e1;
+        padding: 15px;
+        text-align: left;
+      }
+      .role-card.active {
+        border-color: #6a5b10;
+        background: #19170e;
+      }
+      .role-card .mode-icon {
+        width: 38px;
+        height: 38px;
+      }
+      .role-card strong,
+      .role-card small {
+        display: block;
+      }
+      .role-card strong {
+        margin-top: 12px;
+      }
+      .role-card small {
+        margin-top: 6px;
+        color: #747976;
+        font-size: 9px;
+        line-height: 1.5;
+      }
+      .pool-builder-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(270px, 0.65fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .pool-summary-card {
+        position: sticky;
+        top: 76px;
+      }
+      .pool-summary-hero {
+        border: 1px solid #403816;
+        border-radius: 12px;
+        background: #17160d;
+        padding: 14px;
+      }
+      .pool-summary-hero span,
+      .pool-summary-hero strong {
+        display: block;
+      }
+      .pool-summary-hero span {
+        color: #817c61;
+        font-size: 9px;
+      }
+      .pool-summary-hero strong {
+        margin-top: 7px;
+        font:
+          22px/1 "IBM Plex Sans",
+          sans-serif;
+        color: #fff;
+      }
+      .pool-split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+        margin-top: 10px;
+      }
+      .pool-split div {
+        border: 1px solid #292c2d;
+        border-radius: 9px;
+        background: #0e1011;
+        padding: 10px;
+      }
+      .pool-split span,
+      .pool-split strong {
+        display: block;
+      }
+      .pool-split span {
+        color: #686d6a;
+        font-size: 8px;
+      }
+      .pool-split strong {
+        margin-top: 5px;
+        font-size: 10px;
+      }
+      .pool-hero {
+        margin: 0 -24px;
+        padding: 18px 24px;
+        border-bottom: 1px solid #2a2d2e;
+        background: #0e1011;
+      }
+      .pool-hero-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+      .pool-identity {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+      .pool-identity img {
+        width: 48px;
+        height: 48px;
+        border: 1px solid #343738;
+        border-radius: 12px;
+      }
+      .pool-identity h2,
+      .pool-identity p {
+        margin: 0;
+      }
+      .pool-identity h2 {
+        font-size: 20px;
+      }
+      .pool-identity p {
+        margin-top: 5px;
+        color: #747976;
+        font-size: 9px;
+      }
+      .pool-health {
+        text-align: right;
+      }
+      .pool-health strong,
+      .pool-health small {
+        display: block;
+      }
+      .pool-health strong {
+        color: #50df92;
+        font:
+          18px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .pool-health small {
+        margin-top: 6px;
+        color: #707572;
+        font-size: 8px;
+      }
+      .pool-detail-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(290px, 0.75fr);
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .depth-card,
+      .participant-card {
+        border: 1px solid #2d3031;
+        border-radius: 14px;
+        background: #101213;
+        padding: 15px;
+      }
+      .depth-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+      .depth-head h3,
+      .depth-head p {
+        margin: 0;
+      }
+      .depth-head h3 {
+        font-size: 14px;
+      }
+      .depth-head p {
+        margin-top: 4px;
+        color: #6e7370;
+        font-size: 9px;
+      }
+      .depth-bar {
+        height: 16px;
+        display: flex;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #242728;
+        margin: 15px 0 9px;
+      }
+      .depth-bar .long {
+        background: #2fcf7b;
+      }
+      .depth-bar .short {
+        background: #ff5c73;
+      }
+      .depth-labels {
+        display: flex;
+        justify-content: space-between;
+        font:
+          9px/1.3 "IBM Plex Sans",
+          sans-serif;
+      }
+      .participant-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 12px;
+        padding: 10px 0;
+        border-top: 1px solid #292c2d;
+        align-items: center;
+        font-size: 9px;
+      }
+      .participant-row:first-of-type {
+        border-top: 0;
+      }
+      .participant-row span {
+        color: #777c78;
+      }
+      .participant-row strong:last-child {
+        text-align: right;
+      }
+      .pool-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .pool-metrics div {
+        border: 1px solid #2b2e2f;
+        border-radius: 10px;
+        background: #101213;
+        padding: 11px;
+      }
+      .pool-metrics span,
+      .pool-metrics strong {
+        display: block;
+      }
+      .pool-metrics span {
+        color: #6d726f;
+        font-size: 8px;
+      }
+      .pool-metrics strong {
+        margin-top: 6px;
+        font:
+          11px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .pool-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .perps-action-bar {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .perps-action-bar button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 42px;
+        border: 1px solid #353839;
+        border-radius: 10px;
+        background: #111314;
+        color: #d0d3cf;
+        font-size: 10px;
+      }
+      .perps-action-bar button:first-child {
+        border-color: #67590f;
+        background: #201d0d;
+        color: var(--lime);
+      }
+      .perps-action-bar button:hover {
+        border-color: #706111;
+      }
+      .perps-action-guide {
+        display: grid;
+        grid-template-columns: 180px 1fr auto;
+        gap: 16px;
+        align-items: center;
+        border: 1px solid #2d3031;
+        border-radius: 12px;
+        background: linear-gradient(90deg, #12130d, #101213);
+        padding: 12px 14px;
+        margin: 10px 0 14px;
+      }
+      .guide-label span,
+      .guide-label strong {
+        display: block;
+      }
+      .guide-label span {
+        color: var(--lime);
+        font:
+          8px/1.2 "IBM Plex Sans",
+          sans-serif;
+        letter-spacing: 0.12em;
+      }
+      .guide-label strong {
+        margin-top: 5px;
+        font-size: 11px;
+      }
+      .perps-action-guide ol {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .perps-action-guide li {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: #9ca09d;
+        font-size: 9px;
+        line-height: 1.45;
+      }
+      .perps-action-guide li b {
+        width: 19px;
+        height: 19px;
+        flex: 0 0 19px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #60520e;
+        border-radius: 50%;
+        color: var(--lime);
+        font:
+          700 8px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .guide-dismiss {
+        border: 1px solid #36393a;
+        border-radius: 8px;
+        background: #17191a;
+        color: #aeb2ae;
+        padding: 8px 10px;
+        font-size: 9px;
+        white-space: nowrap;
+      }
+      .guide-dismiss:hover {
+        border-color: #6b5b0d;
+        color: var(--lime);
+      }
+      .chain-dot {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #3b3e3f;
+        border-radius: 9px;
+        background: #17191a;
+        font:
+          700 12px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .chain-dot.bsc {
+        background: #f3ba2f;
+        color: #111;
+        border-color: #f3ba2f;
+      }
+      .chain-dot.robinhood {
+        background: #e6ff43;
+        color: #112109;
+        border-color: #e6ff43;
+      }
+      .chain-choice-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin: 14px 0;
+      }
+      .chain-choice {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 11px;
+        border: 1px solid #2e3132;
+        border-radius: 13px;
+        background: #101213;
+        color: #e4e6e2;
+        padding: 14px;
+        text-align: left;
+      }
+      .chain-choice.active {
+        border-color: #6b5c10;
+        background: #18170f;
+      }
+      .chain-choice strong,
+      .chain-choice small {
+        display: block;
+      }
+      .chain-choice small {
+        margin-top: 4px;
+        color: #707572;
+        font-size: 9px;
+      }
+      .contract-shell,
+      .pool-form-card,
+      .pool-summary-card {
+        border: 1px solid #2d3031;
+        border-radius: 14px;
+        background: #101213;
+        padding: 16px;
+        margin-top: 12px;
+      }
+      .contract-address {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+      .contract-address .field {
+        margin: 0;
+      }
+      .contract-address button {
+        width: auto;
+        min-width: 112px;
+        margin: 0;
+      }
+      .contract-preview {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 11px;
+        border: 1px solid #313435;
+        border-radius: 12px;
+        background: #0d0f10;
+        padding: 13px;
+        margin-top: 13px;
+      }
+      .contract-preview img {
+        width: 44px;
+        height: 44px;
+        border: 1px solid #373a3b;
+        border-radius: 11px;
+      }
+      .contract-preview strong,
+      .contract-preview small {
+        display: block;
+      }
+      .contract-preview small {
+        margin-top: 4px;
+        color: #707572;
+        font:
+          9px/1.4 "IBM Plex Sans",
+          sans-serif;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .eligibility-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .eligibility-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #292c2d;
+        border-radius: 10px;
+        background: #0d0f10;
+        padding: 10px;
+        font-size: 9px;
+        color: #9ca09d;
+      }
+      .eligibility-item .ico {
+        color: #46dc8c;
+      }
+      .eligibility-item.warn .ico {
+        color: var(--lime);
+      }
+      .two-column-form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 11px;
+      }
+      .form-card-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 13px;
+      }
+      .form-card-title h3,
+      .form-card-title p {
+        margin: 0;
+      }
+      .form-card-title h3 {
+        font-size: 14px;
+      }
+      .form-card-title p {
+        margin-top: 4px;
+        color: #747976;
+        font-size: 9px;
+      }
+      .role-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .role-card {
+        min-height: 145px;
+        border: 1px solid #2e3132;
+        border-radius: 13px;
+        background: #0f1112;
+        color: #e3e5e1;
+        padding: 15px;
+        text-align: left;
+      }
+      .role-card.active {
+        border-color: #6a5b10;
+        background: #19170e;
+      }
+      .role-card .mode-icon {
+        width: 38px;
+        height: 38px;
+      }
+      .role-card strong,
+      .role-card small {
+        display: block;
+      }
+      .role-card strong {
+        margin-top: 12px;
+      }
+      .role-card small {
+        margin-top: 6px;
+        color: #747976;
+        font-size: 9px;
+        line-height: 1.5;
+      }
+      .pool-builder-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(270px, 0.65fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .pool-summary-card {
+        position: sticky;
+        top: 76px;
+      }
+      .pool-summary-hero {
+        border: 1px solid #403816;
+        border-radius: 12px;
+        background: #17160d;
+        padding: 14px;
+      }
+      .pool-summary-hero span,
+      .pool-summary-hero strong {
+        display: block;
+      }
+      .pool-summary-hero span {
+        color: #817c61;
+        font-size: 9px;
+      }
+      .pool-summary-hero strong {
+        margin-top: 7px;
+        font:
+          22px/1 "IBM Plex Sans",
+          sans-serif;
+        color: #fff;
+      }
+      .pool-split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+        margin-top: 10px;
+      }
+      .pool-split div {
+        border: 1px solid #292c2d;
+        border-radius: 9px;
+        background: #0e1011;
+        padding: 10px;
+      }
+      .pool-split span,
+      .pool-split strong {
+        display: block;
+      }
+      .pool-split span {
+        color: #686d6a;
+        font-size: 8px;
+      }
+      .pool-split strong {
+        margin-top: 5px;
+        font-size: 10px;
+      }
+      .pool-hero {
+        margin: 0 -24px;
+        padding: 18px 24px;
+        border-bottom: 1px solid #2a2d2e;
+        background: #0e1011;
+      }
+      .pool-hero-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+      .pool-identity {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+      .pool-identity img {
+        width: 48px;
+        height: 48px;
+        border: 1px solid #343738;
+        border-radius: 12px;
+      }
+      .pool-identity h2,
+      .pool-identity p {
+        margin: 0;
+      }
+      .pool-identity h2 {
+        font-size: 20px;
+      }
+      .pool-identity p {
+        margin-top: 5px;
+        color: #747976;
+        font-size: 9px;
+      }
+      .pool-health {
+        text-align: right;
+      }
+      .pool-health strong,
+      .pool-health small {
+        display: block;
+      }
+      .pool-health strong {
+        color: #50df92;
+        font:
+          18px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .pool-health small {
+        margin-top: 6px;
+        color: #707572;
+        font-size: 8px;
+      }
+      .pool-detail-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(290px, 0.75fr);
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .depth-card,
+      .participant-card {
+        border: 1px solid #2d3031;
+        border-radius: 14px;
+        background: #101213;
+        padding: 15px;
+      }
+      .depth-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+      .depth-head h3,
+      .depth-head p {
+        margin: 0;
+      }
+      .depth-head h3 {
+        font-size: 14px;
+      }
+      .depth-head p {
+        margin-top: 4px;
+        color: #6e7370;
+        font-size: 9px;
+      }
+      .depth-bar {
+        height: 16px;
+        display: flex;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #242728;
+        margin: 15px 0 9px;
+      }
+      .depth-bar .long {
+        background: #2fcf7b;
+      }
+      .depth-bar .short {
+        background: #ff5c73;
+      }
+      .depth-labels {
+        display: flex;
+        justify-content: space-between;
+        font:
+          9px/1.3 "IBM Plex Sans",
+          sans-serif;
+      }
+      .participant-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 12px;
+        padding: 10px 0;
+        border-top: 1px solid #292c2d;
+        align-items: center;
+        font-size: 9px;
+      }
+      .participant-row:first-of-type {
+        border-top: 0;
+      }
+      .participant-row span {
+        color: #777c78;
+      }
+      .participant-row strong:last-child {
+        text-align: right;
+      }
+      .pool-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .pool-metrics div {
+        border: 1px solid #2b2e2f;
+        border-radius: 10px;
+        background: #101213;
+        padding: 11px;
+      }
+      .pool-metrics span,
+      .pool-metrics strong {
+        display: block;
+      }
+      .pool-metrics span {
+        color: #6d726f;
+        font-size: 8px;
+      }
+      .pool-metrics strong {
+        margin-top: 6px;
+        font:
+          11px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .pool-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .simple-stepper {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        margin: 14px 0;
+      }
+      .simple-step {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        align-items: center;
+        border: 1px solid #2b2e2f;
+        border-radius: 10px;
+        background: #0f1112;
+        padding: 10px;
+        color: #727774;
+      }
+      .simple-step b {
+        width: 23px;
+        height: 23px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #3a3d3e;
+        border-radius: 7px;
+        font:
+          700 9px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .simple-step strong,
+      .simple-step small {
+        display: block;
+      }
+      .simple-step strong {
+        font-size: 9px;
+        color: #a6aaa7;
+      }
+      .simple-step small {
+        margin-top: 2px;
+        font-size: 8px;
+      }
+      .simple-step.active {
+        border-color: #665811;
+        background: #19170e;
+      }
+      .simple-step.active b,
+      .simple-step.done b {
+        border-color: #716212;
+        background: var(--lime);
+        color: #111;
+      }
+      .simple-step.active strong {
+        color: #fff;
+      }
+      .page-guide {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid #35300f;
+        border-radius: 11px;
+        background: #15140c;
+        padding: 11px 13px;
+        margin: 12px 0;
+        color: #b4ae84;
+        font-size: 9px;
+        line-height: 1.5;
+      }
+      .page-guide .ico {
+        color: var(--lime);
+        flex: 0 0 auto;
+      }
+      .perps-content-panel {
+        display: none;
+        border: 1px solid #2d3031;
+        border-radius: 0 0 14px 14px;
+        border-top: 0;
+        background: #101213;
+        padding: 15px;
+      }
+      .perps-content-panel.active {
+        display: block;
+      }
+      .perps-position[data-perps-panel] {
+        display: none;
+      }
+      .perps-position[data-perps-panel].active {
+        display: block;
+      }
+      .compact-order {
+        display: grid;
+        grid-template-columns: minmax(120px, 1.3fr) repeat(
+            4,
+            minmax(70px, 1fr)
+          ) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 11px 0;
+        border-top: 1px solid #292c2d;
+        font-size: 9px;
+      }
+      .compact-order:first-child {
+        border-top: 0;
+      }
+      .compact-order span,
+      .compact-order small {
+        display: block;
+      }
+      .compact-order small {
+        color: #686d6a;
+        margin-top: 3px;
+      }
+      .compact-order button {
+        border: 1px solid #343738;
+        border-radius: 7px;
+        background: #151718;
+        color: #afb3af;
+        padding: 7px 9px;
+      }
+      .record-overview {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin: 14px 0;
+      }
+      .record-overview div {
+        border: 1px solid #2b2e2f;
+        border-radius: 10px;
+        background: #101213;
+        padding: 11px;
+      }
+      .record-overview span,
+      .record-overview strong {
+        display: block;
+      }
+      .record-overview span {
+        color: #6b706d;
+        font-size: 8px;
+      }
+      .record-overview strong {
+        margin-top: 6px;
+        font:
+          12px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .ledger-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .record-filters {
+        display: flex;
+        gap: 6px;
+        overflow: auto;
+      }
+      .record-filters button {
+        flex: 0 0 auto;
+        border: 1px solid #303334;
+        border-radius: 8px;
+        background: #111314;
+        color: #858a86;
+        padding: 8px 11px;
+        font-size: 9px;
+      }
+      .record-filters button.active {
+        border-color: #6c5d10;
+        background: #201d0d;
+        color: var(--lime);
+      }
+      .ledger-toolbar > button {
+        margin-left: auto;
+      }
+      .onchain-ledger {
+        border: 1px solid #2d3031;
+        border-radius: 14px;
+        background: #101213;
+        overflow: hidden;
+      }
+      .onchain-row {
+        display: grid;
+        grid-template-columns: minmax(130px, 1.25fr) minmax(95px, 0.8fr) repeat(
+            3,
+            minmax(80px, 0.7fr)
+          ) minmax(105px, 0.9fr);
+        gap: 10px;
+        align-items: center;
+        padding: 13px 14px;
+        border-top: 1px solid #292c2d;
+        font-size: 9px;
+      }
+      .onchain-row:first-child {
+        border-top: 0;
+      }
+      .onchain-row.hidden {
+        display: none;
+      }
+      .record-identity {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+      }
+      .record-identity img {
+        width: 32px;
+        height: 32px;
+        border: 1px solid #353839;
+        border-radius: 8px;
+      }
+      .record-identity strong,
+      .record-identity small,
+      .record-cell span,
+      .record-cell strong {
+        display: block;
+      }
+      .record-identity small,
+      .record-cell span {
+        color: #6d726f;
+        font-size: 8px;
+        margin-top: 3px;
+      }
+      .record-hash {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .record-hash button {
+        border: 0;
+        background: transparent;
+        color: var(--lime);
+        padding: 2px;
+      }
+      .record-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        width: max-content;
+        border: 1px solid #275c42;
+        border-radius: 999px;
+        background: #10251b;
+        color: #54dd96;
+        padding: 4px 7px;
+        font-size: 8px;
+      }
+      .record-status.pending {
+        border-color: #625518;
+        background: #211e0e;
+        color: var(--lime);
+      }
+      .record-detail {
+        display: none;
+        grid-column: 1/-1;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        border-top: 1px dashed #343738;
+        margin-top: 3px;
+        padding-top: 11px;
+      }
+      .onchain-row.expanded .record-detail {
+        display: grid;
+      }
+      .record-detail div {
+        border: 1px solid #292c2d;
+        border-radius: 8px;
+        background: #0c0e0f;
+        padding: 8px;
+      }
+      .record-detail span,
+      .record-detail strong {
+        display: block;
+      }
+      .record-detail span {
+        color: #666b68;
+        font-size: 8px;
+      }
+      .record-detail strong {
+        margin-top: 4px;
+        font-size: 9px;
+      }
+      .record-open {
+        border: 1px solid #343738;
+        border-radius: 7px;
+        background: #151718;
+        color: #b9bcb9;
+        padding: 7px 9px;
+      }
+      .ledger-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        color: #6d726f;
+        font-size: 9px;
+        padding: 12px 2px;
+      }
+      .ledger-foot button {
+        width: auto;
+        margin: 0;
+      }
+      .pool-shortcuts {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .pool-shortcuts button {
+        width: auto;
+        .perps-hero {
+          margin-left: -16px;
+          margin-right: -16px;
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+        .perps-stat-strip {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .perps-stat-strip div:nth-child(3) {
+          border-left: 0;
+          border-top: 1px solid #292c2d;
+        }
+        .perps-stat-strip div:nth-child(4) {
+          border-top: 1px solid #292c2d;
+        }
+        .perps-position-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .perps-position-grid div:last-child {
+          grid-column: 1/-1;
+        }
+        .launch-mode-grid {
+          grid-template-columns: 1fr;
+        }
+        .launch-mode,
+        .launch-mode:last-child {
+          min-height: 160px;
+          grid-column: auto;
+        }
+        .mode-summary {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .announcement-card {
+          grid-template-columns: auto 1fr;
+        }
+        .announcement-card time {
+          grid-column: 2;
+        }
+        .portfolio-hero {
+          grid-template-columns: 1fr 1fr;
+        }
+        .portfolio-hero .portfolio-total {
+          grid-column: 1/-1;
+        }
+        .position-metrics {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .screen[data-panel^="create"] > .appbar,
+        .screen[data-panel="trade"] > .appbar,
+        .screen[data-panel="success"] > .appbar,
+        .screen[data-panel="trade"] > .token-hero,
+        .screen[data-panel="perps"] > .appbar {
+          margin-left: -16px;
+          margin-right: -16px;
+        }
+        .toast {
+          left: 16px;
+          right: 16px;
+          bottom: calc(18px + env(safe-area-inset-bottom));
+          max-width: none;
+        }
+        button,
+        .icon-btn,
+        .connect {
+          touch-action: manipulation;
+        }
+      }
+      @media (max-width: 440px) {
+        .brand-lockup h1 {
+          font-size: 18px;
+        }
+        .studio-actions .ico {
+          display: none;
+        }
+        .language-toggle {
+          padding-inline: 8px;
+        }
+        .connect-global {
+          font-size: 10px;
+          padding-inline: 9px;
+        }
+        .announcement {
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+        .announcement > button {
+          display: none;
+        }
+        .announcement-copy {
+          font-size: 9px;
+        }
+        .hero-launch {
+          min-height: 214px;
+          padding: 22px 17px;
+        }
+        .hero-launch h1 {
+          font-size: 30px;
+        }
+        .hero-launch p {
+          font-size: 11px;
+        }
+        .market-strip div {
+          padding-inline: 9px;
+        }
+        .market-strip strong {
+          font-size: 10px;
+        }
+        .stats-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .stats-grid div:nth-child(2) {
+          border-right: 0;
+        }
+        .token-price {
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 8px;
+        }
+        .token-price h1 {
+          font-size: 25px;
+        }
+        .token-price .right {
+          min-width: 88px;
+        }
+        .amount-input input {
+          font-size: 28px;
+        }
+        .holding-actions,
+        .position-actions {
+          grid-template-columns: 1fr;
+        }
+        .terminal-chart-shell .chart-wrap {
+          height: 250px;
+        }
+      }
+      @media (max-width: 1100px) {
+        .pool-builder-grid,
+        .pool-detail-grid {
+          grid-template-columns: 1fr;
+        }
+        .pool-summary-card {
+          position: static;
+        }
+      }
+      @media (max-width: 900px) {
+        .perps-hero-top {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+        .perps-search-shell {
+          width: 100%;
+          max-width: none;
+          margin: 0;
+        }
+        .perps-price {
+          text-align: left;
+        }
+      }
+      @media (max-width: 760px) {
+        .chain-choice-grid,
+        .two-column-form,
+        .eligibility-grid,
+        .role-grid {
+          grid-template-columns: 1fr;
+        }
+        .contract-address {
+          grid-template-columns: 1fr;
+        }
+        .contract-address button {
+          width: 100%;
+        }
+        .pool-hero {
+          margin-left: -16px;
+          margin-right: -16px;
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+        .pool-metrics,
+        .record-overview {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .screen[data-panel="perps-add-contract"] > .appbar,
+        .screen[data-panel="perps-create-pool"] > .appbar,
+        .screen[data-panel="perps-pool"] > .appbar,
+        .screen[data-panel="perps-onchain"] > .appbar {
+          margin-left: -16px;
+          margin-right: -16px;
+        }
+        .role-card {
+          min-height: 132px;
+        }
+        .simple-stepper {
+          grid-template-columns: 1fr;
+        }
+        .simple-step {
+          padding: 9px;
+        }
+        .compact-order {
+          grid-template-columns: 1fr 1fr;
+        }
+        .compact-order > *:first-child {
+          grid-column: 1/-1;
+        }
+        .onchain-row {
+          grid-template-columns: 1fr 1fr;
+          padding: 13px;
+        }
+        .record-identity {
+          grid-column: 1/-1;
+        }
+        .record-detail {
+          grid-template-columns: 1fr 1fr;
+        }
+        .ledger-toolbar {
+          align-items: flex-start;
+        }
+        .ledger-toolbar > button {
+          display: none;
+        }
+      }
+      @media (max-width: 440px) {
+        .perps-hero-top,
+        .pool-hero-top {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+        .perps-price,
+        .pool-health {
+          text-align: left;
+        }
+        .perps-action-bar,
+        .pool-actions {
+          grid-template-columns: 1fr;
+        }
+        .perps-position-head {
+          align-items: flex-start;
+        }
+        .perps-position-actions {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+        .contract-preview {
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+        .contract-preview > .tag {
+          grid-column: 2;
+        }
+        .pool-metrics,
+        .record-overview {
+          grid-template-columns: 1fr 1fr;
+        }
+        .record-detail {
+          grid-template-columns: 1fr;
+        }
+        .ledger-foot {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+      @media (max-width: 350px) {
+        .brand-mark {
+          width: 34px;
+          height: 34px;
+        }
+        .brand-lockup h1 {
+          font-size: 16px;
+        }
+        .language-toggle {
+          display: none;
+        }
+        .screen-switcher button {
+          padding-inline: 10px;
+        }
+        .screen {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+        .appbar,
+        .market-strip,
+        .token-hero,
+        .stats-grid,
+        .time-row {
+          margin-left: -12px;
+          margin-right: -12px;
+        }
+        .appbar,
+        .token-hero {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+        .screen[data-panel^="create"] > .appbar,
+        .screen[data-panel="trade"] > .appbar,
+        .screen[data-panel="success"] > .appbar,
+        .screen[data-panel="trade"] > .token-hero,
+        .screen[data-panel="perps"] > .appbar,
+        .screen[data-panel="perps-add-contract"] > .appbar,
+        .screen[data-panel="perps-create-pool"] > .appbar {
+          margin-left: -12px;
+          margin-right: -12px;
+        }
+        .perps-hero,
+        .pool-hero {
+          margin-left: -12px;
+          margin-right: -12px;
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+        .hero-launch {
+          padding-inline: 14px;
+        }
+        .hero-launch h1 {
+          font-size: 27px;
+        }
+        .appbar .wordmark em {
+          display: none;
+        }
+        .announcement {
+          padding-inline: 10px;
+        }
+        .holding-balance strong {
+          font-size: 24px;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .pool-preset-grid {
+          grid-template-columns: 1fr;
+        }
+        .pool-preset {
+          min-height: 92px;
+        }
+        .auto-config-list {
+          grid-template-columns: 1fr;
+        }
+        .execution-path {
+          grid-template-columns: 1fr;
+        }
+        .execution-path div:not(:last-child):after {
+      .screen[data-panel="perps"] .perps-workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(310px, 0.85fr);
+        grid-template-areas: "stats stats" "chart chart" "tabs order" "content order";
+        gap: 12px 14px;
+        align-items: start;
+      }
+      .screen[data-panel="perps"] .perps-market-column {
+        display: contents;
+      }
+      .screen[data-panel="perps"] .perps-stat-strip {
+        grid-area: stats;
+        margin: 0;
+      }
+      .screen[data-panel="perps"] .terminal-chart-shell {
+        grid-area: chart;
+      }
+      .screen[data-panel="perps"] .perps-tabs {
+        grid-area: tabs;
+        margin: 0;
+        padding-top: 2px;
+      }
+      .screen[data-panel="perps"] .perps-position,
+      .screen[data-panel="perps"] .perps-content-panel {
+        grid-area: content;
+      }
+      .screen[data-panel="perps"] .perps-order-column {
+        grid-area: order;
+        align-self: start;
+      }
+      .screen[data-panel="perps"] .perps-order-column:before {
+        content: "K 线下方直接交易";
+        display: block;
+        margin: 0 0 9px;
+        color: #7b807c;
+        font:
+          700 8px/1.2 "IBM Plex Sans",
+          sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .action-center-body {
+        display: grid;
+        gap: 12px;
+        max-width: 760px;
+        margin: 16px auto 34px;
+      }
+      .action-card {
+        border: 1px solid #2d3031;
+        border-radius: 15px;
+        background: #101213;
+        padding: 16px;
+      }
+      .action-card h3 {
+        margin: 0;
+        font-size: 15px;
+      }
+      .action-card p {
+        margin: 7px 0 0;
+        color: #8a8f8c;
+        font-size: 11px;
+        line-height: 1.65;
+      }
+      .action-options {
+        display: grid;
+        gap: 9px;
+        margin-top: 15px;
+      }
+      .action-option {
+        width: 100%;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 11px;
+        align-items: center;
+        border: 1px solid #303334;
+        border-radius: 11px;
+        background: #0d0f10;
+        color: #e7e8e4;
+        padding: 12px;
+        text-align: left;
+      }
+      .action-option:hover {
+        border-color: #6d5e11;
+        background: #15150e;
+      }
+      .action-option .mode-icon {
+        width: 34px;
+        height: 34px;
+        margin: 0;
+      }
+      .action-option strong,
+      .action-option small {
+        display: block;
+      }
+      .action-option strong {
+        font-size: 11px;
+      }
+      .action-option small {
+        margin-top: 4px;
+        color: #787d79;
+        font-size: 9px;
+        line-height: 1.45;
+      }
+      .action-option .tag {
+        justify-self: end;
+      }
+      .action-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .action-summary div {
+        border: 1px solid #292c2d;
+        border-radius: 10px;
+        background: #0d0f10;
+        padding: 11px;
+      }
+      .action-summary span,
+      .action-summary strong {
+        display: block;
+      }
+      .action-summary span {
+        color: #717672;
+        font-size: 8px;
+      }
+      .action-summary strong {
+        margin-top: 5px;
+        font:
+          11px/1.3 "IBM Plex Sans",
+          sans-serif;
+      }
+      .action-search {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .action-search .field {
+        margin: 0;
+      }
+      .action-search button {
+        width: auto;
+        margin: 0;
+      }
+      .action-note {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        border: 1px solid #3a3214;
+        border-radius: 10px;
+        background: #17150d;
+        color: #b8ad7e;
+        padding: 11px;
+        margin-top: 12px;
+        font-size: 10px;
+        line-height: 1.55;
+      }
+      .action-note .ico {
+        color: var(--lime);
+        flex: 0 0 auto;
+      }
+      .action-confirm-row {
+        display: flex;
+        gap: 9px;
+        justify-content: flex-end;
+        margin-top: 15px;
+      }
+      .action-confirm-row .secondary,
+      .action-confirm-row .primary {
+        width: auto;
+        margin: 0;
+        padding: 11px 14px;
+      }
+      .action-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #57dd98;
+        font-size: 10px;
+      }
+      .action-status:before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .action-checklist {
+        display: grid;
+        gap: 0;
+        margin-top: 14px;
+        border: 1px solid #292c2d;
+        border-radius: 11px;
+        overflow: hidden;
+      }
+      .action-checklist div {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 11px;
+        border-top: 1px solid #292c2d;
+        color: #939894;
+        font-size: 10px;
+      }
+      .action-checklist div:first-child {
+        border-top: 0;
+      }
+      .action-checklist strong {
+        color: #e2e4e0;
+        font-weight: 600;
+      }
+      .action-checklist .ok {
+        color: #57dd98;
+      }
+      .action-checklist .warn {
+        color: var(--lime);
+      }
+      .screen[data-panel="perps"] .perps-order-column:before {
+        content: "CHART → TRADE";
+      }
+      @media (min-width: 1101px) {
+        .device {
+          border-radius: 20px;
+        }
+        .screen {
+          padding-top: 3px;
+        }
+        .screen[data-panel="discover"] {
+          padding-top: 16px;
+        }
+        .screen[data-panel="discover"] .hero-launch {
+          min-height: 278px;
+        }
+        .hero-launch h1 {
+          max-width: 560px;
+        }
+        .screen[data-panel="discover"] .token-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .screen[data-panel="discover"] .market-panel {
+          max-width: 1120px;
+        }
+        .screen[data-panel="perps"] {
+          padding-top: 0;
+        }
+        .screen[data-panel="perps"] .perps-workspace {
+          padding-bottom: 26px;
+        }
+        .perps-order-column {
+          top: 18px;
+        }
+        .screen[data-panel="trade"] .trade-workspace {
+          padding-bottom: 26px;
+        }
+        .trade-order-column {
+          top: 18px;
+        }
+        .screen[data-panel^="create"] .page-title {
+          margin-top: 26px;
+        }
+        .launch-mode {
+          min-height: 248px;
+        }
+      }
+      @media (max-width: 1100px) {
+        .screen[data-panel="perps"] .perps-workspace {
+          grid-template-columns: 1fr;
+          grid-template-areas: "stats" "chart" "order" "tabs" "content";
+          gap: 11px;
+        }
+        .screen[data-panel="perps"] .perps-order-column {
+          position: static;
+        }
+        .screen[data-panel="perps"] .terminal-chart-shell {
+          margin-bottom: 1px;
+        }
+        .screen[data-panel="perps"] .perps-tabs {
+          margin-top: 5px;
+        }
+      }
+      @media (max-width: 900px) {
+        .perps-action-guide {
+          grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      .brand-mark {
+        width: 48px;
+        height: 48px;
+        border-radius: 13px;
+      }
+      .brand-lockup {
+        gap: 13px;
+      }
+      .brand-lockup h1 {
+        font-size: 24px;
+      }
+      .brand-lockup p {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        color: #696d6a;
+      }
+      .studio-actions {
+        gap: 8px;
+      }
+      .network-switch {
+        height: 46px;
+        min-width: 196px;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid #303334;
+        border-radius: 11px;
+        background: #101213;
+        color: #d9dbd7;
+        padding: 0 11px;
+        cursor: pointer;
+        transition:
+          border-color 0.16s ease,
+          background-color 0.16s ease;
+      }
+      .network-switch:hover,
+      .network-switch:focus-within {
+        border-color: #625714;
+        background: #15150f;
+      }
+      .network-switch .chain-dot {
+        width: 27px;
+        height: 27px;
+        border-radius: 8px;
+        font-size: 10px;
+      }
+      .network-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+      .network-copy small {
+        color: #707572;
+        font:
+          7px/1.1 "IBM Plex Sans",
+          sans-serif;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+      .network-copy select {
+        width: 100%;
+        appearance: none;
+        -webkit-appearance: none;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: #f1f2ee;
+        font:
+          700 10px/1.15 "IBM Plex Sans",
+          sans-serif;
+        cursor: pointer;
+      }
+      .network-switch > .ico {
+        color: #747976;
+      }
+      .language-toggle,
+      .connect-global {
+        height: 46px;
+      }
+      .connect-global {
+        gap: 7px;
+        min-width: 126px;
+        justify-content: center;
+      }
+      .home-appbar {
+        min-height: 74px;
+      }
+      .home-network-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #2f3331;
+        border-radius: 999px;
+        background: #101312;
+        color: #7d847f;
+        padding: 7px 10px;
+        font:
+          8px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .home-network-pill i,
+      .home-search-context i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #4add8e;
+        box-shadow: 0 0 0 4px rgba(74, 221, 142, 0.08);
+      }
+      .home-network-pill b {
+        color: #cfd3ce;
+        font-weight: 650;
+      }
+      .home-search-panel {
+        margin: 0 -24px 16px;
+        padding: 14px 24px 13px;
+        border-bottom: 1px solid #252829;
+        background: linear-gradient(180deg, #0d0f10, #0b0d0e);
+      }
+      .home-search-box {
+        min-height: 52px;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid #343738;
+        border-radius: 12px;
+        background: #101213;
+        padding: 5px 6px 5px 15px;
+      }
+      .home-search-box:focus-within {
+        border-color: #766613;
+        box-shadow: 0 0 0 3px rgba(255, 210, 28, 0.06);
+      }
+      .home-search-box > .ico {
+        color: #8b908c;
+      }
+      .home-search-box input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: #f3f4f0;
+        font:
+          11px/1.2 "IBM Plex Sans",
+          sans-serif;
+      }
+      .home-search-box input::placeholder {
+        color: #6e7470;
+      }
+      .home-search-box kbd {
+        border: 1px solid #343738;
+        border-radius: 6px;
+        background: #17191a;
+        color: #777c78;
+        padding: 5px 7px;
+        font:
+          8px/1 "IBM Plex Sans",
+          sans-serif;
+      }
+      .home-search-box button {
+        height: 40px;
+        min-width: 76px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--lime);
+        color: #111;
+        font-size: 10px;
+        font-weight: 750;
+      }
+      .home-search-box button:hover {
+        background: #ffe36a;
+      }
+      .home-search-context {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 9px;
+        color: #666c68;
+        font:
+          8px/1.35 "IBM Plex Sans",
+          sans-serif;
+      }
+      .home-search-context span:first-child {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .home-search-context b {
+        color: #9da39f;
+        font-weight: 600;
+      }
+      .screen[data-panel="discover"] .market-strip {
+        margin-top: 0;
+      }
+      @media (max-width: 900px) {
+        .studio-head {
+          gap: 12px;
+        }
+        .network-switch {
+          min-width: 162px;
+        }
+        .network-copy small {
+          display: none;
+        }
+        .connect-global {
+          min-width: 112px;
+        }
+        .brand-lockup p {
+          font-size: 8px;
+        }
+      }
+      @media (max-width: 760px) {
+        .studio-head {
+          height: 66px;
+          min-height: 66px;
+          padding: 9px 12px;
+          gap: 8px;
+        }
+        .brand-mark {
+          width: 40px;
+          height: 40px;
+        }
+        .brand-lockup {
+          gap: 9px;
+        }
+        .brand-lockup h1 {
+          font-size: 18px;
+        }
+        .brand-lockup p {
+          display: none;
+        }
+        .studio-actions {
+          gap: 5px;
+        }
+        .network-switch {
+          height: 40px;
+          min-width: 118px;
+          padding: 0 8px;
+          gap: 6px;
+        }
+        .network-switch .chain-dot {
+          width: 24px;
+          height: 24px;
+        }
+        .network-copy select {
+          font-size: 9px;
+        }
+        .network-switch > .ico {
+          display: none;
+        }
+        .language-toggle,
+        .connect-global {
+          height: 40px;
+        }
+        .language-toggle {
+          width: 40px;
+          padding: 0;
+          justify-content: center;
+        }
+        .language-toggle span {
+          display: none;
+        }
+        .connect-global {
+          min-width: 76px;
+          padding: 0 10px;
+        }
+        .connect-global .ico {
+          display: none;
+        }
+        .connect-global span {
+          font-size: 9px;
+        }
+        .workbench {
+          height: calc(100vh - 117px);
+          height: calc(100dvh - 117px);
+        }
+        .home-appbar {
+          min-height: 62px;
+        }
+        .home-network-pill {
+          padding: 6px 8px;
+        }
+        .home-search-panel {
+          margin-left: -16px;
+          margin-right: -16px;
+          padding: 12px 16px;
+        }
+        .home-search-box {
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          padding-left: 12px;
+        }
+        .home-search-box kbd {
+          display: none;
+        }
+        .home-search-box button {
+          min-width: 62px;
+        }
+        .home-search-context span:last-child {
+          display: none;
+        }
+      }
+      @media (max-width: 440px) {
+        .brand-lockup h1 {
+          font-size: 16px;
+        }
+        .brand-mark {
+          width: 36px;
+          height: 36px;
+        }
+        .network-switch {
+          min-width: 96px;
+        }
+        .network-switch .chain-dot {
+          display: none;
+        }
+        .network-copy select {
+          font-size: 8px;
+        }
+        .connect-global {
+          min-width: 62px;
+          padding-inline: 8px;
+        }
+        .home-appbar .wordmark em {
+          font-size: 7px;
+        }
+        .home-network-pill {
+          font-size: 7px;
+        }
+        .home-search-box input {
+          font-size: 10px;
+        }
+        .home-search-context {
+          font-size: 7px;
+        }
+      }
+      @media (max-width: 350px) {
+        .language-toggle {
+          display: none;
+        }
+        .network-switch {
+          min-width: 88px;
+        }
+        .connect-global {
+          min-width: 58px;
+        }
+        .brand-lockup h1 {
+          font-size: 14px;
+        }
+        .home-network-pill {
+          display: none;
+        }
+      }
+
+      /* Product polish: quieter surfaces, clearer hierarchy, and practical interaction states. */
+      :root {
+        font-synthesis: none;
+      .network-switch-shell {
+        position: relative;
+      }
+      .network-switch {
+        font: inherit;
+        text-align: left;
+      }
+      .network-switch > img {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        border-radius: 8px;
+      }
+      .network-copy strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #f1f2ee;
+        font:
+          700 10px/1.15 "IBM Plex Sans",
+          sans-serif;
+      }
+      .network-menu {
+        display: none;
+        position: absolute;
+        z-index: 120;
+        top: 54px;
+        right: 0;
+        width: 286px;
+        border: 1px solid #373a3b;
+        border-radius: 14px;
+        background: #111314;
+        padding: 8px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      }
+      .network-switch-shell.open .network-menu {
+        display: block;
+      }
+      .network-menu > span {
+        display: block;
+        padding: 7px 8px 9px;
+        color: #686d69;
+        font-size: 8px;
+        letter-spacing: 0.08em;
+      }
+      .network-menu > button {
+        width: 100%;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        background: transparent;
+        color: #d8dad6;
+        padding: 10px;
+        text-align: left;
+      }
+      .network-menu > button:hover {
+        background: #181a1b;
+      }
+      .network-menu > button.active {
+        border-color: #5f5314;
+        background: #1c1a0e;
+      }
+      .network-menu img {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+      }
+      .network-menu button span strong,
+      .network-menu button span small {
+        display: block;
+      }
+      .network-menu button span strong {
+        font-size: 10px;
+      }
+      .network-menu button span small {
+        margin-top: 4px;
+        color: #6f7471;
+        font-size: 8px;
+      }
+      .network-menu button > .ico {
+        color: transparent;
+      }
+      .network-menu button.active > .ico {
+        color: var(--lime);
+      }
+      @media (max-width: 760px) {
+        .network-menu {
+          position: fixed;
+          top: 66px;
+          left: 12px;
+          right: 12px;
+          width: auto;
+        }
+        .network-switch > img {
+          width: 24px;
+          height: 24px;
+        }
+        .network-copy small {
+          display: none;
+        }
+      }
+      @media (max-width: 560px) {
+        .studio-head {
+          grid-template-columns: minmax(0, 1fr) auto;
+        }
+        .language-toggle {
+          display: none;
+        }
+        .network-switch {
+          min-width: 112px;
+        }
+        .connect-global {
+          width: 40px;
+          min-width: 40px;
+          padding: 0;
+        }
+        .connect-global .ico {
+          display: block;
+        }
+        .connect-global span {
+          display: none;
+        }
+        .brand-lockup h1 {
+          font-size: 16px;
+        }
+        .brand-lockup {
+          min-width: 0;
+        }
+        .brand-lockup > div {
+          min-width: 0;
+        }
+        .brand-lockup h1 {
       body.runtime-pending #bitbt-launch {
         visibility: hidden;
       }
     </style>
   </head>
   <body class="runtime-pending">
-    <main class="launch-stage" id="bitbt-launch">
+    <main class="launch-stage" id="bitbt-launch" data-ui-version="20260911">
       <header class="studio-head">
         <div class="brand-lockup">
           <span class="brand-mark" aria-hidden="true"></span>
@@ -4428,11 +7325,18 @@
           </div>
         </div>
         <div class="studio-actions">
-          <select class="chain-toggle" data-chain-select aria-label="选择网络">
-            <option value="bsc">BNB Chain</option>
-            <option value="robinhood">Robinhood</option>
-            <option value="robinhood-testnet">Robinhood Testnet</option>
-          </select>
+          <div class="network-switch-shell" data-chain-menu>
+            <button class="network-switch" id="global-chain-select" data-chain-menu-toggle type="button" aria-label="切换主网" aria-expanded="false">
+              <img data-global-chain-logo src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain" />
+              <span class="network-copy"><small>当前主网</small><strong data-active-network-label>BNB Chain</strong></span>
+              <i class="ico sm" style="--icon: url(&quot;./assets/icons/lucide/chevron-down.svg&quot;)"></i>
+            </button>
+            <div class="network-menu" data-chain-menu-list role="menu">
+              <span>选择交易网络</span>
+              <button class="active" data-global-chain-option="bsc" type="button" role="menuitem"><img src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain" /><span><strong>BNB Chain</strong><small>BEP-20 · PancakeSwap V3</small></span><i class="ico sm" style="--icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;)"></i></button>
+              <button data-global-chain-option="robinhood" type="button" role="menuitem"><img src="./assets/chains/robinhood-chain-brand.png" alt="Robinhood Chain" /><span><strong>Robinhood Chain</strong><small>EVM · Robinhood DEX V3</small></span><i class="ico sm" style="--icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;)"></i></button>
+            </div>
+          </div>
           <button class="language-toggle" data-lang-toggle aria-label="切换语言">
             <i class="ico sm" style="--icon: url(&quot;./assets/icons/lucide/languages.svg&quot;)"></i>
             <span data-lang-label>中文 / EN</span>
@@ -4442,10 +7346,9 @@
       </header>
       <nav class="screen-switcher" aria-label="发射器界面预览">
         <button data-open="discover" aria-pressed="true">发现市场</button>
+        <button data-open="perps">MEME 永续合约</button>
         <button data-open="live">实时链上</button>
         <button data-open="rank">排行榜</button>
-        <button data-open="announcements">公告 <span class="nav-unread" data-announcement-unread>—</span></button>
-        <button data-open="perpetual">永续</button>
         <button data-open="create-mode">创建代币</button>
         <button data-open="profile">我的</button>
       </nav>
@@ -4772,6 +7675,1522 @@
               <p class="footer-note">永续属于高风险衍生品。界面不会代签或托管资产；每笔授权、开仓、平仓和 LP 操作都必须由当前钱包确认并等待链上成功回执。</p>
             </section>
 
+            <section class="screen" data-panel="perps">
+              <div class="appbar">
+                <button class="icon-btn" data-open="discover" aria-label="返回">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;);
+                    "
+                  ></i>
+                </button>
+                <div>
+                  <div class="eyebrow">USDT-M PERPETUAL</div>
+                  <strong>MEME 永续合约</strong>
+                </div>
+                <button
+                  class="icon-btn"
+                  data-toast="合约设置已打开"
+                  aria-label="合约设置"
+                >
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/settings.svg&quot;);
+                    "
+                  ></i>
+                </button>
+              </div>
+              <div class="perps-hero">
+                <div class="perps-hero-top">
+                  <div class="perps-symbol">
+                    <img
+                      data-perps-image
+                      src="./assets/tokens/cashcat.svg"
+                      alt="CASHCAT perpetual"
+                    />
+                    <div>
+                      <h2>
+                        <span data-perps-symbol>CASHCAT</span>-PERP
+                        <span class="tag lime">1–100×</span>
+                      </h2>
+                      <p>
+                        USDT 本位 · BSC / Robinhood Chain · 资金费率每 8
+                        小时结算
+                      </p>
+                    </div>
+                  </div>
+                  <div class="perps-search-shell" data-perps-search-shell>
+                    <label class="perps-search-box"
+                      ><i
+                        class="ico sm"
+                        style="
+                          --icon: url(&quot;./assets/icons/lucide/search.svg&quot;);
+                        "
+                      ></i
+                      ><input
+                        id="perps-market-search"
+                        type="search"
+                        placeholder="输入 MEME 名称或合约地址"
+                        autocomplete="off"
+                        aria-label="搜索 MEME 合约"
+                        aria-expanded="false"
+                      /><kbd>⌘ K</kbd></label
+                    >
+                    <div class="perps-search-results" role="listbox">
+                      <div class="perps-search-head">
+                        <span>搜索结果</span><span>池子状态</span>
+                      </div>
+                      <div
+                        class="perps-search-item ready"
+                        data-perps-search-item
+                        data-search="cashcat cash cat 0x020b8a4c9912d8164c6b7e8faa18b4 bsc"
+                      >
+                        <img src="./assets/tokens/cashcat.svg" alt="CashCat" />
+                        <div>
+                          <strong>CASHCAT-PERP</strong
+                          ><small
+                            >0x020b…18b4 · BSC ·
+                            <span class="pool-state">3 个池子</span></small
+                          >
+                        </div>
+                        <button data-select-perps-search="cashcat">
+                          选择交易
+                        </button>
+                      </div>
+                      <div
+                        class="perps-search-item ready"
+                        data-perps-search-item
+                        data-search="moonbun moon bun 0x93d1a72c robinhood"
+                      >
+                        <img src="./assets/tokens/moonbun.svg" alt="MoonBun" />
+                        <div>
+                          <strong>MOONBUN-PERP</strong
+                          ><small
+                            >0x93D1…A72C · Robinhood Chain ·
+                            <span class="pool-state">2 个池子</span></small
+                          >
+                        </div>
+                        <button data-select-perps-search="moonbun">
+                          选择交易
+                        </button>
+                      </div>
+                      <div
+                        class="perps-search-item ready"
+                        data-perps-search-item
+                        data-search="bitbull bit bull 0xb17b44f8 bsc"
+                      >
+                        <img src="./assets/tokens/bitbull.svg" alt="BitBull" />
+                        <div>
+                          <strong>BITBULL-PERP</strong
+                          ><small
+                            >0xB17B…44F8 · BSC ·
+                            <span class="pool-state">4 个池子</span></small
+                          >
+                        </div>
+                        <button data-select-perps-search="bitbull">
+                          选择交易
+                        </button>
+                      </div>
+                      <div
+                        class="perps-search-item missing"
+                        data-perps-search-item
+                        data-search="dogeceo doge ceo 0xd09e7c11 bsc"
+                      >
+                        <img src="./assets/tokens/generic.svg" alt="DogeCEO" />
+                        <div>
+                          <strong>DOGECEO</strong
+                          ><small
+                            >0xD09E…7C11 · BSC ·
+                            <span class="pool-state">暂无对手池</span></small
+                          >
+                        </div>
+                        <button data-open="perps-create-pool">添加池子</button>
+                      </div>
+                      <div
+                        class="perps-search-item missing"
+                        data-perps-search-item
+                        data-search="rabbithood rabbit hood 0xa81c190f robinhood"
+                      >
+                        <img
+                          src="./assets/tokens/generic.svg"
+                          alt="RabbitHood"
+                        />
+                        <div>
+                          <strong>RABBITHOOD</strong
+                          ><small
+                            >0xA81C…190F · Robinhood Chain ·
+                            <span class="pool-state">暂无对手池</span></small
+                          >
+                        </div>
+                        <button data-open="perps-create-pool">添加池子</button>
+                      </div>
+                      <div class="perps-search-empty" data-perps-search-empty>
+                        未找到该合约，请先添加链上 MEME 合约。
+                      </div>
+                    </div>
+                  </div>
+                  <div class="perps-price">
+                    <strong data-perps-price>$0.000721</strong
+                    ><small class="up" data-perps-change>+18.42%</small>
+                  </div>
+                </div>
+                <div class="perps-pairs" aria-label="选择永续合约">
+                  <button class="active" data-perps-pair="cashcat">
+                    <img src="./assets/tokens/cashcat.svg" alt="" />CASHCAT
+                    <span class="up">+18.4%</span></button
+                  ><button data-perps-pair="moonbun">
+                    <img src="./assets/tokens/moonbun.svg" alt="" />MOONBUN
+                    <span class="up">+8.6%</span></button
+                  ><button data-perps-pair="bitbull">
+                    <img src="./assets/tokens/bitbull.svg" alt="" />BITBULL
+                    <span class="down">−3.2%</span>
+                  </button>
+                </div>
+              </div>
+              <div class="perps-action-bar">
+                <button data-open="perps-add-contract">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/plus.svg&quot;);
+                    "
+                  ></i
+                  >添加 MEME 合约</button
+                ><button data-open="perps-create-pool">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/database.svg&quot;);
+                    "
+                  ></i
+                  >创建对手池</button
+                ><button data-open="perps-onchain">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/history.svg&quot;);
+                    "
+                  ></i
+                  >链上开仓记录
+                </button>
+              </div>
+              <section class="perps-action-guide" aria-label="永续合约快速说明">
+                <div class="guide-label">
+                  <span>首次使用</span><strong>从选择合约开始</strong>
+                </div>
+                <ol>
+                  <li><b>1</b><span>搜索已有池子的 MEME 合约</span></li>
+                  <li><b>2</b><span>填写保证金，确认杠杆与强平价</span></li>
+                  <li><b>3</b><span>选择开多或开空后再连接钱包</span></li>
+                </ol>
+                <button
+                  class="guide-dismiss"
+                  data-dismiss-guide
+                  data-toast="说明已收起"
+                >
+                  我知道了
+                </button>
+              </section>
+              <div class="perps-workspace">
+                <div class="perps-market-column">
+                  <div class="perps-stat-strip">
+                    <div>
+                      <span>标记价格</span
+                      ><strong data-perps-mark>$0.000719</strong>
+                    </div>
+                    <div>
+                      <span>24H 成交额</span
+                      ><strong data-perps-volume>$6.84M</strong>
+                    </div>
+                    <div>
+                      <span>未平仓量</span><strong data-perps-oi>$2.18M</strong>
+                    </div>
+                    <div>
+                      <span>资金费率 / 倒计时</span
+                      ><strong
+                        ><b class="up" data-perps-funding>+0.0100%</b> ·
+                        03:42:18</strong
+                      >
+                    </div>
+                  </div>
+                  <div class="terminal-chart-shell">
+                    <div class="terminal-chart-head">
+                      <strong
+                        ><span data-perps-symbol>CASHCAT</span>-PERP ·
+                        USDT</strong
+                      ><span>指数价格 · 标记价格 · 成交聚合</span>
+                    </div>
+                    <div class="time-row">
+                      <button>1M</button><button class="active">5M</button
+                      ><button>15M</button><button>1H</button><button>4H</button
+                      ><button>1D</button>
+                    </div>
+                    <div class="chart-wrap">
+                      <div class="chart-fallback">正在载入永续合约 K 线…</div>
+                      <div class="chart" id="perps-kline"></div>
+                    </div>
+                  </div>
+                  <div class="perps-tabs">
+                    <button class="active" data-perps-view="positions">
+                      当前仓位</button
+                    ><button data-perps-view="orders">当前委托 (2)</button
+                    ><button data-perps-view="triggers">条件单</button
+                    ><button data-perps-view="onchain">链上开仓</button>
+                  </div>
+                  <article
+                    class="perps-position active"
+                    data-perps-panel="positions"
+                  >
+                    <div class="perps-position-head">
+                      <div class="perps-position-name">
+                        <img
+                          data-perps-image
+                          src="./assets/tokens/cashcat.svg"
+                          alt="Current perpetual"
+                        />
+                        <div>
+                          <strong
+                            ><span data-perps-symbol>CASHCAT</span>-PERP
+                            <span class="tag lime">多 10×</span></strong
+                          ><small>逐仓 · USDT 本位</small>
+                        </div>
+                      </div>
+                      <div class="perps-pnl">
+                        <strong class="up">+$86.42</strong
+                        ><small>未实现盈亏 · +24.68%</small>
+                      </div>
+                    </div>
+                    <div class="perps-position-grid">
+                      <div>
+                        <span>仓位数量</span
+                        ><strong data-perps-position>486.20M</strong>
+                      </div>
+                      <div>
+                        <span>开仓均价</span
+                        ><strong data-perps-entry>$0.000576</strong>
+                      </div>
+                      <div>
+                        <span>标记价格</span
+                        ><strong data-perps-mark>$0.000719</strong>
+                      </div>
+                      <div>
+                        <span>预估强平价</span
+                        ><strong data-perps-liq>$0.000513</strong>
+                      </div>
+                      <div><span>保证金</span><strong>350.00 USDT</strong></div>
+                    </div>
+                    <div class="perps-position-actions">
+                      <button data-toast="止盈止损设置已打开">
+                        止盈 / 止损</button
+                      ><button data-toast="仓位追加保证金已打开">
+                        追加保证金</button
+                      ><button data-toast="平仓确认已打开">市价平仓</button>
+                    </div>
+                  </article>
+                  <section
+                    class="perps-content-panel"
+                    data-perps-panel="orders"
+                  >
+                    <div class="compact-order">
+                      <strong
+                        >CASHCAT-PERP
+                        <small class="up">开多 · 限价</small></strong
+                      ><span>价格<small>$0.000698</small></span
+                      ><span>数量<small>120.00M</small></span
+                      ><span>杠杆<small>10×</small></span
+                      ><span>保证金<small>83.76 USDT</small></span
+                      ><button data-toast="委托撤销确认已打开">撤单</button>
+                    </div>
+                    <div class="compact-order">
+                      <strong
+                        >MOONBUN-PERP
+                        <small class="down">开空 · 限价</small></strong
+                      ><span>价格<small>$0.000152</small></span
+                      ><span>数量<small>82.00M</small></span
+                      ><span>杠杆<small>5×</small></span
+                      ><span>保证金<small>249.28 USDT</small></span
+                      ><button data-toast="委托撤销确认已打开">撤单</button>
+                    </div>
+                  </section>
+                  <section
+                    class="perps-content-panel"
+                    data-perps-panel="triggers"
+                  >
+                    <div class="compact-order">
+                      <strong>CASHCAT-PERP <small>止盈单</small></strong
+                      ><span>触发价<small>$0.000812</small></span
+                      ><span>执行方式<small>市价平多</small></span
+                      ><span>仓位比例<small>50%</small></span
+                      ><span>状态<small class="up">等待触发</small></span
+                      ><button data-toast="条件单编辑已打开">编辑</button>
+                    </div>
+                    <div class="compact-order">
+                      <strong>CASHCAT-PERP <small>止损单</small></strong
+                      ><span>触发价<small>$0.000612</small></span
+                      ><span>执行方式<small>市价平多</small></span
+                      ><span>仓位比例<small>100%</small></span
+                      ><span>状态<small class="up">等待触发</small></span
+                      ><button data-toast="条件单编辑已打开">编辑</button>
+                    </div>
+                  </section>
+                  <section
+                    class="perps-content-panel"
+                    data-perps-panel="onchain"
+                  >
+                    <div class="compact-order">
+                      <strong
+                        >CASHCAT-PERP
+                        <small class="up">开多 · 已确认</small></strong
+                      ><span>成交价<small>$0.000576</small></span
+                      ><span>杠杆<small>10×</small></span
+                      ><span>保证金<small>350 USDT</small></span
+                      ><span>交易哈希<small>0x8e4a…91c2</small></span
+                      ><button data-open="perps-onchain">全部记录</button>
+                    </div>
+                    <div class="compact-order">
+                      <strong
+                        >MOONBUN-PERP
+                        <small class="down">开空 · 已确认</small></strong
+                      ><span>成交价<small>$0.000148</small></span
+                      ><span>杠杆<small>5×</small></span
+                      ><span>保证金<small>160 USDT</small></span
+                      ><span>交易哈希<small>0xa712…4b80</small></span
+                      ><button data-open="perps-onchain">查看链上</button>
+                    </div>
+                  </section>
+                </div>
+                <aside class="perps-order-column">
+                  <div class="simple-trade-hint">
+                    <span><b>1</b>选择方向</span><span><b>2</b>输入保证金</span
+                    ><span><b>3</b>确认下单</span>
+                  </div>
+                  <div class="perps-toolbar">
+                    <button class="active" data-perps-mode>逐仓</button
+                    ><button data-perps-mode>全仓</button
+                    ><button data-toast="保证金模式说明已打开">
+                      <i
+                        class="ico sm"
+                        style="
+                          --icon: url(&quot;./assets/icons/lucide/circle-help.svg&quot;);
+                        "
+                      ></i>
+                    </button>
+                    <div class="account-equity">
+                      <span>合约账户权益</span><strong>2,840.62 USDT</strong>
+                    </div>
+                  </div>
+                  <div class="perps-side">
+                    <button class="active" data-perps-side="long">开多</button
+                    ><button data-perps-side="short">开空</button>
+                  </div>
+                  <div class="perps-order-tabs">
+                    <button class="active" data-perps-order>市价</button
+                    ><button data-perps-order>限价</button
+                    ><button data-perps-order>止盈止损</button>
+                  </div>
+                  <div class="perps-order-box">
+                    <div class="order-label">
+                      <span>可用保证金</span><strong>2,490.62 USDT</strong>
+                    </div>
+                    <div class="perps-field">
+                      <div class="order-label">
+                        <span>委托价格</span><span>最优市场价</span>
+                      </div>
+                      <div class="amount-input">
+                        <input
+                          value="市价"
+                          readonly
+                          aria-label="委托价格"
+                        /><strong>USDT</strong>
+                      </div>
+                    </div>
+                    <div class="perps-field">
+                      <div class="order-label">
+                        <span>保证金金额</span><span>USDT</span>
+                      </div>
+                      <div class="amount-input">
+                        <input
+                          id="perps-size"
+                          value="100.00"
+                          inputmode="decimal"
+                          aria-label="保证金金额"
+                        /><strong>USDT</strong>
+                      </div>
+                    </div>
+                    <div class="perps-size-chips">
+                      <button data-perps-size="25">25%</button
+                      ><button data-perps-size="50">50%</button
+                      ><button data-perps-size="75">75%</button
+                      ><button data-perps-size="100">MAX</button>
+                    </div>
+                    <div class="leverage-head">
+                      <span>杠杆倍数</span
+                      ><strong><b data-perps-leverage>10</b>×</strong>
+                    </div>
+                    <input
+                      class="leverage-slider"
+                      id="perps-leverage"
+                      type="range"
+                      min="1"
+                      max="100"
+                      value="10"
+                      step="1"
+                      aria-label="杠杆倍数"
+                    />
+                    <div class="leverage-scale">
+                      <span>1×</span><span>10×</span><span>25×</span
+                      ><span>50×</span><span>100×</span>
+                    </div>
+                    <div class="quote">
+                      <div>
+                        <span>预计仓位价值</span
+                        ><strong data-perps-notional>1,000.00 USDT</strong>
+                      </div>
+                      <div>
+                        <span>预估强平价</span
+                        ><strong data-perps-est-liq>$0.000648</strong>
+                      </div>
+                      <div><span>开仓手续费</span><strong>0.0500%</strong></div>
+                      <div><span>维持保证金率</span><strong>0.50%</strong></div>
+                    </div>
+                    <button
+                      class="primary perps-submit long"
+                      id="perps-submit"
+                      data-toast="永续合约订单确认已打开"
+                    >
+                      连接钱包并开多
+                    </button>
+                  </div>
+                  <div class="perps-risk">
+                    <i
+                      class="ico"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/triangle-alert.svg&quot;);
+                      "
+                    ></i
+                    ><span
+                      >永续合约使用杠杆，价格波动可能导致全部保证金损失。开仓前请确认强平价格与资金费率。</span
+                    >
+                  </div>
+                </aside>
+              </div>
+            </section>
+
+            <section class="screen" data-panel="perps-add-contract">
+              <div class="appbar">
+                <button class="icon-btn" data-open="perps" aria-label="返回">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;);
+                    "
+                  ></i>
+                </button>
+                <div>
+                  <div class="eyebrow">PERPS / ONBOARD</div>
+                  <strong>添加链上 MEME 合约</strong>
+                </div>
+                <span class="tag lime">仅限双链</span>
+              </div>
+              <div class="page-title">
+                <h1>3 步链上添加 MEME 合约</h1>
+                <p>选择主网、读取合约、签名写入。无需提交审核或等待批准。</p>
+              </div>
+              <div class="simple-stepper">
+                <div class="simple-step active" data-contract-step="1">
+                  <b>1</b
+                  ><span
+                    ><strong>选择主网</strong
+                    ><small>BSC / Robinhood</small></span
+                  >
+                </div>
+                <div class="simple-step" data-contract-step="2">
+                  <b>2</b
+                  ><span
+                    ><strong>安全检查</strong
+                    ><small>自动读取链上信息</small></span
+                  >
+                </div>
+                <div class="simple-step" data-contract-step="3">
+                  <b>3</b
+                  ><span
+                    ><strong>链上执行</strong
+                    ><small>钱包签名后立即添加</small></span
+                  >
+                </div>
+              </div>
+              <div class="page-guide">
+                <i
+                  class="ico"
+                  style="
+                    --icon: url(&quot;./assets/icons/lucide/info.svg&quot;);
+                  "
+                ></i
+                ><span
+                  ><b>无需人工审批。</b>
+                  安全检查通过后，钱包签名会直接把合约写入链上
+                  Registry；创建对手池后即可开放交易。</span
+                >
+              </div>
+              <div class="chain-choice-grid">
+                <button class="chain-choice active" data-contract-chain="bsc">
+                  <span class="chain-dot bsc">B</span
+                  ><span
+                    ><strong>BSC 主网</strong
+                    ><small>BNB Chain · BEP-20 合约</small></span
+                  ><span class="tag lime">已选择</span></button
+                ><button class="chain-choice" data-contract-chain="robinhood">
+                  <span class="chain-dot robinhood">R</span
+                  ><span
+                    ><strong>Robinhood Chain</strong
+                    ><small>Robinhood 主网 · EVM 合约</small></span
+                  ><span class="tag">可用</span>
+                </button>
+              </div>
+              <section class="contract-shell">
+                <div class="form-card-title">
+                  <div>
+                    <h3>01 · 读取合约</h3>
+                    <p>粘贴地址，系统自动读取代币、权限和流动性。</p>
+                  </div>
+                  <span class="tag lime" data-contract-network>BSC</span>
+                </div>
+                <div class="contract-address">
+                  <input
+                    class="field"
+                    id="perps-contract-address"
+                    value="0x020b8A4C9912D8164C6B7E8Faa18b4"
+                    aria-label="MEME 合约地址"
+                  /><button
+                    class="primary"
+                    data-verify-contract
+                    data-toast="合约已验证并读取链上信息"
+                  >
+                    验证合约
+                  </button>
+                </div>
+                <div class="contract-preview" data-contract-preview>
+                  <img src="./assets/tokens/cashcat.svg" alt="CashCat" />
+                  <div>
+                    <strong>CASHCAT · Cash Cat</strong
+                    ><small
+                      >0x020b…18b4 · <b data-contract-preview-chain>BSC</b> ·
+                      总供应量 1,000,000,000</small
+                    >
+                  </div>
+                  <span class="tag lime" data-contract-status>已验证</span>
+                </div>
+                <div class="eligibility-grid">
+                  <div class="eligibility-item">
+                    <i
+                      class="ico sm"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;);
+                      "
+                    ></i
+                    >源码与代理合约安全
+                  </div>
+                  <div class="eligibility-item">
+                    <i
+                      class="ico sm"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;);
+                      "
+                    ></i
+                    >24H 成交 $483K
+                  </div>
+                  <div class="eligibility-item">
+                    <i
+                      class="ico sm"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;);
+                      "
+                    ></i
+                    >流动性 $35.2K
+                  </div>
+                  <div class="eligibility-item warn">
+                    <i
+                      class="ico sm"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/shield-alert.svg&quot;);
+                      "
+                    ></i
+                    >价格偏差上限 3%
+                  </div>
+                </div>
+              </section>
+              <section class="contract-shell">
+                <div class="form-card-title">
+                  <div>
+                    <h3>02 · 设置基础交易参数</h3>
+                    <p>只需选择价格源与杠杆，其余风险参数由系统自动计算。</p>
+                  </div>
+                  <span class="tag">可调整</span>
+                </div>
+                <div class="two-column-form">
+                  <div class="form-group">
+                    <label>指数价格源 <span>必须</span></label
+                    ><select class="field">
+                      <option>DEX TWAP + BitBT Oracle</option>
+                      <option>PancakeSwap V3 TWAP</option>
+                      <option>Robinhood Chain DEX TWAP</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>结算资产 <span>固定</span></label
+                    ><select class="field">
+                      <option>USDT</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>建议最大杠杆 <span>新手推荐</span></label
+                    ><select class="field">
+                      <option>20× · 均衡</option>
+                      <option>10× · 稳健</option>
+                      <option>50× · 高风险</option>
+                      <option>100× · 专业</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>最低风险储备 <span>自动计算</span></label
+                    ><input class="field" value="25,000 USDT" readonly />
+                  </div>
+                </div>
+                <div class="risk-note">
+                  系统会按代币波动、流动性和权限自动设置仓位上限；不满足安全条件时，链上交易会直接回滚。
+                </div>
+              </section>
+              <section class="contract-shell direct-chain-flow">
+                <div class="form-card-title">
+                  <div>
+                    <h3>03 · 确认并链上添加</h3>
+                    <p>钱包签名后立即写入链上，不经过人工审批。</p>
+                  </div>
+                  <span class="tag lime">签名即执行</span>
+                </div>
+                <div class="plain-summary">
+                  <span>主网：<b data-contract-summary-chain>BSC</b></span
+                  ><span>结算：USDT</span><span>杠杆：最高 20×</span
+                  ><span>风险储备：25,000 USDT</span>
+                </div>
+                <div class="execution-path">
+                  <div>
+                    <b>01 安全检查</b><span>读取权限、价格与流动性</span>
+                  </div>
+                  <div><b>02 钱包签名</b><span>你确认一次链上交易</span></div>
+                  <div>
+                    <b>03 自动完成</b><span>写入 Registry 并可立即建池</span>
+                  </div>
+                </div>
+                <div class="flow-actions">
+                  <button class="primary" data-open="perps-create-pool">
+                    链上添加并创建对手池</button
+                  ><button
+                    class="secondary"
+                    data-toast="合约已直接写入链上，可稍后创建对手池"
+                  >
+                    仅链上添加
+                  </button>
+                </div>
+              </section>
+            </section>
+
+            <section class="screen" data-panel="perps-create-pool">
+              <div class="appbar">
+                <button class="icon-btn" data-open="perps" aria-label="返回">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;);
+                    "
+                  ></i>
+                </button>
+                <div>
+                  <div class="eyebrow">PERPS / POOL BUILDER</div>
+                  <strong>创建 MEME 对手池</strong>
+                </div>
+                <span class="tag lime">1–100×</span>
+              </div>
+              <div class="page-title">
+                <h1>用 3 个选择创建对手池</h1>
+                <p>
+                  选池子类型、选风险方案、填入资金。复杂参数由系统自动完成。
+                </p>
+              </div>
+              <div class="simple-stepper">
+                <div class="simple-step active">
+                  <b>1</b
+                  ><span
+                    ><strong>选池子类型</strong
+                    ><small>联合池 / 做市池</small></span
+                  >
+                </div>
+                <div class="simple-step">
+                  <b>2</b
+                  ><span
+                    ><strong>选风险方案</strong
+                    ><small>稳健 / 均衡 / 高杠杆</small></span
+                  >
+                </div>
+                <div class="simple-step">
+                  <b>3</b
+                  ><span
+                    ><strong>填资金并创建</strong
+                    ><small>钱包签名上链</small></span
+                  >
+                </div>
+              </div>
+              <div class="page-guide">
+                <i
+                  class="ico"
+                  style="
+                    --icon: url(&quot;./assets/icons/lucide/info.svg&quot;);
+                  "
+                ></i
+                ><span
+                  >第一次创建建议选择「散户联合池 +
+                  均衡方案」。你只需要决定投入多少
+                  USDT，系统会计算多空容量与风控线。</span
+                >
+              </div>
+              <div class="role-grid">
+                <button class="role-card active" data-pool-role="retail">
+                  <span class="mode-icon"
+                    ><i
+                      class="ico"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/wallet-cards.svg&quot;);
+                      "
+                    ></i></span
+                  ><strong>散户联合池</strong
+                  ><small
+                    >多人共同投入
+                    USDT，按份额分享手续费，也共同承担对手盘盈亏。</small
+                  ><span class="tag lime">推荐新手</span></button
+                ><button class="role-card" data-pool-role="maker">
+                  <span class="mode-icon"
+                    ><i
+                      class="ico"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/database.svg&quot;);
+                      "
+                    ></i></span
+                  ><strong>专业做市池</strong
+                  ><small
+                    >由一个做市地址独立提供资金，适合熟悉杠杆和风险管理的用户。</small
+                  ><span class="tag">高级</span>
+                </button>
+              </div>
+              <div class="pool-builder-grid">
+                <div>
+                  <section class="pool-form-card">
+                    <div class="form-card-title">
+                      <div>
+                        <h3>02 · 选择风险方案</h3>
+                        <p>不用逐项配置参数，可随时微调最大杠杆。</p>
+                      </div>
+                      <span class="tag lime" data-pool-preset-label>均衡</span>
+                    </div>
+                    <div class="pool-preset-grid">
+                      <button class="pool-preset" data-pool-preset="safe">
+                        <strong>稳健</strong
+                        ><small>适合新币和低流动性市场，风险储备更高。</small
+                        ><em>最高 10×</em></button
+                      ><button
+                        class="pool-preset active"
+                        data-pool-preset="balanced"
+                      >
+                        <strong>均衡</strong
+                        ><small>兼顾交易深度和资金效率，适合大多数 MEME。</small
+                        ><em>最高 20×</em></button
+                      ><button class="pool-preset" data-pool-preset="pro">
+                        <strong>高杠杆</strong
+                        ><small
+                          >适合成熟市场，需要更高风险储备和专业管理。</small
+                        ><em>最高 50×</em>
+                      </button>
+                    </div>
+                    <div class="form-group" style="margin-top: 14px">
+                      <label>最大杠杆 <span>可手动设置 1–100×</span></label
+                      ><input
+                        class="leverage-slider"
+                        id="pool-leverage"
+                        type="range"
+                        min="1"
+                        max="100"
+                        value="20"
+                        step="1"
+                      />
+                      <div class="leverage-scale">
+                        <span>1×</span><span>10×</span><span>25×</span
+                        ><span>50×</span><span>100×</span>
+                      </div>
+                    </div>
+                    <div class="auto-config-list">
+                      <div>
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;);
+                          "
+                        ></i
+                        >自动平衡多空容量
+                      </div>
+                      <div>
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;);
+                          "
+                        ></i
+                        >自动设置强平保护
+                      </div>
+                      <div>
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;);
+                          "
+                        ></i
+                        >自动计算资金费率
+                      </div>
+                      <div>
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/circle-check-big.svg&quot;);
+                          "
+                        ></i
+                        >自动限制单账户仓位
+                      </div>
+                    </div>
+                  </section>
+                  <section class="pool-form-card">
+                    <div class="form-card-title">
+                      <div>
+                        <h3>03 · 填入资金</h3>
+                        <p>确认币种和网络，然后输入准备投入的 USDT。</p>
+                      </div>
+                      <span class="tag lime">最后一步</span>
+                    </div>
+                    <div class="two-column-form">
+                      <div class="form-group">
+                        <label>主网 <span>仅限双链</span></label
+                        ><select class="field">
+                          <option>BSC 主网</option>
+                          <option>Robinhood Chain 主网</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>MEME 合约 <span>已链上添加</span></label
+                        ><select class="field">
+                          <option>CASHCAT · 0x020b…18b4</option>
+                          <option>MOONBUN · 0x93D1…A72C</option>
+                          <option>输入其他合约地址</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>投入资金 <span>USDT</span></label
+                        ><input
+                          class="field"
+                          value="50,000"
+                          inputmode="decimal"
+                          data-pool-funding
+                        />
+                      </div>
+                      <div class="form-group">
+                        <label
+                          >风险储备
+                          <span
+                            ><b data-pool-reserve-rate>20</b>% · 自动建议</span
+                          ></label
+                        ><input
+                          class="field"
+                          value="10,000"
+                          inputmode="decimal"
+                          data-pool-reserve
+                        />
+                      </div>
+                    </div>
+                    <details class="advanced-disclosure">
+                      <summary>高级参数（可选，不修改也能创建）</summary>
+                      <div class="advanced-content">
+                        <div class="two-column-form">
+                          <div class="form-group">
+                            <label>做市点差</label
+                            ><select class="field">
+                              <option data-pool-spread-option>0.30%</option>
+                              <option>0.50%</option>
+                              <option>1.00%</option>
+                            </select>
+                          </div>
+                          <div class="form-group">
+                            <label>创建者手续费分成</label
+                            ><select class="field">
+                              <option>60%</option>
+                              <option>50%</option>
+                              <option>40%</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </section>
+                </div>
+                <aside class="pool-summary-card">
+                  <div class="form-card-title">
+                    <div>
+                      <h3>创建前确认</h3>
+                      <p>看懂这 4 项即可。</p>
+                    </div>
+                    <span class="tag lime">实时预览</span>
+                  </div>
+                  <div class="pool-summary-hero">
+                    <span
+                      >CASHCAT-PERP · BSC ·
+                      <b data-pool-role-label>散户联合池</b></span
+                    ><strong
+                      ><b data-pool-funding-summary>50,000</b> USDT 资金</strong
+                    >
+                  </div>
+                  <div class="pool-split">
+                    <div>
+                      <span>风险方案</span
+                      ><strong data-pool-preset-label>均衡</strong>
+                    </div>
+                    <div>
+                      <span>风险储备</span
+                      ><strong
+                        ><b data-pool-reserve-summary>10,000</b> USDT</strong
+                      >
+                    </div>
+                    <div>
+                      <span>最大杠杆</span
+                      ><strong><b data-pool-leverage>20</b>×</strong>
+                    </div>
+                    <div>
+                      <span>做市点差</span
+                      ><strong data-pool-spread>0.30%</strong>
+                    </div>
+                  </div>
+                  <div class="quote">
+                    <div>
+                      <span>系统自动配置</span
+                      ><strong>多空容量、资金费率、强平线</strong>
+                    </div>
+                    <div>
+                      <span>最大净敞口</span
+                      ><strong data-pool-exposure>125,000 USDT</strong>
+                    </div>
+                    <div><span>创建 Gas</span><strong>≈ 0.006 BNB</strong></div>
+                  </div>
+                  <div class="perps-risk">
+                    <i
+                      class="ico"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/triangle-alert.svg&quot;);
+                      "
+                    ></i
+                    ><span
+                      >对手池会承担交易者盈利和极端行情风险。建议保留系统给出的风险储备。</span
+                    >
+                  </div>
+                  <button class="primary" data-open="perps-pool">
+                    连接钱包并创建链上池子</button
+                  ><button class="secondary" data-toast="池子草稿已保存">
+                    保存草稿
+                  </button>
+                </aside>
+              </div>
+            </section>
+
+            <section class="screen" data-panel="perps-pool">
+              <div class="appbar">
+                <button class="icon-btn" data-open="perps" aria-label="返回">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;);
+                    "
+                  ></i>
+                </button>
+                <div>
+                  <div class="eyebrow">COUNTERPARTY POOL</div>
+                  <strong>池子详情</strong>
+                </div>
+                <div class="actions">
+                  <button
+                    class="icon-btn"
+                    data-toast="池子链接已复制"
+                    aria-label="分享池子"
+                  >
+                    <i
+                      class="ico"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/copy.svg&quot;);
+                      "
+                    ></i></button
+                  ><button
+                    class="icon-btn"
+                    data-toast="池子设置已打开"
+                    aria-label="池子设置"
+                  >
+                    <i
+                      class="ico"
+                      style="
+                        --icon: url(&quot;./assets/icons/lucide/settings.svg&quot;);
+                      "
+                    ></i>
+                  </button>
+                </div>
+              </div>
+              <div class="pool-hero">
+                <div class="pool-hero-top">
+                  <div class="pool-identity">
+                    <img src="./assets/tokens/cashcat.svg" alt="CashCat" />
+                    <div>
+                      <h2>CASHCAT-PERP · Pool #0084</h2>
+                      <p>
+                        <span
+                          class="chain-dot bsc"
+                          style="
+                            display: inline-grid;
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 5px;
+                            font-size: 8px;
+                            vertical-align: middle;
+                          "
+                          >B</span
+                        >
+                        BSC · 散户联合池 · 创建者 0x71A4…89F2
+                      </p>
+                      <div class="plain-summary">
+                        <span>USDT 结算</span><span>预言机保护</span
+                        ><span>自动减仓</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="pool-health">
+                    <strong>健康度 92 / 100</strong
+                    ><small>风险储备充足 · 自动减仓未触发</small>
+                    <div class="pool-shortcuts">
+                      <button class="secondary" data-open="perps-onchain">
+                        查看链上开仓
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="pool-metrics">
+                <div><span>总流动深度</span><strong>500,000 USDT</strong></div>
+                <div><span>未平仓量</span><strong>286,420 USDT</strong></div>
+                <div><span>24H 交易量</span><strong>$1.84M</strong></div>
+                <div>
+                  <span>池子累计收益</span
+                  ><strong class="up">+12,842 USDT</strong>
+                </div>
+              </div>
+              <div class="pool-detail-grid">
+                <section class="depth-card">
+                  <div class="depth-head">
+                    <div>
+                      <h3>多空对手盘深度</h3>
+                      <p>可用深度随持仓与风险储备实时变化。</p>
+                    </div>
+                    <span class="tag lime">LIVE</span>
+                  </div>
+                  <div class="depth-bar">
+                    <i class="long" style="width: 58%"></i
+                    ><i class="short" style="width: 42%"></i>
+                  </div>
+                  <div class="depth-labels">
+                    <span class="up">多头 290,000 USDT · 58%</span
+                    ><span class="down">空头 210,000 USDT · 42%</span>
+                  </div>
+                  <div class="data-table">
+                    <div class="review-row">
+                      <span>最大杠杆</span><strong>100×</strong>
+                    </div>
+                    <div class="review-row">
+                      <span>当前资金费率</span
+                      ><strong class="up">+0.0100% / 8H</strong>
+                    </div>
+                    <div class="review-row">
+                      <span>做市点差</span><strong>0.30%</strong>
+                    </div>
+                    <div class="review-row">
+                      <span>风险储备</span><strong>58,420 USDT</strong>
+                    </div>
+                    <div class="review-row">
+                      <span>预言机</span
+                      ><strong>DEX TWAP + BitBT Oracle</strong>
+                    </div>
+                  </div>
+                  <div class="pool-actions">
+                    <button
+                      class="primary perps-submit long"
+                      data-open="perps"
+                      data-open-perps-side="long"
+                    >
+                      进入开多</button
+                    ><button
+                      class="primary perps-submit short"
+                      data-open="perps"
+                      data-open-perps-side="short"
+                    >
+                      进入开空
+                    </button>
+                  </div>
+                </section>
+                <aside class="participant-card">
+                  <div class="form-card-title">
+                    <div>
+                      <h3>池子参与者</h3>
+                      <p>按有效流动性份额计算收益。</p>
+                    </div>
+                    <span class="tag">128 LP</span>
+                  </div>
+                  <div class="participant-row">
+                    <strong
+                      >0x71A4…89F2
+                      <span class="creator-badge">创建者</span></strong
+                    ><span>32.4%</span><strong class="up">+$4,162</strong>
+                  </div>
+                  <div class="participant-row">
+                    <strong>0x26B1…C52D</strong><span>18.6%</span
+                    ><strong class="up">+$2,388</strong>
+                  </div>
+                  <div class="participant-row">
+                    <strong>0xE13A…2201</strong><span>11.2%</span
+                    ><strong class="up">+$1,438</strong>
+                  </div>
+                  <div class="participant-row">
+                    <strong>其他 125 地址</strong><span>37.8%</span
+                    ><strong class="up">+$4,854</strong>
+                  </div>
+                  <button class="primary" data-toast="注入流动性页面已打开">
+                    注入 USDT 成为对手方</button
+                  ><button class="secondary" data-toast="撤出流动性规则已打开">
+                    查看锁定与退出规则
+                  </button>
+                </aside>
+              </div>
+              <div class="perps-risk">
+                <i
+                  class="ico"
+                  style="
+                    --icon: url(&quot;./assets/icons/lucide/shield-alert.svg&quot;);
+                  "
+                ></i
+                ><span
+                  >池子不是保本产品。LP
+                  与做市商承担交易者盈利、强平穿仓、预言机偏差与极端单边行情风险；风险储备耗尽时系统会自动降低最大杠杆。</span
+                >
+              </div>
+            </section>
+
+            <section class="screen" data-panel="perps-onchain">
+              <div class="appbar">
+                <button class="icon-btn" data-open="perps" aria-label="返回">
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;);
+                    "
+                  ></i>
+                </button>
+                <div>
+                  <div class="eyebrow">ON-CHAIN POSITIONS</div>
+                  <strong>链上开仓记录</strong>
+                </div>
+                <button
+                  class="icon-btn"
+                  data-toast="记录已刷新"
+                  aria-label="刷新记录"
+                >
+                  <i
+                    class="ico"
+                    style="
+                      --icon: url(&quot;./assets/icons/lucide/refresh-cw.svg&quot;);
+                    "
+                  ></i>
+                </button>
+              </div>
+              <div class="page-title">
+                <h1>每笔开仓，都可以核验</h1>
+                <p>
+                  查看 BSC 与 Robinhood Chain
+                  上的真实开仓方向、杠杆、保证金和交易哈希。
+                </p>
+              </div>
+              <div class="page-guide">
+                <i
+                  class="ico"
+                  style="
+                    --icon: url(&quot;./assets/icons/lucide/info.svg&quot;);
+                  "
+                ></i
+                ><span
+                  >「已确认」表示交易已写入区块；「确认中」表示交易已广播，正在等待主网确认。</span
+                >
+              </div>
+              <div class="record-overview">
+                <div><span>24H 开仓</span><strong>12,842 笔</strong></div>
+                <div>
+                  <span>开多 / 开空</span
+                  ><strong
+                    ><b class="up">54%</b> / <b class="down">46%</b></strong
+                  >
+                </div>
+                <div><span>24H 保证金</span><strong>4.28M USDT</strong></div>
+                <div><span>平均杠杆</span><strong>18.6×</strong></div>
+              </div>
+              <div class="ledger-toolbar">
+                <div class="record-filters" aria-label="链上记录筛选">
+                  <button class="active" data-record-filter="all">
+                    全部主网</button
+                  ><button data-record-filter="bsc">BSC</button
+                  ><button data-record-filter="robinhood">
+                    Robinhood Chain</button
+                  ><button data-record-filter="long">只看开多</button
+                  ><button data-record-filter="short">只看开空</button>
+                </div>
+                <button class="secondary" data-toast="CSV 导出已准备">
+                  导出记录
+                </button>
+              </div>
+              <div class="onchain-ledger">
+                <article class="onchain-row" data-chain-record="bsc long">
+                  <div class="record-identity">
+                    <img src="./assets/tokens/cashcat.svg" alt="CashCat" />
+                    <div>
+                      <strong>CASHCAT-PERP</strong
+                      ><small>BSC · 区块 #64,812,904</small>
+                    </div>
+                  </div>
+                  <div class="record-cell">
+                    <strong class="up">开多 · 10×</strong
+                    ><span>0x71A4…89F2</span>
+                  </div>
+                  <div class="record-cell">
+                    <span>成交价</span><strong>$0.000576</strong>
+                  </div>
+                  <div class="record-cell">
+                    <span>保证金 / 仓位</span><strong>350 / 3,500 USDT</strong>
+                  </div>
+                  <div>
+                    <span class="record-status">已确认</span>
+                    <div class="record-hash">
+                      <small>0x8e4a…91c2</small
+                      ><button
+                        data-toast="交易哈希已复制"
+                        aria-label="复制交易哈希"
+                      >
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/copy.svg&quot;);
+                          "
+                        ></i>
+                      </button>
+                    </div>
+                  </div>
+                  <button class="record-open" data-record-toggle>详情</button>
+                  <div class="record-detail">
+                    <div><span>开仓时间</span><strong>09:41:28</strong></div>
+                    <div><span>池子</span><strong>Pool #0084</strong></div>
+                    <div><span>开仓手续费</span><strong>1.75 USDT</strong></div>
+                    <div><span>预估强平价</span><strong>$0.000513</strong></div>
+                  </div>
+                </article>
+                <article
+                  class="onchain-row"
+                  data-chain-record="robinhood short"
+                >
+                  <div class="record-identity">
+                    <img src="./assets/tokens/moonbun.svg" alt="MoonBun" />
+                    <div>
+                      <strong>MOONBUN-PERP</strong
+                      ><small>Robinhood Chain · 区块 #18,204,116</small>
+                    </div>
+                  </div>
+                  <div class="record-cell">
+                    <strong class="down">开空 · 5×</strong
+                    ><span>0x26B1…C52D</span>
+                  </div>
+                  <div class="record-cell">
+                    <span>成交价</span><strong>$0.000148</strong>
+                  </div>
+                  <div class="record-cell">
+                    <span>保证金 / 仓位</span><strong>160 / 800 USDT</strong>
+                  </div>
+                  <div>
+                    <span class="record-status">已确认</span>
+                    <div class="record-hash">
+                      <small>0xa712…4b80</small
+                      ><button
+                        data-toast="交易哈希已复制"
+                        aria-label="复制交易哈希"
+                      >
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/copy.svg&quot;);
+                          "
+                        ></i>
+                      </button>
+                    </div>
+                  </div>
+                  <button class="record-open" data-record-toggle>详情</button>
+                  <div class="record-detail">
+                    <div><span>开仓时间</span><strong>09:39:52</strong></div>
+                    <div><span>池子</span><strong>Pool #0112</strong></div>
+                    <div><span>开仓手续费</span><strong>0.40 USDT</strong></div>
+                    <div><span>预估强平价</span><strong>$0.000174</strong></div>
+                  </div>
+                </article>
+                <article class="onchain-row" data-chain-record="bsc short">
+                  <div class="record-identity">
+                    <img src="./assets/tokens/bitbull.svg" alt="BitBull" />
+                    <div>
+                      <strong>BITBULL-PERP</strong
+                      ><small>BSC · 区块 #64,812,887</small>
+                    </div>
+                  </div>
+                  <div class="record-cell">
+                    <strong class="down">开空 · 25×</strong
+                    ><span>0xE13A…2201</span>
+                  </div>
+                  <div class="record-cell">
+                    <span>成交价</span><strong>$0.002472</strong>
+                  </div>
+                  <div class="record-cell">
+                    <span>保证金 / 仓位</span><strong>480 / 12,000 USDT</strong>
+                  </div>
+                  <div>
+                    <span class="record-status">已确认</span>
+                    <div class="record-hash">
+                      <small>0x5bd9…aa31</small
+                      ><button
+                        data-toast="交易哈希已复制"
+                        aria-label="复制交易哈希"
+                      >
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/copy.svg&quot;);
+                          "
+                        ></i>
+                      </button>
+                    </div>
+                  </div>
+                  <button class="record-open" data-record-toggle>详情</button>
+                  <div class="record-detail">
+                    <div><span>开仓时间</span><strong>09:37:14</strong></div>
+                    <div><span>池子</span><strong>Pool #0068</strong></div>
+                    <div><span>开仓手续费</span><strong>6.00 USDT</strong></div>
+                    <div><span>预估强平价</span><strong>$0.002553</strong></div>
+                  </div>
+                </article>
+                <article class="onchain-row" data-chain-record="bsc long">
+                  <div class="record-identity">
+                    <img src="./assets/tokens/moonbun.svg" alt="MoonBun" />
+                    <div>
+                      <strong>MOONBUN-PERP</strong
+                      ><small>BSC · 等待区块确认</small>
+                    </div>
+                  </div>
+                  <div class="record-cell">
+                    <strong class="up">开多 · 20×</strong
+                    ><span>0x90D0…77AE</span>
+                  </div>
+                  <div class="record-cell">
+                    <span>预估成交价</span><strong>$0.000146</strong>
+                  </div>
+                  <div class="record-cell">
+                    <span>保证金 / 仓位</span><strong>120 / 2,400 USDT</strong>
+                  </div>
+                  <div>
+                    <span class="record-status pending">确认中</span>
+                    <div class="record-hash">
+                      <small>0xc419…0f77</small
+                      ><button
+                        data-toast="交易哈希已复制"
+                        aria-label="复制交易哈希"
+                      >
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/copy.svg&quot;);
+                          "
+                        ></i>
+                      </button>
+                    </div>
+                  </div>
+                  <button class="record-open" data-record-toggle>详情</button>
+                  <div class="record-detail">
+                    <div><span>提交时间</span><strong>09:36:48</strong></div>
+                    <div><span>池子</span><strong>Pool #0091</strong></div>
+                    <div><span>Gas 上限</span><strong>0.0012 BNB</strong></div>
+                    <div><span>当前确认</span><strong>0 / 2</strong></div>
+                  </div>
+                </article>
+                <article class="onchain-row" data-chain-record="robinhood long">
+                  <div class="record-identity">
+                    <img src="./assets/tokens/cashcat.svg" alt="CashCat" />
+                    <div>
+                      <strong>CASHCAT-PERP</strong
+                      ><small>Robinhood Chain · 区块 #18,204,092</small>
+                    </div>
+                  </div>
+                  <div class="record-cell">
+                    <strong class="up">开多 · 50×</strong
+                    ><span>0x3F21…9C44</span>
+                  </div>
+                  <div class="record-cell">
+                    <span>成交价</span><strong>$0.000714</strong>
+                  </div>
+                  <div class="record-cell">
+                    <span>保证金 / 仓位</span><strong>200 / 10,000 USDT</strong>
+                  </div>
+                  <div>
+                    <span class="record-status">已确认</span>
+                    <div class="record-hash">
+                      <small>0x113f…ce92</small
+                      ><button
+                        data-toast="交易哈希已复制"
+                        aria-label="复制交易哈希"
+                      >
+                        <i
+                          class="ico sm"
+                          style="
+                            --icon: url(&quot;./assets/icons/lucide/copy.svg&quot;);
+                          "
+                        ></i>
+                      </button>
+                    </div>
+                  </div>
+                  <button class="record-open" data-record-toggle>详情</button>
+                  <div class="record-detail">
+                    <div><span>开仓时间</span><strong>09:32:06</strong></div>
+                    <div><span>池子</span><strong>Pool #0120</strong></div>
+                    <div><span>开仓手续费</span><strong>5.00 USDT</strong></div>
+                    <div><span>预估强平价</span><strong>$0.000702</strong></div>
+                  </div>
+                </article>
+              </div>
+              <div class="ledger-foot">
+                <span
+                  >记录来自 BSC 与 Robinhood Chain 节点，最新同步于 2
+                  秒前。</span
+                ><button class="secondary" data-toast="已加载更多链上记录">
+                  加载更多
+                </button>
+              </div>
+            </section>
             <section class="screen" data-panel="detail">
               <div class="appbar">
                 <button class="icon-btn" data-open="discover" aria-label="返回">
@@ -6219,7 +10638,7 @@
                 <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/trending-up.svg&quot;)"></i>
                 <span>排行</span>
               </button>
-              <button data-nav="perpetual">
+              <button data-nav="perps">
                 <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/chart-candlestick.svg&quot;)"></i>
                 <span>永续</span>
               </button>
@@ -6231,8 +10650,8 @@
             <div class="toast" role="status">操作已就绪</div>
             <div class="wallet-provider-overlay operation-error-overlay" data-operation-error hidden>
               <section class="wallet-provider-dialog operation-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="operation-error-title" aria-describedby="operation-error-message">
-                <span class="tag">操作未完成</span>
-                <h2 id="operation-error-title">请调整参数后重试</h2>
+                <span class="tag" data-operation-dialog-tag>操作未完成</span>
+                <h2 id="operation-error-title" data-operation-dialog-title>请调整参数后重试</h2>
                 <p id="operation-error-message" data-operation-error-message></p>
                 <button class="primary" type="button" data-operation-error-dismiss>知道了</button>
               </section>
