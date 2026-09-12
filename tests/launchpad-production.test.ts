@@ -54,6 +54,9 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /永续仓位参数绑定失败/);
   assert.match(bridge, /config\?\.openingsPaused/);
   assert.match(bridge, /refreshPerpetualStatus/);
+  assert.match(bridge, /perpetualPanelActive/);
+  assert.match(bridge, /!perpetualPanelActive\(\)/);
+  assert.doesNotMatch(bridge, /if \(ui20260911\) void loadPerpetual\(\)/);
   assert.match(bridge, /Keeper 正在续期链上心跳/);
   assert.match(bridge, /position limit exceeded/);
   assert.match(bridge, /开仓金额超出单仓上限/);
