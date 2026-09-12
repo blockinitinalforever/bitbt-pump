@@ -515,6 +515,15 @@
     if (/Address must end with 8888|CREATE2 failed|Factory token bytecode mismatch|发币参数与链上工厂不一致/i.test(message)) return "发币参数与链上 Factory 不一致，请重新加载发币参数";
     if (/Below min threshold/i.test(message)) return "迁移阈值低于链上最低要求，请重新加载发币参数";
     if (/migration_threshold_quote/i.test(message)) return "自定义迁移目标超出当前 Factory 允许范围，请按提示调整后重试";
+    if (/position limit exceeded/i.test(message)) return "开仓失败：保证金 × 杠杆超过当前市场的单仓名义价值上限，请降低保证金或杠杆";
+    if (/open interest limit exceeded/i.test(message)) return "开仓失败：市场总未平仓量已达到上限，请减小仓位或等待其他仓位关闭";
+    if (/directional exposure limit exceeded/i.test(message)) return "开仓失败：当前方向的多空敞口已达到上限，请减小仓位或选择另一方向";
+    if (/utilization limit exceeded/i.test(message)) return "开仓失败：资金池可用流动性不足，请减小仓位";
+    if (/perpetual market is in reduce-only mode/i.test(message)) return "永续市场正在同步风控状态，当前仅允许平仓；请稍后重试开仓";
+    if (/perpetual market is disabled/i.test(message)) return "该永续市场当前已暂停开仓";
+    if (/invalid leverage/i.test(message)) return "杠杆倍数超出该市场允许范围，请重新选择";
+    if (/liquidity is locked while positions are open/i.test(message)) return "市场仍有未平仓仓位，当前不能注入或提取流动性";
+    if (/no platform fees are claimable/i.test(message)) return "当前没有可领取的平台手续费";
     if (status === 413 || /payload too large|request entity too large/i.test(message)) return "文件过大，请压缩后重试";
     if (status === 429 || /rate limit|too many requests/i.test(message)) return "操作过于频繁，请稍后重试";
     if (error?.name === "AbortError" || /timeout|timed out/i.test(message)) return "请求超时，请检查网络后重试";
@@ -580,7 +589,31 @@
     window.clearTimeout(node._hideTimer);
     node._hideTimer = window.setTimeout(() => node.classList.remove("show"), duration);
   };
-  const toastError = (error, fallback) => toast(friendlyError(error, fallback), 6000);
+  const showErrorDialog = (message) => {
+    const overlay = $("[data-operation-error]");
+    const content = $("[data-operation-error-message]");
+    const dismiss = $("[data-operation-error-dismiss]");
+    if (!overlay || !content || !dismiss) return toast(message, 6000);
+    content.textContent = message;
+    overlay.hidden = false;
+    if (!overlay.dataset.bound) {
+      overlay.dataset.bound = "1";
+      const close = () => { overlay.hidden = true; };
+      dismiss.addEventListener("click", close);
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) close();
+      });
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !overlay.hidden) close();
+      });
+    }
+    dismiss.focus();
+  };
+  const toastError = (error, fallback) => {
+    const message = friendlyError(error, fallback);
+    toast(message, 6000);
+    showErrorDialog(message);
+  };
   window.addEventListener("bitbt:toast", (event) => toast(event.detail));
   const setLaunchAvailability = (enabled) =>
     $$('[data-open="create-mode"], [data-nav="create-mode"], [data-launch-mode], .launch-now').forEach((node) => {
@@ -898,6 +931,16 @@
     if (action === "open_position") {
       body.leverage = Number($("#perp-leverage")?.value || 0);
       body.is_long = $("#perp-side")?.value !== "short";
+      const notional = BigInt(body.amount_raw) * BigInt(body.leverage);
+      const maxPosition = BigInt(market.maxPositionNotionalRaw || "0");
+      if (maxPosition > 0n && notional > maxPosition) {
+        const decimals = Number(market.quoteDecimals || 18);
+        const amount = formatUnits(BigInt(body.amount_raw), decimals);
+        const total = formatUnits(notional, decimals);
+        const limit = formatUnits(maxPosition, decimals);
+        const maxCollateral = formatUnits(maxPosition / BigInt(body.leverage), decimals);
+        throw new Error(`开仓金额超出单仓上限：${amount} × ${body.leverage} = ${total}，当前上限为 ${limit}。请把保证金降至 ${maxCollateral} 以下，或降低杠杆。`);
+      }
     }
     if (action === "withdraw_liquidity") body.shares_raw = String($("#perp-shares")?.value || "").trim();
     if (["liquidate", "expire_position"].includes(action)) {

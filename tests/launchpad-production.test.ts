@@ -55,6 +55,11 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /config\?\.openingsPaused/);
   assert.match(bridge, /refreshPerpetualStatus/);
   assert.match(bridge, /Keeper 正在续期链上心跳/);
+  assert.match(bridge, /position limit exceeded/);
+  assert.match(bridge, /开仓金额超出单仓上限/);
+  assert.match(bridge, /showErrorDialog/);
+  assert.match(html, /data-operation-error/);
+  assert.match(html, /role="alertdialog"/);
   assert.match(bridge, /market\.maxOpenInterestRaw/);
   assert.match(bridge, /market\.maxFundingRatePpmPerDay/);
   assert.match(bridge, /market\.epochEnd/);
