@@ -843,8 +843,9 @@
     renderPerpetual();
     await loadPerpetualPosition();
   };
+  const perpetualPanelActive = () => Boolean(root.querySelector('[data-panel="perpetual"].active, [data-panel="perps"].active'));
   const refreshPerpetualStatus = async () => {
-    if (!ui20260911 || !isBscFeatureChain() || perpStatusRefreshInFlight) return;
+    if (!ui20260911 || !perpetualPanelActive() || !isBscFeatureChain() || perpStatusRefreshInFlight) return;
     perpStatusRefreshInFlight = true;
     try {
       const previousEnabled = Boolean(state.perpConfig?.enabled);
@@ -4772,7 +4773,6 @@
   void loadAnnouncements().catch(() => {
     text("[data-announcement-unread]", "!");
   });
-  if (ui20260911) void loadPerpetual().catch((error) => toastError(error, "永续市场状态读取失败"));
   void loadFavorites();
   connectMarketSocket();
   document.addEventListener("visibilitychange", () => {
@@ -4786,6 +4786,6 @@
     const refreshTrades = !socketHealthy || refreshCycle % 2 === 0;
     if (refreshMarket) void refreshLive({ refreshSelected: !refreshTrades });
     if (refreshTrades) void refreshSelectedTrades();
-    if (ui20260911 && refreshCycle % 2 === 0) void refreshPerpetualStatus().catch(() => {});
+    if (ui20260911 && perpetualPanelActive() && refreshCycle % 2 === 0) void refreshPerpetualStatus().catch(() => {});
   }, 15000);
 })();
