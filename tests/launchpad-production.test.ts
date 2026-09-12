@@ -60,6 +60,8 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /showErrorDialog/);
   assert.match(html, /data-operation-error/);
   assert.match(html, /role="alertdialog"/);
+  assert.match(bridge, /链上交易已成功，仓位数据暂时刷新失败，正在自动重试/);
+  assert.match(bridge, /void loadPerpetual\(\)\.catch/);
   for (const [action, selector] of Object.entries({
     deposit_liquidity: "0x34a860e4",
     withdraw_liquidity: "0x95e17d84",
