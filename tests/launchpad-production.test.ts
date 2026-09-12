@@ -10,7 +10,8 @@ const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-a
 const candidateHtml = fs.readFileSync(path.join(root, "public/launchpad/bitbt-ui-20260911-candidate.html"), "utf8");
 const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
-const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
+const bridge = fs.readFileSync(path.join(root, "src/client/launchpad-live.js"), "utf8");
+const productionBridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const walletConnectBridge = fs.readFileSync(path.join(root, "src/client/walletconnect-provider.ts"), "utf8");
 const walletConfigRoute = fs.readFileSync(path.join(root, "src/app/api/pump/wallet-config/route.ts"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
@@ -23,9 +24,16 @@ const pumpApiSource = fs.readFileSync(path.join(root, "src/lib/pump-api.ts"), "u
 const compactHtml = html.replace(/\s+/g, "");
 const compactBridge = bridge.replace(/\s+/g, "");
 
+test("production Launchpad JavaScript is minified without source maps", () => {
+  assert.ok(productionBridge.length < bridge.length * 0.85);
+  assert.ok(productionBridge.split("\n").length <= 20);
+  assert.doesNotMatch(productionBridge, /sourceMappingURL|sourcesContent/);
+  assert.doesNotMatch(productionBridge, /const createPermissionlessPerpetualMarket/);
+});
+
 test("perpetual is a first-level desktop and mobile route that survives refresh", () => {
-  assert.match(html, /class="screen-switcher"[\s\S]*data-open="perpetual">永续/);
-  assert.match(html, /class="bottom-nav visible"[\s\S]*data-nav="perpetual"/);
+  assert.match(html, /class="screen-switcher"[\s\S]*data-open="perps">MEME 永续合约/);
+  assert.match(html, /class="bottom-nav visible"[\s\S]*data-nav="perps"/);
   assert.match(bridge, /const routeScreen = \(\) =>/);
   assert.match(bridge, /const initialScreen = routeScreen\(\);\s*if \(initialScreen\) show\(initialScreen\)/);
   assert.match(bridge, /data-nav[^\n]*classList\.toggle\("active"/);
@@ -40,11 +48,10 @@ test("official Pump announcements and fail-closed perpetual product routes are w
     "v1/pump/perpetual/prepare",
   ]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   assert.match(html, /data-panel="announcements"/);
-  assert.match(html, /data-open="announcements">公告/);
-  assert.match(html, /class="nav-unread" data-announcement-unread/);
+  assert.match(html, /data-announcement-unread/);
   assert.match(html, /data-panel="perpetual"/);
   assert.match(html, /data-open="announcements"/);
-  assert.match(html, /data-open="perpetual"/);
+  assert.match(html, /data-open="perps"/);
   assert.match(bridge, /state\.perpConfig\?\.enabled/);
   assert.match(bridge, /公告加载失败/);
   assert.match(bridge, /void loadAnnouncements\(\)/);
@@ -212,7 +219,7 @@ test("2026-09-11 UI candidate clears prototype data and binds the first live-dat
   for (const selector of ["#token-logo-file", "[data-launch-file]", "#token-name", "#token-symbol", "#token-story", "#token-classification", "#token-twitter", "#token-telegram", "#token-website", "#token-discord", '[data-launch-quote="BNB"]', '[data-launch-quote="USDT"]', '[data-launch-quote="USDC"]', '[data-launch-quote="USD1"]', '[data-curve-mode="standard"]', '[data-curve-mode="custom"]', "#migration-threshold-quote", "#launch-dex-profile", '[data-tax-mode="standard"]', '[data-tax-mode="tax"]', "#buy-tax-rate", "#sell-tax-rate", "#tax-recipient-wallet", "#initial-buy-quote", "[data-launch-review-predicted]", "[data-launch-review-factory]", "[data-launch-review-salt]", "[data-launch-publish]"]) assert.ok(candidate.querySelector(selector), `candidate launch hook missing: ${selector}`);
   assert.equal((candidate.querySelector('[data-launch-chain="robinhood"]') as HTMLButtonElement).disabled, true);
   assert.equal((candidate.querySelector("[data-launch-publish]") as HTMLButtonElement).disabled, true);
-  assert.match(candidate.querySelector('[data-panel="profile"]')?.textContent || "", /功能接入中/);
+  assert.doesNotMatch(candidate.querySelector('[data-panel="profile"]')?.textContent || "", /模拟|演示数据/);
   for (const sample of ["1,284", "$18.6M", "$721K", "2,840.62 USDT", "CASHCAT", "MOONBUN"]) assert.equal((candidate.textContent || "").includes(sample), false, `candidate leaked prototype value: ${sample}`);
 });
 
@@ -236,7 +243,7 @@ test("Robinhood selection scopes reads to chain 4663 and stays fail-closed befor
     throw new Error(`unmocked ${url}`);
   };
   const { window } = await boot(response, { selectedChain: "robinhood", chainId: "0x1237" });
-  assert.ok(window.document.querySelector('[data-chain-select] option[value="robinhood"]'));
+  assert.ok(window.document.querySelector('[data-global-chain-option="robinhood"]'));
   assert.ok(requests.some((url) => url.includes("v1/pump/market?chain_id=robinhood")));
   assert.ok(requests.some((url) => url.includes("v1/token/launch-options?chain_id=robinhood")));
   assert.equal(requests.some((url) => /[?&]chain_id=bsc(?:&|$)/.test(url)), false);
@@ -1338,6 +1345,23 @@ test("Pump proxy hides wallet RPC credentials and protects every write endpoint"
   assert.match(proxy, /SIWE session required for this operation/);
   assert.match(proxy, /request\.headers\.get\("authorization"\)\?\.startsWith\("Bearer "\)/);
   assert.match(proxy, /export async function HEAD/);
+});
+
+test("perpetual market creation is SIWE-bound, user-signed, template-bound, and pool funding is resumable", () => {
+  for (const endpoint of ["v1/pump/perpetual/prepare-market", "v1/pump/perpetual/service-requests", "v1/pump/perpetual/service-requests/confirm", "v1/pump/perpetual/service-requests/complete"]) {
+    assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
+  }
+  for (const marker of ["data-perp-service-submit=\"add_contract\"", "data-perp-service-submit=\"create_pool\"", "data-perp-pool-resume", "data-perp-activity-export", "completePaidPoolRequest", "createPermissionlessPerpetualMarket", "平台费 0 BNB", "0x723219d3", "已阻止签名"]) {
+    assert.match(bridge, new RegExp(marker));
+  }
+  assert.match(bridge, /平台服务费/);
+  assert.match(bridge, /网络 Gas/);
+  assert.match(bridge, /不会再次收取平台服务费/);
+  assert.match(bridge, /!state\.perpConfig\?\.enabled \|\| !state\.perpConfig\?\.permissionlessMarketCreation/);
+  assert.match(bridge, /永续合约治理状态未就绪，当前禁止创建市场/);
+  assert.doesNotMatch(bridge, /executeMarketServiceRequest|service-requests\/execute-market|后端 Owner 立即创建/);
+  assert.doesNotMatch(bridge, /PUMP_PERP_MARKET_OWNER_KEYSTORE|PASSWORD_FILE|privateKey/);
+  assert.match(bridge, /data-open is delegated from root/);
 });
 
 test("Split Vault and three-tier Vault Store stay SIWE-bound and fail closed before factory deployment", () => {
