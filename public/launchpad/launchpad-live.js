@@ -42,6 +42,7 @@
     perpPosition: null,
     preparedPerpAction: null,
     preparedPerpRequest: null,
+    perpSubmitting: false,
     kol: null,
     marketActivity: [],
     marketSummary: {},
@@ -748,6 +749,9 @@
     text("[data-perp-shares]", state.account ? formatUnits(BigInt(position?.liquiditySharesRaw || "0"), quoteDecimals) : "—");
     text("[data-perp-wallet-fee-claimable]", state.account ? formatUnits(BigInt(position?.platformFeeClaimableRaw || "0"), quoteDecimals) : "连接钱包后读取");
     const action = $("#perp-action")?.value || "open_position";
+    $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select').forEach((node) => {
+      node.disabled = state.perpSubmitting;
+    });
     const addsRisk = ["open_position", "deposit_liquidity"].includes(action);
     const changesLiquidity = ["deposit_liquidity", "withdraw_liquidity"].includes(action);
     const hasOpenInterest = BigInt(market?.lockedNotionalRaw || "0") > 0n;
@@ -763,19 +767,20 @@
     if (leverageField) leverageField.hidden = !needsLeverage;
     if (sharesField) sharesField.hidden = !needsShares;
     if (traderField) traderField.hidden = !needsTrader;
-    const prepare = $("[data-perp-prepare]");
+    const submit = $("[data-perp-submit]");
     const epochEnded = Number(market?.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000;
     const canClaimPlatformFees = action !== "claim_platform_fees" || BigInt(position?.platformFeeClaimableRaw || "0") > 0n;
-    if (prepare) prepare.disabled = !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
+    if (submit) {
+      submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && (config?.openingsPaused || market?.closeOnly)) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
+      submit.textContent = state.perpSubmitting ? "正在校验并等待钱包确认…" : "确认并提交链上交易";
+    }
     const preview = $("[data-perp-preview]");
-    const execute = $("[data-perp-execute]");
     if (preview) {
       preview.hidden = !state.preparedPerpAction;
       preview.innerHTML = state.preparedPerpAction
         ? `<div class="section-title"><h3>链上交易快照</h3><span class="tag lime">${state.preparedPerpAction.transactions.length} 笔</span></div>${state.preparedPerpAction.transactions.map((transaction, index) => `<div class="review-row"><span>${index + 1}. ${escapeHtml(transaction.label)}</span><strong>${escapeHtml(short(transaction.to))}</strong></div>`).join("")}`
         : "";
     }
-    if (execute) execute.disabled = !state.preparedPerpAction || !state.account;
   };
   const loadPerpetualPosition = async () => {
     const market = selectedPerpMarket();
@@ -889,7 +894,7 @@
     state.preparedPerpAction = prepared;
     state.preparedPerpRequest = body;
     renderPerpetual();
-    toast("永续交易参数已加载，请逐笔核对");
+    return prepared;
   };
   const executePerpetualAction = async () => {
     if (!state.preparedPerpAction || !state.preparedPerpRequest) return;
@@ -901,6 +906,18 @@
     state.preparedPerpRequest = null;
     await loadPerpetual();
     toast("永续操作链上回执成功");
+  };
+  const submitPerpetualAction = async () => {
+    if (state.perpSubmitting) return;
+    state.perpSubmitting = true;
+    renderPerpetual();
+    try {
+      await preparePerpetualAction();
+      await executePerpetualAction();
+    } finally {
+      state.perpSubmitting = false;
+      renderPerpetual();
+    }
   };
   const pumpBasePath = () => "/pump";
   const routeTokenAddress = () => {
@@ -2553,6 +2570,7 @@
     state.perpPosition = null;
     state.preparedPerpAction = null;
     state.preparedPerpRequest = null;
+    state.perpSubmitting = false;
     state.vaults = [];
     state.preparedVault = null;
     state.strategies = [];
@@ -4206,8 +4224,7 @@
       state.preparedPerpRequest = null;
       renderPerpetual();
     }));
-    $("[data-perp-prepare]")?.addEventListener("click", () => preparePerpetualAction().catch((error) => toastError(error, "永续交易参数加载失败")));
-    $("[data-perp-execute]")?.addEventListener("click", () => executePerpetualAction().catch((error) => toastError(error, "永续操作失败")));
+    $("[data-perp-submit]")?.addEventListener("click", () => submitPerpetualAction().catch((error) => toastError(error, "永续操作失败")));
     $$('[data-announcement-filter]').forEach((node) => node.addEventListener("click", () => {
       state.announcementFilter = node.dataset.announcementFilter || "all";
       $$('[data-announcement-filter]').forEach((button) => button.classList.toggle("active", button === node));
