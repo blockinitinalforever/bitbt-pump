@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npm run bundle:clients",
     "dev": "next dev",
     "bundle:walletconnect": "esbuild src/client/walletconnect-provider.ts --bundle --minify --platform=browser --format=iife --target=es2020 --define:global=globalThis --define:process.env.NODE_ENV='\"production\"' --outfile=public/launchpad/walletconnect-provider.js",
-    "build": "npm run bundle:walletconnect && next build",
+    "bundle:launchpad": "esbuild src/client/launchpad-live.js --bundle --minify --legal-comments=none --platform=browser --format=iife --target=es2020 --outfile=public/launchpad/launchpad-live.js",
+    "bundle:clients": "npm run bundle:walletconnect && npm run bundle:launchpad",
+    "build": "npm run bundle:clients && next build",
     "start": "next start",
     "lint": "eslint",
+    "pretest": "npm run bundle:launchpad",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {

@@ -10,7 +10,8 @@ const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-a
 const candidateHtml = fs.readFileSync(path.join(root, "public/launchpad/bitbt-ui-20260911-candidate.html"), "utf8");
 const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
-const bridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
+const bridge = fs.readFileSync(path.join(root, "src/client/launchpad-live.js"), "utf8");
+const productionBridge = fs.readFileSync(path.join(root, "public/launchpad/launchpad-live.js"), "utf8");
 const walletConnectBridge = fs.readFileSync(path.join(root, "src/client/walletconnect-provider.ts"), "utf8");
 const walletConfigRoute = fs.readFileSync(path.join(root, "src/app/api/pump/wallet-config/route.ts"), "utf8");
 const logoUpload = fs.readFileSync(path.join(root, "public/launchpad/launch-logo-upload.js"), "utf8");
@@ -22,6 +23,13 @@ const launchFormSource = fs.readFileSync(path.join(root, "src/components/PumpLau
 const pumpApiSource = fs.readFileSync(path.join(root, "src/lib/pump-api.ts"), "utf8");
 const compactHtml = html.replace(/\s+/g, "");
 const compactBridge = bridge.replace(/\s+/g, "");
+
+test("production Launchpad JavaScript is minified without source maps", () => {
+  assert.ok(productionBridge.length < bridge.length * 0.85);
+  assert.ok(productionBridge.split("\n").length <= 20);
+  assert.doesNotMatch(productionBridge, /sourceMappingURL|sourcesContent/);
+  assert.doesNotMatch(productionBridge, /const createPermissionlessPerpetualMarket/);
+});
 
 test("perpetual is a first-level desktop and mobile route that survives refresh", () => {
   assert.match(html, /class="screen-switcher"[\s\S]*data-open="perps">MEME 永续合约/);
@@ -1349,6 +1357,8 @@ test("perpetual market creation is SIWE-bound, user-signed, template-bound, and 
   assert.match(bridge, /平台服务费/);
   assert.match(bridge, /网络 Gas/);
   assert.match(bridge, /不会再次收取平台服务费/);
+  assert.match(bridge, /!state\.perpConfig\?\.enabled \|\| !state\.perpConfig\?\.permissionlessMarketCreation/);
+  assert.match(bridge, /永续合约治理状态未就绪，当前禁止创建市场/);
   assert.doesNotMatch(bridge, /executeMarketServiceRequest|service-requests\/execute-market|后端 Owner 立即创建/);
   assert.doesNotMatch(bridge, /PUMP_PERP_MARKET_OWNER_KEYSTORE|PASSWORD_FILE|privateKey/);
   assert.match(bridge, /data-open is delegated from root/);
