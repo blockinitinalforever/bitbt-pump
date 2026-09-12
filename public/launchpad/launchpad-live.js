@@ -967,8 +967,17 @@
     for (const transaction of state.preparedPerpAction.transactions) await sendVaultTransaction(transaction, transaction.label || "永续操作");
     state.preparedPerpAction = null;
     state.preparedPerpRequest = null;
-    await loadPerpetual();
     toast("永续操作链上回执成功");
+    try {
+      await loadPerpetual();
+    } catch {
+      // A transient read-RPC failure after a successful receipt must never be
+      // presented as a failed transaction or invite an accidental re-send.
+      toast("链上交易已成功，仓位数据暂时刷新失败，正在自动重试…", 6000);
+      window.setTimeout(() => {
+        void loadPerpetual().catch(() => toast("仓位数据仍在同步，请稍后刷新页面", 6000));
+      }, 3000);
+    }
   };
   const submitPerpetualAction = async () => {
     if (state.perpSubmitting) return;
