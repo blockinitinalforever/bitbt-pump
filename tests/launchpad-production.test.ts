@@ -53,6 +53,8 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /永续授权接收方与合约不一致/);
   assert.match(bridge, /永续仓位参数绑定失败/);
   assert.match(bridge, /config\?\.openingsPaused/);
+  assert.match(bridge, /refreshPerpetualStatus/);
+  assert.match(bridge, /Keeper 正在续期链上心跳/);
   assert.match(bridge, /market\.maxOpenInterestRaw/);
   assert.match(bridge, /market\.maxFundingRatePpmPerDay/);
   assert.match(bridge, /market\.epochEnd/);
