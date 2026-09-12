@@ -682,12 +682,17 @@
     const selectedId = Number($("#perp-market")?.value ?? -1);
     return state.perpMarkets.find((market) => Number(market.marketId) === selectedId) || state.perpMarkets[0] || null;
   };
+  let perpUnreadySince = 0;
+  let perpStatusRefreshInFlight = false;
   const renderPerpetual = () => {
     const config = state.perpConfig;
     const enabled = Boolean(config?.enabled);
+    if (config?.operationsReady) perpUnreadySince = 0;
+    else if (enabled && !perpUnreadySince) perpUnreadySince = Date.now();
+    const keeperSyncing = enabled && !config?.operationsReady && Date.now() - perpUnreadySince < 60_000;
     text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')} 个`);
-    text("[data-perp-menu-status]", enabled ? (config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
-    text("[data-perp-status]", config?.statusNote || "正在读取永续合约状态…");
+    text("[data-perp-menu-status]", enabled ? (keeperSyncing ? "同步中" : config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
+    text("[data-perp-status]", keeperSyncing ? "Keeper 正在续期链上心跳，开仓功能将在确认后自动恢复。" : config?.statusNote || "正在读取永续合约状态…");
     text("[data-perp-fee]", config?.feePercent ? `默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
@@ -804,6 +809,20 @@
     state.perpMarkets = state.perpConfig?.enabled ? await api("v1/pump/perpetual/markets") : [];
     renderPerpetual();
     await loadPerpetualPosition();
+  };
+  const refreshPerpetualStatus = async () => {
+    if (!ui20260911 || !isBscFeatureChain() || perpStatusRefreshInFlight) return;
+    perpStatusRefreshInFlight = true;
+    try {
+      const previousEnabled = Boolean(state.perpConfig?.enabled);
+      state.perpConfig = await api("v1/pump/perpetual/config");
+      if (state.perpConfig?.enabled && (!previousEnabled || !state.perpMarkets.length)) {
+        state.perpMarkets = await api("v1/pump/perpetual/markets");
+      }
+      renderPerpetual();
+    } finally {
+      perpStatusRefreshInFlight = false;
+    }
   };
   const perpetualWord = (data, index) => {
     if (!/^0x[0-9a-fA-F]+$/.test(data || "") || data.length < 10 + (index + 1) * 64) throw new Error("永续交易参数编码不完整");
@@ -4714,5 +4733,6 @@
     const refreshTrades = !socketHealthy || refreshCycle % 2 === 0;
     if (refreshMarket) void refreshLive({ refreshSelected: !refreshTrades });
     if (refreshTrades) void refreshSelectedTrades();
+    if (ui20260911 && refreshCycle % 2 === 0) void refreshPerpetualStatus().catch(() => {});
   }, 15000);
 })();
