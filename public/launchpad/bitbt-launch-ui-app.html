@@ -3805,6 +3805,20 @@
         background: rgba(0, 0, 0, 0.72);
         backdrop-filter: blur(5px);
       }
+      .operation-error-overlay[hidden] {
+        display: none;
+      }
+      .operation-error-dialog {
+        border-color: #6f5e12;
+      }
+      .operation-error-dialog .tag {
+        display: inline-flex;
+        margin-bottom: 12px;
+      }
+      .operation-error-dialog .primary {
+        width: 100%;
+        margin-top: 4px;
+      }
       .wallet-provider-dialog {
         width: min(420px, 100%);
         max-height: min(620px, calc(100% - 24px));
@@ -6215,6 +6229,14 @@
               </button>
             </nav>
             <div class="toast" role="status">操作已就绪</div>
+            <div class="wallet-provider-overlay operation-error-overlay" data-operation-error hidden>
+              <section class="wallet-provider-dialog operation-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="operation-error-title" aria-describedby="operation-error-message">
+                <span class="tag">操作未完成</span>
+                <h2 id="operation-error-title">请调整参数后重试</h2>
+                <p id="operation-error-message" data-operation-error-message></p>
+                <button class="primary" type="button" data-operation-error-dismiss>知道了</button>
+              </section>
+            </div>
           </div>
         </div>
         <aside class="spec-rail">
