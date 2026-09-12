@@ -4751,9 +4751,8 @@
                   <label>目标仓位钱包</label>
                   <input class="field" id="perp-trader" inputmode="text" placeholder="0x..." autocomplete="off" />
                 </div>
-                <button class="primary black" type="button" data-perp-prepare disabled>加载并检查交易参数</button>
                 <div class="review-block" data-perp-preview hidden></div>
-                <button class="primary black" type="button" data-perp-execute disabled>确认并依次发送交易</button>
+                <button class="primary black" type="button" data-perp-submit disabled>确认并提交链上交易</button>
               </div>
               <div class="risk-note">重要规则：逐仓保证金；多空拥挤方向按时间支付资金费；仓位盈利最高为 1 倍名义价值；风险周期结束后停止新开仓并允许 Keeper 结算到期仓位；预言机故障时只能在 48 小时公开延迟后启用固定应急结算价。该产品不是全仓交易所永续。</div>
               <p class="footer-note">永续属于高风险衍生品。界面不会代签或托管资产；每笔授权、开仓、平仓和 LP 操作都必须由当前钱包确认并等待链上成功回执。</p>

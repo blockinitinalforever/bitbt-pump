@@ -86,6 +86,9 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(html, /data-perp-wallet-fee-claimable/);
   assert.match(html, /仓位盈利最高为 1 倍名义价值/);
   assert.match(bridge, /state\.preparedPerpRequest = null/);
+  assert.match(html, /data-perp-submit[^>]*>确认并提交链上交易/);
+  assert.doesNotMatch(html, /data-perp-(?:prepare|execute)/);
+  assert.match(bridge, /await preparePerpetualAction\(\);\s*await executePerpetualAction\(\);/);
 });
 
 type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean; sourceHtml?: string };
