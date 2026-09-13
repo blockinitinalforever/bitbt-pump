@@ -24,6 +24,7 @@ test("production build generates protected browser bundles", () => {
 
 test("release replaces raw scripts and rejects source maps", () => {
   assert.match(deploy, /\.next\/protected-public/);
+  assert.match(deploy, /cmp -s/);
   assert.match(deploy, /\.next\/client-protection-manifest\.json/);
   assert.match(deploy, /sourceMappingURL=/);
   assert.match(deploy, /bitbt-ui-20260911-candidate\.html/);

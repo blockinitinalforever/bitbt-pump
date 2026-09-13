@@ -33,13 +33,16 @@ mkdir -p "$PUMP_RELEASE_DIR/.next"
 cp -a .next/standalone/. "$PUMP_RELEASE_DIR/"
 cp -a .next/static "$PUMP_RELEASE_DIR/.next/static"
 cp -a public "$PUMP_RELEASE_DIR/public"
-cp -a .next/protected-public/. "$PUMP_RELEASE_DIR/public/"
+cp -a .next/protected-public/launchpad/. "$PUMP_RELEASE_DIR/public/launchpad/"
 rm -f -- \
   "$PUMP_RELEASE_DIR/public/launchpad/bitbt-ui-20260911-candidate.html" \
   "$PUMP_RELEASE_DIR/public/launchpad/bitbt-ui-20260911-preview.html"
 test -f "$PUMP_RELEASE_DIR/server.js"
 test -f "$PUMP_RELEASE_DIR/public/launchpad/launchpad-live.js"
 test -f "$PUMP_RELEASE_DIR/public/launchpad/walletconnect-provider.js"
+for PUMP_PROTECTED_FILE in .next/protected-public/launchpad/*.js; do
+  cmp -s "$PUMP_PROTECTED_FILE" "$PUMP_RELEASE_DIR/public/launchpad/$(basename "$PUMP_PROTECTED_FILE")"
+done
 ! grep -Rqs --include='*.js' 'sourceMappingURL=' "$PUMP_RELEASE_DIR/public/launchpad"
 ! grep -Fqs 'Live data adapter for the delivered Launchpad UI' \
   "$PUMP_RELEASE_DIR/public/launchpad/launchpad-live.js"
