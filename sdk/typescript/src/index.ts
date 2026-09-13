@@ -187,6 +187,17 @@ export interface PumpPerpetualMarket {
   emergencySettlementActive: boolean;
 }
 
+export interface PumpPerpetualTradeEvent {
+  marketId: number;
+  traderAddress: string;
+  eventType: "open" | "close" | "liquidate" | "expire";
+  lastTxHash: string;
+  blockNumber: number;
+  logIndex: number;
+  /** Index ingestion time, not the block timestamp. */
+  updatedAt: string;
+}
+
 export interface PumpPerpetualPosition {
   marketId: number;
   walletAddress: string;
@@ -291,6 +302,12 @@ export class BitBTPumpClient {
   announcements() { return this.request<PumpAnnouncement[]>("/v1/pump/announcements"); }
   perpetualConfig() { return this.request<PumpPerpetualConfig>("/v1/pump/perpetual/config"); }
   perpetualMarkets() { return this.request<PumpPerpetualMarket[]>("/v1/pump/perpetual/markets"); }
+  perpetualHistory(wallet: string, cursor?: { blockNumber: number; logIndex: number }, limit = 200) {
+    return this.request<PumpPerpetualTradeEvent[]>("/v1/pump/perpetual/activity", { query: {
+      history: "true", wallet_address: wallet, limit,
+      before_block: cursor?.blockNumber, before_log_index: cursor?.logIndex,
+    } });
+  }
   perpetualPosition(wallet: string, marketId: number) { return this.request<PumpPerpetualPosition>("/v1/pump/perpetual/position", { query: { wallet_address: wallet, market_id: marketId }, session: true }); }
   preparePerpetual(body: Record<string, unknown>) { return this.request<PumpPerpetualPrepareResponse>("/v1/pump/perpetual/prepare", { method: "POST", body, session: true }); }
   v3FeeRewards(wallet: string, tokenAddress?: string) { return this.request<PumpV3FeeReward[]>("/v1/pump/v3-fee-rewards", { query: { wallet_address: wallet, token_address: tokenAddress }, session: true }); }
