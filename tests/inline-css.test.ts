@@ -22,8 +22,13 @@ test("CSS validation runs before building or testing browser bundles", () => {
 });
 
 test("header dropdown escapes sibling stacking contexts and exposes both networks", () => {
-  const headers = styles.flatMap(css => postcss.parse(css).nodes.filter(node => node.type === "rule" && node.selector === ".studio-head"));
-  const layers = headers.flatMap(rule => rule.nodes.filter(node => node.type === "decl" && node.prop === "z-index").map(node => Number(node.value)));
+  const layers: number[] = [];
+  for (const css of styles) {
+    postcss.parse(css).walkRules(".studio-head", rule => {
+      if (rule.parent?.type !== "root") return;
+      rule.walkDecls("z-index", declaration => { layers.push(Number(declaration.value)); });
+    });
+  }
   assert.equal(layers.at(-1), 100);
   assert.match(html, /data-global-chain-option="bsc"/);
   assert.match(html, /data-global-chain-option="robinhood"/);
