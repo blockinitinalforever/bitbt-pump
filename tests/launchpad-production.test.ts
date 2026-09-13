@@ -892,6 +892,30 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
   assert.equal(storage.has("bitbt_pump_session"), false);
 });
 
+test("perpetual history navigation preserves wallet and avoids trading RPC or private position requests", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const requests: string[] = [];
+  const response = async (input: string) => {
+    requests.push(String(input));
+    if (String(input).includes("auth/siwe/session")) return {ok:true,json:async()=>({data:{address:account,expires_in:3600}})};
+    if (String(input).includes("app/config")) return {ok:true,json:async()=>({data:{pump:{}}})};
+    return {ok:true,json:async()=>({data:[]})};
+  };
+  const {window,storage,providerCalls} = await boot(response,{account,session:{token:"session",address:account}});
+  requests.length=0;
+  providerCalls.length=0;
+  const button = window.document.querySelector('[data-open="perps-onchain"]');
+  assert.ok(button);
+  button.dispatchEvent(new window.Event("click",{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,40));
+  assert.equal(storage.get("bitbt_pump_session"),"session");
+  assert.equal(window.document.querySelector('.connect-global')?.textContent,"0x1111…1111");
+  assert.ok(window.document.querySelector('[data-panel="perps-onchain"].active'));
+  assert.ok(requests.some(url=>url.includes("perpetual/activity")));
+  assert.ok(!requests.some(url=>/perpetual\/(position|service-requests|prepare)/.test(url)));
+  assert.ok(!providerCalls.some(method=>["personal_sign","eth_requestAccounts","eth_call","eth_getBalance"].includes(method)));
+});
+
 test("BNB balance refresh reuses one native-balance request per token-balance request", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const token = "0x2222222222222222222222222222222222222222";
