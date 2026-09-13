@@ -27,14 +27,22 @@ npm ci
 NEXT_PUBLIC_PUMP_SIWE_DOMAIN=bitbt.fun \
 BITBT_PUMP_API_URL=https://appbackend.bitbt.com \
 npm run build
+test -f .next/client-protection-manifest.json
 
 mkdir -p "$PUMP_RELEASE_DIR/.next"
 cp -a .next/standalone/. "$PUMP_RELEASE_DIR/"
 cp -a .next/static "$PUMP_RELEASE_DIR/.next/static"
 cp -a public "$PUMP_RELEASE_DIR/public"
+cp -a .next/protected-public/. "$PUMP_RELEASE_DIR/public/"
+rm -f -- \
+  "$PUMP_RELEASE_DIR/public/launchpad/bitbt-ui-20260911-candidate.html" \
+  "$PUMP_RELEASE_DIR/public/launchpad/bitbt-ui-20260911-preview.html"
 test -f "$PUMP_RELEASE_DIR/server.js"
 test -f "$PUMP_RELEASE_DIR/public/launchpad/launchpad-live.js"
 test -f "$PUMP_RELEASE_DIR/public/launchpad/walletconnect-provider.js"
+! grep -Rqs --include='*.js' 'sourceMappingURL=' "$PUMP_RELEASE_DIR/public/launchpad"
+! grep -Fqs 'Live data adapter for the delivered Launchpad UI' \
+  "$PUMP_RELEASE_DIR/public/launchpad/launchpad-live.js"
 
 sudo install -m 0644 deploy/bitbt-pump-web.service /etc/systemd/system/bitbt-pump-web.service
 sudo install -m 0644 deploy/bitbt.fun.nginx.conf /etc/nginx/sites-available/bitbt.fun
