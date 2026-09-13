@@ -524,7 +524,9 @@
     if (/open interest limit exceeded/i.test(message)) return "开仓失败：市场总未平仓量已达到上限，请减小仓位或等待其他仓位关闭";
     if (/directional exposure limit exceeded/i.test(message)) return "开仓失败：当前方向的多空敞口已达到上限，请减小仓位或选择另一方向";
     if (/utilization limit exceeded/i.test(message)) return "开仓失败：资金池可用流动性不足，请减小仓位";
-    if (/perpetual market is in reduce-only mode/i.test(message)) return "永续市场正在同步风控状态，当前仅允许平仓；请稍后重试开仓";
+    if (/perpetual market is in reduce-only mode/i.test(message)) return "市场已限制新增风险，当前仅允许符合条件的平仓或结算；请查看市场状态";
+    if (/Perpetual market data temporarily unavailable/i.test(message)) return "市场行情暂时无法更新，本次未准备交易；请稍后重试，旧快照不会用于签名";
+    if (/perpetual quote expired during preparation/i.test(message)) return "准备交易耗时过长，报价已过期；请重新确认，本次没有发送交易";
     if (/perpetual market is disabled/i.test(message)) return "该永续市场当前已暂停开仓";
     if (/invalid leverage/i.test(message)) return "杠杆倍数超出该市场允许范围，请重新选择";
     if (/liquidity is locked while positions are open/i.test(message)) return "市场仍有未平仓仓位，当前不能注入或提取流动性";
@@ -820,10 +822,11 @@
     const enabled = Boolean(config?.enabled);
     if (config?.operationsReady) perpUnreadySince = 0;
     else if (enabled && !perpUnreadySince) perpUnreadySince = Date.now();
-    const keeperSyncing = enabled && !config?.operationsReady && Date.now() - perpUnreadySince < 60_000;
+    const keeperStandby = enabled && config?.operationsState === "standby";
+    const keeperSyncing = enabled && (config?.operationsState === "preparing" || (!config?.operationsState && !config?.operationsReady && Date.now() - perpUnreadySince < 60_000));
     text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')} 个`);
-    text("[data-perp-menu-status]", enabled ? (keeperSyncing ? "同步中" : config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
-    text("[data-perp-status]", keeperSyncing ? "Keeper 正在续期链上心跳，开仓功能将在确认后自动恢复。" : config?.statusNote || "正在读取永续合约状态…");
+    text("[data-perp-menu-status]", enabled ? (keeperStandby ? "按需待命" : keeperSyncing ? "准备中" : config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
+    text("[data-perp-status]", keeperStandby ? "Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。" : keeperSyncing ? "Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。" : config?.statusNote || "正在读取永续合约状态…");
     text("[data-perp-fee]", config?.feePercent ? `默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
@@ -837,6 +840,7 @@
       if (state.perpMarkets.some((market) => String(market.marketId) === previous)) select.value = previous;
     }
     const market = selectedPerpMarket();
+    if (market?.dataStale) text("[data-perp-status]", "行情暂时更新失败，正在显示最近快照；交易前会重新校验，不会使用旧行情签名。");
     if (ui20260911) {
       const marketGrid = $('[data-market-panel="perps"] .token-grid');
       if (marketGrid) {
@@ -1017,8 +1021,12 @@
       renderPerpetual();
       return;
     }
-    state.perpConfig = await api("v1/pump/perpetual/config");
-    state.perpMarkets = state.perpConfig?.enabled ? await api("v1/pump/perpetual/markets") : [];
+    const chain = state.selectedChain;
+    const config = await api("v1/pump/perpetual/config");
+    const markets = config?.enabled ? await api("v1/pump/perpetual/markets") : [];
+    if (state.selectedChain !== chain) return;
+    state.perpConfig = config;
+    state.perpMarkets = markets;
     renderPerpetual();
     await Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualServiceData(), loadPerpetualCandles()]);
   };
@@ -1042,6 +1050,7 @@
     return BigInt(`0x${data.slice(10 + index * 64, 10 + (index + 1) * 64)}`);
   };
   const validatePreparedPerpetual = (prepared, market, request) => {
+    if (request.wallet_address?.toLowerCase() !== state.account?.toLowerCase() || state.selectedChain !== "bsc") throw new Error("钱包或网络已变化，请重新确认交易");
     const contract = String(state.perpConfig?.contractAddress || "").toLowerCase();
     const quoteToken = String(market.quoteTokenAddress || "").toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(contract) || !/^0x[0-9a-f]{40}$/.test(quoteToken)) throw new Error("永续合约或报价资产地址无效");
@@ -1073,6 +1082,12 @@
       } else throw new Error("永续交易目标或方法不在允许范围内");
     }
     if (!actionTransaction) throw new Error("永续交易方法缺失");
+    if (["open_position", "close_position"].includes(request.action)) {
+      const deadline = perpetualWord(actionTransaction.data, request.action === "open_position" ? 6 : 3);
+      const minPrice = perpetualWord(actionTransaction.data, request.action === "open_position" ? 4 : 1);
+      const maxPrice = perpetualWord(actionTransaction.data, request.action === "open_position" ? 5 : 2);
+      if (deadline !== BigInt(prepared.expiresAt || 0) || deadline <= BigInt(Math.floor(Date.now() / 1000)) || minPrice <= 0n || maxPrice < minPrice) throw new Error("永续报价已过期或价格边界无效，请重新确认");
+    }
     if (request.action !== "claim_platform_fees" && perpetualWord(actionTransaction.data, 0) !== BigInt(request.market_id)) throw new Error("永续 marketId 绑定失败");
     let requiredApproval = 0n;
     if (request.action === "deposit_liquidity") {
@@ -1130,7 +1145,7 @@
       if (!/^0x[0-9a-f]{40}$/.test(body.recipient) || /^0x0{40}$/.test(body.recipient)) throw new Error("请输入有效的目标仓位钱包地址");
     }
     let prepared = null;
-    for (let attempt = 0; attempt < 16; attempt += 1) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
       try {
         prepared = await api("v1/pump/perpetual/prepare", {
           method: "POST",
@@ -1141,7 +1156,7 @@
       } catch (error) {
         if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
         text("[data-perp-status]", "正在按需唤醒永续风控与预言机，请稍候，无需重复点击…");
-        if (attempt === 15) throw new Error("永续风控唤醒超时，请稍后重试；当前不会发起钱包签名或扣费");
+        if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；当前不会发起钱包签名或扣费");
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
         state.perpConfig = await api("v1/pump/perpetual/config");
       }
@@ -1153,12 +1168,54 @@
     renderPerpetual();
     return prepared;
   };
+  const executePreparedPerpetual = async (prepared, market, request, onCoreBroadcast) => {
+    const pendingKey = `bitbt_perp_pending:bsc:${state.perpConfig?.contractAddress}:${request.wallet_address.toLowerCase()}`;
+    const persistPending = (value) => {
+      writeLocalPreference(pendingKey, value);
+      if (readLocalPreference(pendingKey) !== value) throw new Error("浏览器无法保存待确认交易状态，已停止继续提交；请检查存储权限并核对钱包记录");
+    };
+    const pending = readLocalPreference(pendingKey);
+    if (pending) {
+      if (pending === "unknown") throw new Error("上一笔永续交易提交状态未知，请先在钱包中核对链上记录，勿重复提交");
+      const receipt = await selectedProvider().request({ method: "eth_getTransactionReceipt", params: [pending] });
+      if (!receipt) throw new Error(`上一笔永续交易仍待确认，禁止重复发送：${pending}`);
+      persistPending("");
+      throw new Error(receiptSucceeded(receipt) ? `上一笔永续交易已成功，请刷新仓位后再操作：${pending}` : `上一笔永续交易链上失败，请确认后重试：${pending}`);
+    }
+    // Approval confirmation can outlive a quote. Refresh the exact original
+    // request after approvals, never reread mutable form inputs.
+    for (let round = 0; round < 3; round += 1) {
+      validatePreparedPerpetual(prepared, market, request);
+      const approvals = prepared.transactions.filter((tx) => String(tx.data).startsWith("0x095ea7b3"));
+      for (const tx of approvals) {
+        if (state.account?.toLowerCase() !== request.wallet_address.toLowerCase() || state.selectedChain !== "bsc") throw new Error("钱包或网络已变化，请重新确认交易");
+        await sendVaultTransaction(tx, tx.label || "永续授权");
+      }
+      if (approvals.length) {
+        prepared = await api("v1/pump/perpetual/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
+        continue;
+      }
+      validatePreparedPerpetual(prepared, market, request);
+      const tx = prepared.transactions[0];
+      try {
+        const hash = await sendVaultTransaction(tx, tx.label || "永续操作",
+          (hash) => { persistPending(hash); onCoreBroadcast?.(hash); },
+          () => persistPending("unknown"));
+        persistPending("");
+        return hash;
+      } catch (error) {
+        if (Number(error?.code) === 4001 && readLocalPreference(pendingKey) === "unknown") persistPending("");
+        throw error;
+      }
+    }
+    throw new Error("授权状态尚未同步，请稍后重试；尚未发送永续操作交易");
+  };
   const executePerpetualAction = async () => {
     if (!state.preparedPerpAction || !state.preparedPerpRequest) return;
     const market = selectedPerpMarket();
     if (!market) throw new Error("永续市场已变化，请重新加载参数");
     validatePreparedPerpetual(state.preparedPerpAction, market, state.preparedPerpRequest);
-    for (const transaction of state.preparedPerpAction.transactions) await sendVaultTransaction(transaction, transaction.label || "永续操作");
+    await executePreparedPerpetual(state.preparedPerpAction, market, state.preparedPerpRequest);
     state.preparedPerpAction = null;
     state.preparedPerpRequest = null;
     state.perpModernAction = "open_position";
@@ -1729,22 +1786,25 @@
       state.vaultBusy = false;
     }
   };
-  const sendVaultTransaction = async (transaction, label) => {
+  const sendVaultTransaction = async (transaction, label, onBroadcast, onSubmitting) => {
     if (!state.account) await connectWallet();
     const provider = selectedProvider();
     if (state.selectedChain !== "bsc") throw new Error("Split Vault 当前仅支持 BNB Smart Chain");
     await ensureSelectedChain(provider);
     await assertProviderState();
+    const account = state.account;
     const request = {
-      from: state.account,
+      from: account,
       to: transaction.to,
       data: transaction.data,
       value: transaction.value || "0x0",
     };
     const estimated = BigInt(await provider.request({ method: "eth_estimateGas", params: [request] }));
+    if (state.account !== account || selectedProvider() !== provider || state.selectedChain !== "bsc") throw new Error("钱包或网络在估算 Gas 时发生变化，已停止发送");
+    onSubmitting?.();
     const hash = await send(
       {
-        from: state.account,
+        from: account,
         to: transaction.to,
         data: transaction.data,
         value: BigInt(transaction.value || "0x0"),
@@ -1753,6 +1813,7 @@
       provider,
     );
     toast(`${label}已广播，等待链上确认…`, 6000);
+    onBroadcast?.(hash);
     const receipt = await waitReceipt(hash, provider);
     if (!receiptSucceeded(receipt)) throw new Error(`${label}链上回执失败`);
     return hash;
@@ -2624,21 +2685,33 @@
     if (!market || !request?.requestId || request.status !== "paid") throw new Error("找不到可继续的已付费对手池申请");
     state.selectedPerpMarketId = Number(payload.marketId);
     const body = { wallet_address: state.account, market_id: Number(payload.marketId), action: "deposit_liquidity", amount_raw: String(payload.amountRaw || "") };
+    const completionKey = `bitbt_perp_pool_completion:${request.requestId}:${state.account}`;
+    let depositTxHash = readLocalPreference(completionKey);
+    if (!depositTxHash) {
     let action;
-    for (let attempt = 0; attempt < 16; attempt += 1) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
       try {
         action = await api("v1/pump/perpetual/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
         break;
       } catch (error) {
         if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
-        if (attempt === 15) throw new Error("平台服务费已支付，但 Keeper 唤醒超时；稍后仍可从本页继续注资，不会重复收费");
+        if (attempt === 39) throw new Error("平台服务费已支付，但 Keeper 唤醒超时；稍后仍可从本页继续注资，不会重复收费");
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
       }
     }
     validatePreparedPerpetual(action, market, body);
-    let depositTxHash = "";
-    for (const tx of action.transactions) depositTxHash = await sendVaultTransaction(tx, tx.label || "对手池注资");
+    try {
+      depositTxHash = await executePreparedPerpetual(action, market, body, (hash) => {
+        writeLocalPreference(completionKey, hash);
+        if (readLocalPreference(completionKey) !== hash) throw new Error("注资交易已广播，但本地记录保存失败，请在钱包核对交易后联系客服，不要重复注资");
+      });
+    } catch (error) {
+      if (/链上回执失败/.test(String(error?.message || error))) writeLocalPreference(completionKey, "");
+      throw error;
+    }
+    }
     const completed = await api("v1/pump/perpetual/service-requests/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ walletAddress: state.account, requestId: request.requestId, txHash: depositTxHash }) });
+    writeLocalPreference(completionKey, "");
     state.perpServiceRequests = [completed, ...state.perpServiceRequests.filter((item) => item.requestId !== completed.requestId)];
     toast("对手池服务费与链上 LP 注资均已成功", 8000);
     await loadPerpetual();

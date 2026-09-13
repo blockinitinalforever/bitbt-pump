@@ -136,6 +136,9 @@ export interface PumpPerpetualConfig {
   contractAddress?: string;
   contractVersion?: number;
   openingsPaused: boolean;
+  operationsReady?: boolean;
+  operationsState?: "disabled" | "standby" | "preparing" | "ready" | "degraded";
+  chainOpeningsPaused?: boolean;
   permissionlessMarketCreation: boolean;
   chainId: string;
   feePpm: number;
