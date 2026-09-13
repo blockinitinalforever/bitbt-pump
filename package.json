@@ -8,7 +8,8 @@
     "bundle:walletconnect": "esbuild src/client/walletconnect-provider.ts --bundle --minify --platform=browser --format=iife --target=es2020 --define:global=globalThis --define:process.env.NODE_ENV='\"production\"' --outfile=public/launchpad/walletconnect-provider.js",
     "bundle:launchpad": "esbuild src/client/launchpad-live.js --bundle --minify --legal-comments=none --platform=browser --format=iife --target=es2020 --outfile=public/launchpad/launchpad-live.js",
     "bundle:clients": "npm run bundle:walletconnect && npm run bundle:launchpad",
-    "build": "npm run bundle:clients && next build",
+    "protect:client": "node scripts/protect-client.mjs",
+    "build": "npm run bundle:clients && next build && npm run protect:client",
     "start": "next start",
     "lint": "eslint",
     "pretest": "npm run bundle:launchpad",
@@ -30,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "eslint-formatter-compact": "^9.0.1",
+    "javascript-obfuscator": "5.7.0",
     "linkedom": "^0.18.13",
     "tailwindcss": "^4",
     "typescript": "^5"

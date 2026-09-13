@@ -5,6 +5,8 @@ const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   async rewrites() {
     return {
       beforeFiles: [
