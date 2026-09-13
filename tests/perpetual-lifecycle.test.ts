@@ -111,15 +111,26 @@ test('VM: LP completion API failure retries bookkeeping without another deposit'
   const code = source.slice(source.indexOf('  const completePaidPoolRequest ='),source.indexOf('  const createPermissionlessPerpetualMarket ='));
   const stored = new Map<string,string>();
   let deposits = 0, prepares = 0, completions = 0;
+  const hash = '0x'+'aa'.repeat(32), contract = '0x'+'22'.repeat(20);
+  const word = (n: bigint) => n.toString(16).padStart(64,'0');
+  const provider = {request:async ({method}:any) => {
+    if(method==='eth_chainId')return '0x38';
+    if(method==='eth_accounts')return [wallet];
+    if(method==='eth_getTransactionReceipt')return {status:'0x1',transactionHash:hash,from:wallet,to:contract};
+    if(method==='eth_getTransactionByHash')return {hash,from:wallet,to:contract,input:'0x34a860e4'+word(0n)+word(10n),value:'0x0'};
+    throw Error(method);
+  }};
   const ctx: any = {
-    state:{account:wallet,perpMarkets:[{marketId:0}],perpServiceRequests:[]},
+    state:{account:wallet,selectedChain:'bsc',perpConfig:{contractAddress:contract},perpMarkets:[{marketId:0}],perpServiceRequests:[]},
+    walletSessionEpoch:0,selectedProvider:()=>provider,normalizeChainId:(x:string)=>x,word,
+    receiptHasStatus:(r:any)=>r?.status!=null,receiptSucceeded:(r:any)=>r.status==='0x1',
     readLocalPreference:(k:string)=>stored.get(k)||'',writeLocalPreference:(k:string,v:string)=>stored.set(k,v),
     validatePreparedPerpetual:()=>{},toast:()=>{},show:()=>{},loadPerpetual:async()=>{},
-    executePreparedPerpetual:async (_a:any,_m:any,_r:any,cb:any)=>{deposits++;cb('0xreceipt');return '0xreceipt';},
+    executePreparedPerpetual:async (_a:any,_m:any,_r:any,cb:any)=>{deposits++;cb(hash);return hash;},
     api:async (url:string,options:any)=>{
-      if(url.endsWith('/prepare')){prepares++;return {transactions:[]};}
+      if(url.includes('/prepare?')){prepares++;return {transactions:[]};}
       completions++;
-      assert.equal(JSON.parse(options.body).txHash,'0xreceipt');
+      assert.equal(JSON.parse(options.body).txHash,hash);
       if(completions===1)throw Error('temporary completion failure');
       return {requestId:'request1',status:'completed'};
     },

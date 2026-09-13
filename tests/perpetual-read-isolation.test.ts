@@ -11,7 +11,7 @@ function fixture(name: string,end: string) {
   const ctx: any = {
     state:{account:'0x'+'11'.repeat(20),selectedChain:'bsc',selectedPerpMarketId:0,perpConfig:{enabled:true},perpPosition:null,
       perpActivity:[],perpServiceRequests:[],perpIndexedPositions:[],perpHistoryCursor:null,perpReadErrors:errors},
-    userDataRequestSequence:0,selectedProvider:()=>provider,
+    userDataRequestSequence:0,walletSessionEpoch:0,selectedProvider:()=>provider,
     selectedPerpMarket:()=>({marketId:ctx.state.selectedPerpMarketId}),
     isBscFeatureChain:()=>ctx.state.selectedChain==='bsc',
     renderPerpetual:()=>{},renderPerpetualServices:()=>{},renderWalletState:()=>{},
@@ -30,7 +30,7 @@ for (const scenario of ['wallet','network','market','session'] as const) {
     if(scenario==='wallet')c.state.account='walletB';
     if(scenario==='network')c.state.selectedChain='robinhood';
     if(scenario==='market')c.state.selectedPerpMarketId=1;
-    if(scenario==='session')c.userDataRequestSequence++;
+    if(scenario==='session')c.walletSessionEpoch++;
     resolve({wallet:'old'});await p;assert.equal(c.state.perpPosition,null);
   });
 }
