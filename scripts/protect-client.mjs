@@ -81,6 +81,11 @@ const targets = (await listJavaScript(sourceRoot)).filter(
 );
 if (targets.length === 0) throw new Error("no Launchpad JavaScript found to protect");
 
+const sourceVersions = new Map();
+for (const file of targets) {
+  sourceVersions.set(file, sha256(await fs.readFile(path.join(sourceRoot, file))));
+}
+
 await fs.rm(outputRoot, { recursive: true, force: true });
 await fs.mkdir(outputRoot, { recursive: true });
 
@@ -94,7 +99,13 @@ const manifest = {
 
 for (const file of targets) {
   const options = file === "walletconnect-provider.js" ? vendorOptions : firstPartyOptions;
-  const source = await fs.readFile(path.join(sourceRoot, file), "utf8");
+  const originalSource = await fs.readFile(path.join(sourceRoot, file), "utf8");
+  const source = file === "launchpad-live.js"
+    ? originalSource.replace(
+        "./walletconnect-provider.js",
+        `./walletconnect-provider.js?v=${sourceVersions.get("walletconnect-provider.js").slice(0, 16)}`,
+      )
+    : originalSource;
   const result = JavaScriptObfuscator.obfuscate(source, { ...options, sourceMap: false });
   const output = result.getObfuscatedCode();
 
@@ -112,11 +123,50 @@ for (const file of targets) {
     file,
     sourceBytes: Buffer.byteLength(source),
     outputBytes: Buffer.byteLength(output),
-    sourceSha256: sha256(source),
+    sourceSha256: sha256(originalSource),
     outputSha256: sha256(output),
     controlFlowFlatteningThreshold: options.controlFlowFlatteningThreshold,
   });
 }
+
+const versionForAsset = async (asset) => {
+  const normalized = asset.replace(/^\.\//, "").split("?", 1)[0];
+  const protectedFile = manifest.files.find((entry) => entry.file === normalized);
+  if (protectedFile) return protectedFile.outputSha256.slice(0, 16);
+
+  const sourceFile = path.join(sourceRoot, normalized);
+  return sha256(await fs.readFile(sourceFile)).slice(0, 16);
+};
+
+const versionScriptReferences = async (html) => {
+  const matches = [...html.matchAll(/<script\b[^>]*\bsrc=(['"])(\.\/[^'"?#]+\.js)(?:\?[^'"]*)?\1[^>]*><\/script>/gi)];
+  let versioned = html;
+  for (const match of matches) {
+    const asset = match[2];
+    const version = await versionForAsset(asset);
+    versioned = versioned.replace(match[0], match[0].replace(asset, `${asset}?v=${version}`));
+  }
+  return versioned;
+};
+
+const launchAppName = "bitbt-launch-ui-app.html";
+const launchAppSource = await fs.readFile(path.join(sourceRoot, launchAppName), "utf8");
+const launchAppOutput = await versionScriptReferences(launchAppSource);
+const launchAppVersion = sha256(launchAppOutput).slice(0, 16);
+await fs.writeFile(path.join(outputRoot, launchAppName), launchAppOutput, "utf8");
+
+const walletName = "bitbt-wallet-ui.html";
+const walletSource = await fs.readFile(path.join(sourceRoot, walletName), "utf8");
+const walletOutput = walletSource.replace(
+  /\/launchpad\/bitbt-launch-ui-app\.html(?:\?[^'"]*)?/g,
+  `/launchpad/bitbt-launch-ui-app.html?v=${launchAppVersion}`,
+);
+await fs.writeFile(path.join(outputRoot, walletName), walletOutput, "utf8");
+
+manifest.html = productionHtml.map((file) => ({
+  file,
+  outputSha256: sha256(file === launchAppName ? launchAppOutput : walletOutput),
+}));
 
 await fs.writeFile(
   path.join(root, ".next", "client-protection-manifest.json"),

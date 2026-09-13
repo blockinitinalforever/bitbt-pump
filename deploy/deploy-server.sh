@@ -33,13 +33,19 @@ mkdir -p "$PUMP_RELEASE_DIR/.next"
 cp -a .next/standalone/. "$PUMP_RELEASE_DIR/"
 cp -a .next/static "$PUMP_RELEASE_DIR/.next/static"
 cp -a public "$PUMP_RELEASE_DIR/public"
-cp -a .next/protected-public/. "$PUMP_RELEASE_DIR/public/"
+cp -a .next/protected-public/launchpad/. "$PUMP_RELEASE_DIR/public/launchpad/"
 rm -f -- \
   "$PUMP_RELEASE_DIR/public/launchpad/bitbt-ui-20260911-candidate.html" \
   "$PUMP_RELEASE_DIR/public/launchpad/bitbt-ui-20260911-preview.html"
 test -f "$PUMP_RELEASE_DIR/server.js"
 test -f "$PUMP_RELEASE_DIR/public/launchpad/launchpad-live.js"
 test -f "$PUMP_RELEASE_DIR/public/launchpad/walletconnect-provider.js"
+for PUMP_PROTECTED_FILE in .next/protected-public/launchpad/*.js; do
+  cmp -s "$PUMP_PROTECTED_FILE" "$PUMP_RELEASE_DIR/public/launchpad/$(basename "$PUMP_PROTECTED_FILE")"
+done
+for PUMP_PROTECTED_HTML in .next/protected-public/launchpad/*.html; do
+  cmp -s "$PUMP_PROTECTED_HTML" "$PUMP_RELEASE_DIR/public/launchpad/$(basename "$PUMP_PROTECTED_HTML")"
+done
 ! grep -Rqs --include='*.js' 'sourceMappingURL=' "$PUMP_RELEASE_DIR/public/launchpad"
 ! grep -Fqs 'Live data adapter for the delivered Launchpad UI' \
   "$PUMP_RELEASE_DIR/public/launchpad/launchpad-live.js"
@@ -70,6 +76,23 @@ process.stdin.on("end", () => {
 });
 '
 curl -fsS https://bitbt.fun/api/pump/v1/pump/tokens >/dev/null
+
+# The current bitbt.fun DNS points directly at this origin. Content-derived
+# query versions invalidate browser/proxy caches on every changed asset. If a
+# Cloudflare CDN is added later, provide its root-only credentials and exact
+# URL purging will run after a successful service restart.
+PUMP_CDN_ENV=/etc/bitbt-pump-cdn.env
+if sudo test -r "$PUMP_CDN_ENV"; then
+  sudo env PUMP_CDN_ENV="$PUMP_CDN_ENV" node deploy/purge-cloudflare-cache.mjs
+else
+  echo "No CDN purge credentials configured; versioned assets provide cache invalidation for the direct-origin deployment."
+fi
+
+PUMP_LIVE_HTML="$(curl -fsS -H 'Cache-Control: no-cache' "https://bitbt.fun/launchpad/bitbt-wallet-ui.html?release=$PUMP_RELEASE_SHA")"
+grep -Fq '/launchpad/bitbt-launch-ui-app.html?v=' <<<"$PUMP_LIVE_HTML"
+PUMP_LIVE_APP="$(curl -fsS -H 'Cache-Control: no-cache' "https://bitbt.fun/launchpad/bitbt-launch-ui-app.html?release=$PUMP_RELEASE_SHA")"
+grep -Eq 'launch-logo-upload\.js\?v=[0-9a-f]{16}' <<<"$PUMP_LIVE_APP"
+grep -Eq 'launchpad-live\.js\?v=[0-9a-f]{16}' <<<"$PUMP_LIVE_APP"
 
 mapfile -t PUMP_OLD_RELEASES < <(
   find "$PUMP_RELEASE_ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
