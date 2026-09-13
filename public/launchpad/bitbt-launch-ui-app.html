@@ -7920,12 +7920,12 @@
                       <strong
                         ><span data-perps-symbol>CASHCAT</span>-PERP ·
                         USDT</strong
-                      ><span>指数价格 · 标记价格 · 成交聚合</span>
+                      ><span>现货成交 K 线 · Oracle 标记价独立展示</span>
                     </div>
                     <div class="time-row">
-                      <button>1M</button><button class="active">5M</button
-                      ><button>15M</button><button>1H</button><button>4H</button
-                      ><button>1D</button>
+                      <button data-perps-chart-interval="60">1M</button><button class="active" data-perps-chart-interval="300">5M</button
+                      ><button data-perps-chart-interval="900">15M</button><button data-perps-chart-interval="3600">1H</button><button data-perps-chart-interval="14400">4H</button
+                      ><button data-perps-chart-interval="86400">1D</button>
                     </div>
                     <div class="chart-wrap">
                       <div class="chart-fallback">正在载入永续合约 K 线…</div>
@@ -7935,7 +7935,7 @@
                   <div class="perps-tabs">
                     <button class="active" data-perps-view="positions">
                       当前仓位</button
-                    ><button data-perps-view="orders">当前委托 (2)</button
+                    ><button data-perps-view="orders">当前委托</button
                     ><button data-perps-view="triggers">条件单</button
                     ><button data-perps-view="onchain">链上开仓</button>
                   </div>
@@ -8068,7 +8068,7 @@
                   </div>
                   <div class="perps-toolbar">
                     <button class="active" data-perps-mode>逐仓</button
-                    ><button data-perps-mode>全仓</button
+                    ><button data-perps-mode disabled title="当前合约仅支持逐仓">全仓</button
                     ><button data-toast="保证金模式说明已打开">
                       <i
                         class="ico sm"
@@ -8078,7 +8078,7 @@
                       ></i>
                     </button>
                     <div class="account-equity">
-                      <span>合约账户权益</span><strong>2,840.62 USDT</strong>
+                      <span>合约账户权益</span><strong data-perps-equity>—</strong>
                     </div>
                   </div>
                   <div class="perps-side">
@@ -8087,12 +8087,12 @@
                   </div>
                   <div class="perps-order-tabs">
                     <button class="active" data-perps-order>市价</button
-                    ><button data-perps-order>限价</button
-                    ><button data-perps-order>止盈止损</button>
+                    ><button data-perps-order disabled title="当前合约暂不支持挂单">限价</button
+                    ><button data-perps-order disabled title="当前合约暂不支持条件单">止盈止损</button>
                   </div>
                   <div class="perps-order-box">
                     <div class="order-label">
-                      <span>可用保证金</span><strong>2,490.62 USDT</strong>
+                      <span>可用保证金</span><strong data-perps-available>连接钱包后读取</strong>
                     </div>
                     <div class="perps-field">
                       <div class="order-label">
@@ -8152,8 +8152,8 @@
                         <span>预估强平价</span
                         ><strong data-perps-est-liq>$0.000648</strong>
                       </div>
-                      <div><span>开仓手续费</span><strong>0.0500%</strong></div>
-                      <div><span>维持保证金率</span><strong>0.50%</strong></div>
+                      <div><span>开仓手续费</span><strong data-perps-open-fee>—</strong></div>
+                      <div><span>维持保证金率</span><strong data-perps-maintenance-margin>—</strong></div>
                     </div>
                     <button
                       class="primary perps-submit long"
