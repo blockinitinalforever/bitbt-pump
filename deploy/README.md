@@ -32,3 +32,21 @@ The script builds on the server, atomically switches `/opt/bitbt-pump-web/curren
 the local page and public Token API, and only then removes old release directories. It keeps
 the newest five releases by default; set `PUMP_KEEP_RELEASES` to a larger positive number when
 additional rollback history is required.
+
+The protected production build adds content-derived `?v=` versions to the outer iframe and
+every local browser script. Nginx prevents the two HTML entry documents from being stored and
+requires fixed-name application scripts to be revalidated, so direct-origin releases do not
+depend on a user's browser cache being cleared manually.
+
+`bitbt.fun` currently resolves directly to the HK Nginx origin. If Cloudflare is added in front
+of it later, create the root-owned `/etc/bitbt-pump-cdn.env` file with a token restricted to that
+zone and Cache Purge permission:
+
+```text
+CLOUDFLARE_ZONE_ID=...
+CLOUDFLARE_API_TOKEN=...
+```
+
+After Nginx reload and service health checks, deployment purges only the Pump HTML and browser
+bundle URLs. Missing or invalid configured credentials are never reported as a successful CDN
+purge; an API failure stops the deploy script before old-release cleanup.

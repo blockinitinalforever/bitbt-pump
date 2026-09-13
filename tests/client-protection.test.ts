@@ -7,6 +7,8 @@ const root = path.resolve(import.meta.dirname, "..");
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const protector = fs.readFileSync(path.join(root, "scripts/protect-client.mjs"), "utf8");
 const deploy = fs.readFileSync(path.join(root, "deploy/deploy-server.sh"), "utf8");
+const nginx = fs.readFileSync(path.join(root, "deploy/bitbt.fun.nginx.conf"), "utf8");
+const purge = fs.readFileSync(path.join(root, "deploy/purge-cloudflare-cache.mjs"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
 
 test("production build generates protected browser bundles", () => {
@@ -29,4 +31,17 @@ test("release replaces raw scripts and rejects source maps", () => {
   assert.match(deploy, /sourceMappingURL=/);
   assert.match(deploy, /bitbt-ui-20260911-candidate\.html/);
   assert.match(deploy, /bitbt-ui-20260911-preview\.html/);
+});
+
+test("release invalidates entry and browser bundle caches without exposing CDN credentials", () => {
+  assert.match(protector, /versionScriptReferences/);
+  assert.match(protector, /walletconnect-provider\.js\?v=/);
+  assert.match(protector, /bitbt-launch-ui-app\.html\?v=/);
+  assert.match(deploy, /PUMP_CDN_ENV=\/etc\/bitbt-pump-cdn\.env/);
+  assert.match(deploy, /launchpad-live\\\.js\\\?v=/);
+  assert.match(nginx, /no-store, no-cache, must-revalidate/);
+  assert.match(nginx, /no-cache, must-revalidate, max-age=0/);
+  assert.match(purge, /Authorization: `Bearer \$\{apiToken\}`/);
+  assert.match(purge, /JSON\.stringify\(\{ files \}\)/);
+  assert.doesNotMatch(purge, /[A-Za-z0-9_-]{40,}/);
 });
