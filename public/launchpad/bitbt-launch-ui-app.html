@@ -6529,6 +6529,12 @@
           grid-template-columns: 1fr;
         }
         .execution-path div:not(:last-child):after {
+          content: "↓";
+          right: 12px;
+          top: auto;
+          bottom: -12px;
+        }
+      }
       .screen[data-panel="perps"] .perps-workspace {
         display: grid;
         grid-template-columns: minmax(0, 1.65fr) minmax(310px, 0.85fr);
@@ -6813,6 +6819,19 @@
       @media (max-width: 900px) {
         .perps-action-guide {
           grid-template-columns: 1fr;
+          gap: 11px;
+        }
+        .perps-action-guide ol {
+          grid-template-columns: 1fr;
+        }
+        .guide-dismiss {
+          width: max-content;
+        }
+      }
+      .studio-head {
+        min-height: 82px;
+        padding: 15px 24px;
+        grid-template-columns: minmax(250px, 1fr) auto;
         gap: 24px;
       }
       .brand-mark {
@@ -7174,6 +7193,7 @@
       /* Product polish: quieter surfaces, clearer hierarchy, and practical interaction states. */
       :root {
         font-synthesis: none;
+      }
       .network-switch-shell {
         position: relative;
       }
@@ -7309,6 +7329,11 @@
           min-width: 0;
         }
         .brand-lockup h1 {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+      }
       body.runtime-pending #bitbt-launch {
         visibility: hidden;
       }
