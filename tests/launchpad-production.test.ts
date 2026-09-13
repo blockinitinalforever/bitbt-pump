@@ -26,7 +26,10 @@ const compactBridge = bridge.replace(/\s+/g, "");
 
 test("production Launchpad JavaScript is minified without source maps", () => {
   assert.ok(productionBridge.length < bridge.length * 0.85);
-  assert.ok(productionBridge.split("\n").length <= 20);
+  // esbuild preserves intentional newlines inside UI template literals. The
+  // bundle must remain compact, while the release step applies the stronger
+  // production obfuscation checked in client-protection.test.ts.
+  assert.ok(productionBridge.split("\n").length <= 80);
   assert.doesNotMatch(productionBridge, /sourceMappingURL|sourcesContent/);
   assert.doesNotMatch(productionBridge, /const createPermissionlessPerpetualMarket/);
 });
@@ -120,6 +123,57 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(html, /data-perp-submit[^>]*>确认并提交链上交易/);
   assert.doesNotMatch(html, /data-perp-(?:prepare|execute)/);
   assert.match(bridge, /await preparePerpetualAction\(\);\s*await executePerpetualAction\(\);/);
+});
+
+test("perpetual terminal binds live candles, indexed activity, honest order capability, and wallet-created pools", () => {
+  assert.match(bridge, /v1\/pump\/candles\?token_address=/);
+  assert.match(bridge, /renderPerpetualChart/);
+  assert.match(bridge, /market\?\.oraclePriceE18/);
+  assert.match(bridge, /text\('\[data-perps-mark\]', formatPerpPrice\(oraclePrice\)\)/);
+  assert.doesNotMatch(bridge, /\[data-perps-price\], \[data-perps-mark\]/);
+  assert.match(bridge, /data-perps-chart-interval/);
+  assert.match(bridge, /perpMarketActivity/);
+  assert.match(bridge, /当前合约仅支持钱包签名后立即上链的市价操作/);
+  assert.match(bridge, /当前合约未开放止盈止损条件单/);
+  assert.match(bridge, /data-perp-activity-filter/);
+  assert.match(bridge, /tokenDraft/);
+  assert.match(bridge, /poolAmountDraft/);
+  assert.match(html, /data-perps-equity/);
+  assert.match(html, /data-perps-available/);
+  assert.match(html, /data-perps-open-fee/);
+  assert.match(html, /data-perps-maintenance-margin/);
+  assert.match(html, /data-perps-order disabled title="当前合约暂不支持挂单"/);
+  assert.match(html, /data-perps-mode disabled title="当前合约仅支持逐仓"/);
+});
+
+test("perpetual terminal renders spot candles, oracle mark price, and indexed activity from separate live fields", async () => {
+  const tokenAddress = "0x1111111111111111111111111111111111111111";
+  const requests: string[] = [];
+  const response = async (input: string) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.includes("v1/pump/perpetual/config")) return { ok: true, json: async () => ({ data: { enabled: true, operationsReady: true, openingsPaused: false, maxLeverage: 20, feePercent: "0.05%" } }) };
+    if (url.includes("v1/pump/perpetual/markets")) return { ok: true, json: async () => ({ data: [{ marketId: 7, tokenAddress, tokenName: "Code Token", tokenSymbol: "CODET", quoteTokenAddress: "0x2222222222222222222222222222222222222222", quoteTokenSymbol: "tBTUSD", quoteDecimals: 18, oraclePriceE18: "2500000000000000000", liquidityRaw: "1000000000000000000000", lockedNotionalRaw: "40000000000000000000", longNotionalRaw: "25000000000000000000", shortNotionalRaw: "15000000000000000000", maxPositionNotionalRaw: "100000000000000000000", maxOpenInterestRaw: "500000000000000000000", minKeeperRewardRaw: "100000000000000000", platformFeeClaimableRaw: "0", platformFeeLiabilityRaw: "0", maxLeverage: 20, maxFundingRatePpmPerDay: 1000, enabled: true, closeOnly: false }] }) };
+    if (url.includes("v1/pump/perpetual/activity")) return { ok: true, json: async () => ({ data: [{ marketId: 7, trader: "0x3333333333333333333333333333333333333333", isOpen: true, isLong: true, collateralRaw: "10000000000000000000", notionalRaw: "20000000000000000000", entryPriceE18: "2400000000000000000", openedAt: 1_789_000_000 }] }) };
+    if (url.includes("v1/pump/candles")) return { ok: true, json: async () => ({ data: [{ open_time: 1_789_000_000, open: "1", high: "1.2", low: "0.9", close: "1.1", volume_quote: "12" }, { open_time: 1_789_000_060, open: "1.1", high: "1.4", low: "1", close: "1.25", volume_quote: "15" }] }) };
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/pump/trades") || url.includes("v1/pump/announcements") || url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/token/launch-options")) return { ok: true, json: async () => ({ data: { network: { id: "bsc", chain_id: 56, chain_id_hex: "0x38", native_symbol: "BNB", launch_enabled: true, trade_enabled: true }, quotes: [], dex_profiles: [] } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window, chartData } = await boot(response);
+  (window.document.querySelector('[data-open="perps"]') as HTMLButtonElement).click();
+  for (let attempt = 0; attempt < 20 && window.document.querySelector("[data-perps-price]")?.textContent === "—"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(window.document.querySelector("[data-perps-symbol]")?.textContent, "CODET");
+  assert.match(window.document.querySelector("[data-perps-price]")?.textContent || "", /1\.25/, requests.join("\n"));
+  assert.match(window.document.querySelector("[data-perps-mark]")?.textContent || "", /2\.5/);
+  assert.match(window.document.querySelector("[data-perps-oi]")?.textContent || "", /40 tBTUSD/);
+  assert.equal(window.document.querySelectorAll('[data-perps-panel="onchain"] .compact-order').length, 1);
+  assert.ok(chartData.some((rows) => rows.length === 2));
 });
 
 type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean; sourceHtml?: string };
