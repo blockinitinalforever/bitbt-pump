@@ -836,7 +836,7 @@ test("a persisted successful receipt retries confirmation after refresh without 
     quote: "BNB",
     logoRequired: false,
     confirmedLogoUrl: "",
-    prepared: { launch: { id: "launch-recovery", token_name: "Recovered Token", symbol: "REC", creator_address: account, quote_token: "BNB" }, predicted_token_address: predicted, curve_address: curve, quote_token_address: "0x0000000000000000000000000000000000000000" },
+    prepared: { chain_id: "bsc", launch: { id: "launch-recovery", token_name: "Recovered Token", symbol: "REC", creator_address: account, quote_token: "BNB" }, predicted_token_address: predicted, curve_address: curve, quote_token_address: "0x0000000000000000000000000000000000000000" },
   };
   let confirms = 0;
   const response = async (input: string) => {

@@ -132,6 +132,8 @@
   let quoteRequestSequence = 0;
   let selectedDetailAddress = "";
   let userDataRequestSequence = 0;
+  let walletSessionEpoch = 0;
+  let navigationEpoch = 0;
   let balanceRequestSequence = 0;
   let candleRequestSequence = 0;
   let marketSocket = null;
@@ -809,11 +811,11 @@
     const version = (perpReadVersions.get(key) || 0) + 1;
     perpReadVersions.set(key, version);
     const account = state.account, chain = state.selectedChain, provider = selectedProvider();
-    const session = userDataRequestSequence;
+    const session = walletSessionEpoch;
     const marketId = state.selectedPerpMarketId;
     return () => perpReadVersions.get(key) === version && state.account === account
       && state.selectedChain === chain && selectedProvider() === provider
-      && userDataRequestSequence === session && (!bindMarket || state.selectedPerpMarketId === marketId);
+      && walletSessionEpoch === session && (!bindMarket || state.selectedPerpMarketId === marketId);
   };
   const setPerpReadError = (key, message = "") => {
     state.perpReadErrors[key] = message;
@@ -1234,7 +1236,8 @@
     renderPerpetual();
     return prepared;
   };
-  const executePreparedPerpetual = async (prepared, market, request, onCoreBroadcast) => {
+  const executePreparedPerpetual = async (prepared, market, request, onCoreBroadcast, assertContext = () => {}) => {
+    assertContext();
     const pendingKey = `bitbt_perp_pending:bsc:${state.perpConfig?.contractAddress}:${request.wallet_address.toLowerCase()}`;
     const persistPending = (value) => {
       writeLocalPreference(pendingKey, value);
@@ -1244,20 +1247,24 @@
     if (pending) {
       if (pending === "unknown") throw new Error("上一笔永续交易提交状态未知，请先在钱包中核对链上记录，勿重复提交");
       const receipt = await selectedProvider().request({ method: "eth_getTransactionReceipt", params: [pending] });
-      if (!receipt) throw new Error(`上一笔永续交易仍待确认，禁止重复发送：${pending}`);
+      assertContext();
+      if (receipt?.status == null) throw new Error(`上一笔永续交易仍待确认，禁止重复发送：${pending}`);
+      if (!receiptSucceeded(receipt) && ![false, 0, "0", "0x0", "0x00"].includes(receipt.status)) throw new Error("上一笔永续交易回执状态未知，禁止重复发送");
       persistPending("");
       throw new Error(receiptSucceeded(receipt) ? `上一笔永续交易已成功，请刷新仓位后再操作：${pending}` : `上一笔永续交易链上失败，请确认后重试：${pending}`);
     }
     // Approval confirmation can outlive a quote. Refresh the exact original
     // request after approvals, never reread mutable form inputs.
     for (let round = 0; round < 3; round += 1) {
+      assertContext();
       validatePreparedPerpetual(prepared, market, request);
       const approvals = prepared.transactions.filter((tx) => String(tx.data).startsWith("0x095ea7b3"));
       for (const tx of approvals) {
         if (state.account?.toLowerCase() !== request.wallet_address.toLowerCase() || state.selectedChain !== "bsc") throw new Error("钱包或网络已变化，请重新确认交易");
-        await sendVaultTransaction(tx, tx.label || "永续授权");
+        await sendVaultTransaction(tx, tx.label || "永续授权", undefined, undefined, assertContext);
       }
       if (approvals.length) {
+        assertContext();
         prepared = await api("v1/pump/perpetual/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
         continue;
       }
@@ -1266,7 +1273,7 @@
       try {
         const hash = await sendVaultTransaction(tx, tx.label || "永续操作",
           (hash) => { persistPending(hash); onCoreBroadcast?.(hash); },
-          () => persistPending("unknown"));
+          () => persistPending("unknown"), assertContext);
         persistPending("");
         return hash;
       } catch (error) {
@@ -1852,12 +1859,14 @@
       state.vaultBusy = false;
     }
   };
-  const sendVaultTransaction = async (transaction, label, onBroadcast, onSubmitting) => {
+  const sendVaultTransaction = async (transaction, label, onBroadcast, onSubmitting, assertContext = () => {}) => {
+    assertContext();
     if (!state.account) await connectWallet();
     const provider = selectedProvider();
     if (state.selectedChain !== "bsc") throw new Error("Split Vault 当前仅支持 BNB Smart Chain");
     await ensureSelectedChain(provider);
     await assertProviderState();
+    assertContext();
     const account = state.account;
     const request = {
       from: account,
@@ -1867,7 +1876,7 @@
     };
     const estimated = BigInt(await provider.request({ method: "eth_estimateGas", params: [request] }));
     if (state.account !== account || selectedProvider() !== provider || state.selectedChain !== "bsc") throw new Error("钱包或网络在估算 Gas 时发生变化，已停止发送");
-    onSubmitting?.();
+    assertContext();
     const hash = await send(
       {
         from: account,
@@ -1875,6 +1884,8 @@
         data: transaction.data,
         value: BigInt(transaction.value || "0x0"),
         gas: (estimated * 120n) / 100n,
+        assertContext,
+        onSubmitting,
       },
       provider,
     );
@@ -2746,6 +2757,7 @@
   const loadPerpetualActivity = async (append = false) => {
     if (append && (state.perpHistoryBusy || !state.perpHistoryCursor)) return;
     const current = beginPerpRead('history', false);
+    const version = perpReadVersions.get('history');
     if (!isBscFeatureChain()) {
       state.perpMarkets = [];
       state.perpActivity = [];
@@ -2780,45 +2792,98 @@
       if (!current()) return;
       setPerpReadError('history', '逐笔记录加载失败，当前结果可能不完整，请刷新或重试'); throw error;
     } finally {
+      if (perpReadVersions.get('history') === version) state.perpHistoryBusy = false;
       if (current()) { state.perpHistoryBusy = false; renderPerpetualServices(); renderWalletState(); setPerpReadError('history', state.perpReadErrors.history); }
     }
   };
   const completePaidPoolRequest = async (request) => {
+    const account = state.account;
+    const provider = selectedProvider();
+    const epoch = walletSessionEpoch;
+    const contract = String(state.perpConfig?.contractAddress || "").toLowerCase();
+    const current = () => walletSessionEpoch === epoch && state.account === account
+      && state.selectedChain === "bsc" && selectedProvider() === provider
+      && String(state.perpConfig?.contractAddress || "").toLowerCase() === contract;
+    const assertCurrent = () => {
+      if (!current()) throw new Error("钱包或网络已变化，请返回原钱包及 BSC 恢复申请");
+    };
+    const checkWallet = async () => {
+      assertCurrent();
+      const [chain, accounts] = await Promise.all([
+        provider.request({ method: "eth_chainId" }),
+        provider.request({ method: "eth_accounts" }),
+      ]);
+      assertCurrent();
+      if (normalizeChainId(chain) !== "0x38" || String(accounts?.[0] || "").toLowerCase() !== account.toLowerCase()) throw new Error("请返回原钱包及 BSC 恢复申请");
+    };
+    if (!account || !provider || !/^0x[0-9a-f]{40}$/.test(contract)
+      || (request?.walletAddress && request.walletAddress.toLowerCase() !== account.toLowerCase())) throw new Error("申请的钱包或合约绑定无效");
+    await checkWallet();
     const payload = request?.payload || {};
     const market = state.perpMarkets.find((item) => Number(item.marketId) === Number(payload.marketId));
     if (!market || !request?.requestId || request.status !== "paid") throw new Error("找不到可继续的已付费对手池申请");
     state.selectedPerpMarketId = Number(payload.marketId);
-    const body = { wallet_address: state.account, market_id: Number(payload.marketId), action: "deposit_liquidity", amount_raw: String(payload.amountRaw || "") };
-    const completionKey = `bitbt_perp_pool_completion:${request.requestId}:${state.account}`;
+    const body = { wallet_address: account, market_id: Number(payload.marketId), action: "deposit_liquidity", amount_raw: String(payload.amountRaw || "") };
+    const completionKey = `bitbt_perp_pool_completion:${request.requestId}:${account}`;
+    const pendingKey = `bitbt_perp_pending:bsc:${state.perpConfig.contractAddress}:${account.toLowerCase()}`;
     let depositTxHash = readLocalPreference(completionKey);
-    if (!depositTxHash) {
-    let action;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      try {
-        action = await api("v1/pump/perpetual/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-        break;
-      } catch (error) {
-        if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
-        if (attempt === 39) throw new Error("平台服务费已支付，但 Keeper 唤醒超时；稍后仍可从本页继续注资，不会重复收费");
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    if (depositTxHash) {
+      if (!/^0x[0-9a-fA-F]{64}$/.test(depositTxHash)) throw new Error("注资交易记录无效，请核对钱包记录，勿重复注资");
+      const [receipt, tx] = await Promise.all([
+        provider.request({ method: "eth_getTransactionReceipt", params: [depositTxHash] }),
+        provider.request({ method: "eth_getTransactionByHash", params: [depositTxHash] }),
+      ]);
+      await checkWallet();
+      if (!receiptHasStatus(receipt)) throw new Error("注资交易仍待确认，请稍后恢复，勿重复注资");
+      const expectedData = `0x34a860e4${word(BigInt(body.market_id))}${word(BigInt(body.amount_raw))}`;
+      const matches = (value, expected) => String(value || "").toLowerCase() === expected.toLowerCase();
+      if (!tx || !matches(tx.hash, depositTxHash) || !matches(receipt.transactionHash, depositTxHash)
+        || !matches(tx.from, account) || !matches(receipt.from, account)
+        || !matches(tx.to, contract) || !matches(receipt.to, contract)
+        || !matches(tx.input, expectedData) || BigInt(tx.value || "0") !== 0n
+        || (tx.chainId != null && normalizeChainId(tx.chainId) !== "0x38")) throw new Error("注资交易与原申请不匹配，已停止恢复");
+      const failed = [false, 0, "0", "0x0", "0x00"].includes(receipt.status);
+      if (!failed && !receiptSucceeded(receipt)) throw new Error("注资回执状态未知，勿重复注资");
+      if (failed) {
+        if (readLocalPreference(completionKey) === depositTxHash) writeLocalPreference(completionKey, "");
+        if (readLocalPreference(pendingKey) === depositTxHash) writeLocalPreference(pendingKey, "");
+        throw new Error("原注资交易已确认回滚，失败记录已清理；请核对后再次点击继续注资，本次未重发");
       }
     }
-    validatePreparedPerpetual(action, market, body);
-    try {
-      depositTxHash = await executePreparedPerpetual(action, market, body, (hash) => {
-        writeLocalPreference(completionKey, hash);
-        if (readLocalPreference(completionKey) !== hash) throw new Error("注资交易已广播，但本地记录保存失败，请在钱包核对交易后联系客服，不要重复注资");
-      });
-    } catch (error) {
-      if (/链上回执失败/.test(String(error?.message || error))) writeLocalPreference(completionKey, "");
-      throw error;
+    if (!depositTxHash) {
+      let action;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        try {
+          assertCurrent();
+          action = await api("v1/pump/perpetual/prepare?chain_id=bsc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+          break;
+        } catch (error) {
+          if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
+          if (attempt === 39) throw new Error("平台服务费已支付，但 Keeper 唤醒超时；稍后仍可从本页继续注资，不会重复收费");
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        }
+      }
+      await checkWallet();
+      validatePreparedPerpetual(action, market, body);
+      try {
+        depositTxHash = await executePreparedPerpetual(action, market, body, (hash) => {
+          writeLocalPreference(completionKey, hash);
+          if (readLocalPreference(completionKey) !== hash) throw new Error("注资交易已广播，但本地记录保存失败，请在钱包核对交易后联系客服，不要重复注资");
+        }, assertCurrent);
+      } catch (error) {
+        if (/链上回执失败/.test(String(error?.message || error))) writeLocalPreference(completionKey, "");
+        throw error;
+      }
     }
-    }
-    const completed = await api("v1/pump/perpetual/service-requests/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ walletAddress: state.account, requestId: request.requestId, txHash: depositTxHash }) });
+    await checkWallet();
+    const completed = await api("v1/pump/perpetual/service-requests/complete?chain_id=bsc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ walletAddress: account, requestId: request.requestId, txHash: depositTxHash }) });
+    assertCurrent();
     writeLocalPreference(completionKey, "");
+    if (readLocalPreference(pendingKey) === depositTxHash) writeLocalPreference(pendingKey, "");
     state.perpServiceRequests = [completed, ...state.perpServiceRequests.filter((item) => item.requestId !== completed.requestId)];
     toast("对手池服务费与链上 LP 注资均已成功", 8000);
     await loadPerpetual();
+    assertCurrent();
     show("perps-pool");
   };
   const createPermissionlessPerpetualMarket = async () => {
@@ -3091,6 +3156,8 @@
   const allowance = (token, owner, spender, provider = selectedProvider()) => rpc(token, `0xdd62ed3e${addressWord(owner)}${addressWord(spender)}`, provider);
   const send = async (tx, provider = selectedProvider()) => {
     const fee = tx.fee || (await getFeePolicy(provider));
+    tx.assertContext?.();
+    tx.onSubmitting?.();
     return provider.request({
       method: "eth_sendTransaction",
       params: [
@@ -3208,6 +3275,7 @@
   };
   const renderLaunchTaxReview = (tax) => text("[data-launch-review-tax]", tax ? `买 ${tax.buy_tax_rate}% · 卖 ${tax.sell_tax_rate}% · ${tax.tax_duration_days === "0" ? "永久" : `${tax.tax_duration_days} 天`} · 资金/销毁/分红/流动性 ${tax.funds_recipient_pct}/${tax.burn_pct}/${tax.holders_pct}/${tax.liquidity_pct}%` : "标准代币 · 无转账税");
   const resetProviderState = (message = "钱包状态已变化，请重新连接") => {
+    walletSessionEpoch += 1;
     sessionStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_ADDRESS_KEY);
     sessionStorage.removeItem(PROVIDER_KIND_KEY);
@@ -3269,6 +3337,7 @@
   };
   const restoreSessionOnce = async () => {
     const token = sessionStorage.getItem(SESSION_KEY);
+    const epoch = walletSessionEpoch;
     if (!token) return false;
     try {
       const session = await api("v1/auth/siwe/session");
@@ -3283,6 +3352,7 @@
       const chainId = provider ? await provider.request({ method: "eth_chainId" }) : "";
       const providerAddress = String(accounts?.[0] || "").toLowerCase();
       const normalizedChain = normalizeChainId(chainId);
+      if (epoch !== walletSessionEpoch || token !== sessionStorage.getItem(SESSION_KEY)) return false;
       if (providerAddress && providerAddress !== sessionAddress) {
         resetProviderState("钱包账户已变化，请重新连接");
         return false;
@@ -3291,6 +3361,7 @@
         resetProviderState(`网络已变化，请重新连接 ${selectedNetwork().name} 钱包`);
         return false;
       }
+      if (state.account !== (providerAddress || sessionAddress)) walletSessionEpoch += 1;
       state.account = providerAddress || sessionAddress;
       state.chainId = normalizedChain || selectedNetwork().chainIdHex;
       state.sessionExpiresAt = Date.now() + Number(session.expires_in || 0) * 1000;
@@ -3427,6 +3498,7 @@
       body: JSON.stringify({ message, signature }),
     });
     sessionStorage.setItem(SESSION_KEY, verified.token);
+    walletSessionEpoch += 1;
     sessionStorage.setItem(PROVIDER_KIND_KEY, provider.isWalletConnect ? "walletconnect" : "injected");
     state.account = String(verified.address || address).toLowerCase();
     sessionStorage.setItem(SESSION_ADDRESS_KEY, state.account);
@@ -3561,7 +3633,7 @@
     state.candles = candles;
     drawCharts();
   };
-  const loadDetail = async (token, { refreshBalance = true, forceDetail = false, refreshTrades = true } = {}) => {
+  const loadDetail = async (token, { refreshBalance = true, forceDetail = false, refreshTrades = true, isCurrent = () => true } = {}) => {
     if (!tokenAddress(token)) return;
     const requestSequence = ++detailRequestSequence;
     state.selected = token;
@@ -3570,7 +3642,7 @@
     const migratedKnown = token?.migrated === true || status(token) === "migrated";
     const [detail, trades, candles, knownProof] = await Promise.all([detailPromise, refreshTrades ? api(`v1/pump/trades?token_address=${encodeURIComponent(tokenAddress(token))}`) : Promise.resolve(state.trades), fetchCandles(address).catch(() => []), migratedKnown ? api(`v1/pump/migration-proof?token_address=${encodeURIComponent(address)}`).catch(() => null) : Promise.resolve(null)]);
     const proof = knownProof || (!migratedKnown && detail?.migrated === true ? await api(`v1/pump/migration-proof?token_address=${encodeURIComponent(address)}`).catch(() => null) : null);
-    if (requestSequence !== detailRequestSequence || tokenAddress(state.selected).toLowerCase() !== address) return false;
+    if (!isCurrent() || requestSequence !== detailRequestSequence || tokenAddress(state.selected).toLowerCase() !== address) return false;
     state.detail = detail;
     state.details[address] = detail;
     state.trades = trades;
@@ -3592,10 +3664,14 @@
     detailPanel.classList.add("has-bottom-nav");
     detailPanel.scrollTop = 0;
   };
-  const openToken = async (token, { historyMode = "push", fallbackDetail = null } = {}) => {
+  const openToken = async (token, { historyMode = "push", fallbackDetail = null, isCurrent = null } = {}) => {
+    const navigation = isCurrent ? navigationEpoch : ++navigationEpoch;
+    const current = () => navigationEpoch === navigation && (!isCurrent || isCurrent());
+    if (!current()) return false;
     try {
-      if ((await loadDetail(token)) === false) return;
+      if ((await loadDetail(token, { isCurrent: current })) === false) return false;
     } catch (error) {
+      if (!current()) return false;
       if (!fallbackDetail) throw error;
       const address = tokenAddress(token).toLowerCase();
       if (tokenAddress(state.selected).toLowerCase() !== address) return;
@@ -3611,8 +3687,10 @@
       renderLiveRows();
       drawCharts();
     }
+    if (!current()) return false;
     activateDetail();
     if (historyMode) setTokenPath(tokenAddress(token), historyMode);
+    return true;
   };
   const openTokenAddress = async (address, options = {}) => {
     const normalized = String(address || "").toLowerCase();
@@ -4385,13 +4463,14 @@
     $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select, [data-panel="create-economics"] .active, [data-panel="create-tax"] .active')
       .map((node) => `${node.id || node.name || node.className}:${node.value || node.textContent || ""}`)
       .join("|");
-  const waitForLaunchFinality = async (launchId, initial) => {
+  const waitForLaunchFinality = async (launchId, initial, chain, current = () => true) => {
     let result = initial;
     for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (!current()) return result;
       if (["deployed", "migrated"].includes(result?.status)) return result;
       if (result?.status === "rejected") throw new Error(result.rejection_reason || "发币已被拒绝");
       if (!["prepared", "pending_review", "approved", "deploying", "deploy_failed"].includes(result?.status)) throw new Error(result?.rejection_reason || `发币状态为 ${result?.status || "未知"}`);
-      result = await api(`v1/token/status?id=${encodeURIComponent(launchId)}`);
+      result = await api(`v1/token/status?id=${encodeURIComponent(launchId)}&chain_id=${encodeURIComponent(chain)}`);
       if (["deployed", "migrated"].includes(result?.status)) return result;
       if (attempt < 19) await new Promise((resolve) => window.setTimeout(resolve, 1000));
     }
@@ -4416,15 +4495,21 @@
     }
   };
   const rememberLaunchConfirmation = (pending, message) => {
+    pending.chain = pending.prepared.chain_id;
+    pending.account = String(pending.prepared.launch.creator_address || "").toLowerCase();
     state.launchConfirmation = pending;
     persistLaunchConfirmation();
-    renderLaunchConfirmationRetry(message);
+    if (pending.chain === state.selectedChain && pending.account === state.account?.toLowerCase()) renderLaunchConfirmationRetry(message);
   };
   const restoreLaunchConfirmation = () => {
     try {
       const pending = JSON.parse(sessionStorage.getItem(PENDING_LAUNCH_CONFIRMATION_KEY) || "null");
       if (!pending || !/^0x[0-9a-fA-F]{64}$/.test(String(pending.hash || "")) || !pending.prepared?.launch?.id || !/^0x[0-9a-fA-F]{40}$/.test(String(pending.prepared?.predicted_token_address || ""))) throw new Error("invalid pending launch");
+      // Older records carry the binding in the immutable prepared launch.
+      pending.chain = pending.prepared.chain_id;
+      pending.account = String(pending.prepared.launch.creator_address || "").toLowerCase();
       state.launchConfirmation = pending;
+      persistLaunchConfirmation();
       renderLaunchConfirmationRetry("检测到链上成功但尚未保存的发币结果");
       toast("检测到待确认的发币结果，请点击重试保存", 7000);
     } catch {
@@ -4439,6 +4524,14 @@
     const pending = state.launchConfirmation;
     if (!pending) throw new Error("没有待确认的发币结果");
     const { prepared, hash, name, symbol, quote } = pending;
+    const chain = prepared.chain_id;
+    const account = String(prepared.launch.creator_address || "").toLowerCase();
+    if (!NETWORKS[chain] || !/^0x[0-9a-f]{40}$/.test(account)) throw new Error("发币确认记录缺少原链或创建者信息，请核对原交易");
+    if (state.selectedChain !== chain || state.account?.toLowerCase() !== account) throw new Error(`请切回 ${NETWORKS[chain].name} 并连接原创建者钱包后重试保存发币结果`);
+    const epoch = walletSessionEpoch, navigation = navigationEpoch, provider = selectedProvider();
+    const current = () => state.launchConfirmation === pending && walletSessionEpoch === epoch
+      && navigationEpoch === navigation && selectedProvider() === provider
+      && state.selectedChain === chain && state.account?.toLowerCase() === account;
     if (pending.logoRequired && !pending.confirmedLogoUrl) {
       const selectionKey = window.bitbtLaunchLogoSelectionKey?.() || document.documentElement.dataset.launchLogoSelection || "";
       if (!selectionKey) {
@@ -4448,15 +4541,17 @@
       try {
         pending.confirmedLogoUrl = (await window.bitbtUploadSelectedLaunchLogo?.()) || "";
         if (!pending.confirmedLogoUrl) throw new Error("Logo 上传未返回有效地址");
-        persistLaunchConfirmation();
+        if (state.launchConfirmation === pending) persistLaunchConfirmation();
       } catch (error) {
+        if (!current()) return;
         renderLaunchConfirmationRetry("链上发币已成功，Logo 上传失败可重试");
         throw error;
       }
     }
+    if (!current()) return;
     let result;
     try {
-      result = await api("v1/token/launch", {
+      result = await api(`v1/token/launch?chain_id=${encodeURIComponent(chain)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -4465,11 +4560,14 @@
           logo_url: pending.confirmedLogoUrl || undefined,
         }),
       });
-      if (!["deployed", "migrated"].includes(result.status)) result = await waitForLaunchFinality(prepared.launch.id, result);
+      if (!current()) return result;
+      if (!["deployed", "migrated"].includes(result.status)) result = await waitForLaunchFinality(prepared.launch.id, result, chain, current);
     } catch (error) {
+      if (!current()) return;
       renderLaunchConfirmationRetry(`链上交易 ${hash.slice(0, 10)}… 已成功，后台确认可重试`);
       throw error;
     }
+    if (!current()) return result;
     const launchedAddress = result.contract_address || prepared.predicted_token_address;
     if (!/^0x[0-9a-fA-F]{40}$/.test(launchedAddress)) {
       renderLaunchConfirmationRetry("链上发币已成功，返回地址异常可重试");
@@ -4491,14 +4589,16 @@
     const normalizedLaunchAddress = launchedAddress.toLowerCase();
     state.tokens = [launchedToken, ...state.tokens.filter((token) => tokenAddress(token).toLowerCase() !== normalizedLaunchAddress)];
     state.details[normalizedLaunchAddress] = launchedToken;
-    clearLaunchConfirmation();
-    state.launchTerminal = true;
-    setTokenPath(launchedAddress, "push");
     renderTokens();
     await openToken(launchedToken, {
       historyMode: null,
       fallbackDetail: launchedToken,
+      isCurrent: current,
     });
+    if (!current()) return result;
+    clearLaunchConfirmation();
+    state.launchTerminal = true;
+    setTokenPath(launchedAddress, "push");
     toast(pending.logoRequired ? "发币完成，Logo 已保存" : "发币完成");
     return result;
   };
@@ -4803,6 +4903,7 @@
   const show = (name) => {
     const target = root.querySelector(`[data-panel="${CSS.escape(name)}"]`);
     if (!target) return;
+    navigationEpoch += 1;
     invalidateQuote();
     if (name === "create-mode" || (name === "create-basic" && state.launchTerminal)) resetLaunchFlow();
     else if (!state.launchSnapshot || name !== "create-review") invalidateLaunchSnapshot();
@@ -5393,6 +5494,8 @@
   );
   const switchProductChain = async (next) => {
       if (!NETWORKS[next] || next === state.selectedChain) return;
+      walletSessionEpoch += 1;
+      navigationEpoch += 1;
       state.selectedChain = next;
       userDataRequestSequence += 1;
       state.perpIndexedPositions = [];
