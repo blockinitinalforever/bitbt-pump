@@ -20,3 +20,11 @@ test("CSS validation runs before building or testing browser bundles", () => {
   assert.ok(pkg.scripts.build.startsWith("npm run check:css &&"));
   assert.ok(pkg.scripts.pretest.startsWith("npm run check:css &&"));
 });
+
+test("header dropdown escapes sibling stacking contexts and exposes both networks", () => {
+  const headers = styles.flatMap(css => postcss.parse(css).nodes.filter(node => node.type === "rule" && node.selector === ".studio-head"));
+  const layers = headers.flatMap(rule => rule.nodes.filter(node => node.type === "decl" && node.prop === "z-index").map(node => Number(node.value)));
+  assert.equal(layers.at(-1), 100);
+  assert.match(html, /data-global-chain-option="bsc"/);
+  assert.match(html, /data-global-chain-option="robinhood"/);
+});
