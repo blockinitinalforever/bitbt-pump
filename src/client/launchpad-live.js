@@ -2599,6 +2599,25 @@
     await Promise.allSettled(tasks);
     renderPerpetual();
   };
+  const loadPerpetualActivity = async () => {
+    if (!isBscFeatureChain()) {
+      state.perpMarkets = [];
+      state.perpActivity = [];
+      renderPerpetualServices();
+      renderWalletState();
+      return;
+    }
+    const requestedChain = state.selectedChain;
+    const [markets, rows] = await Promise.all([
+      api("v1/pump/perpetual/markets"),
+      api("v1/pump/perpetual/activity?limit=200"),
+    ]);
+    if (state.selectedChain !== requestedChain) return;
+    state.perpMarkets = Array.isArray(markets) ? markets : [];
+    state.perpActivity = Array.isArray(rows) ? rows : [];
+    renderPerpetualServices();
+    renderWalletState();
+  };
   const completePaidPoolRequest = async (request) => {
     const payload = request?.payload || {};
     const market = state.perpMarkets.find((item) => Number(item.marketId) === Number(payload.marketId));
@@ -4611,13 +4630,15 @@
     $$('[data-nav]').forEach((button) => button.classList.toggle("active", button.dataset.nav === name));
     target.classList.add("has-bottom-nav");
     target.scrollTop = 0;
+    renderWalletState();
     routeHistory()?.replaceState?.(null, "", `${pumpBasePath()}?screen=${encodeURIComponent(name)}`);
     if (name === "create-review") void autoPrepareLaunch();
     if (name === "announcements") {
       renderAnnouncements();
       if (!state.announcements.length) void loadAnnouncements().catch((error) => toastError(error, "公告加载失败，请稍后重试"));
     }
-    if (["perpetual", "perps", "perps-add-contract", "perps-create-pool", "perps-pool", "perps-onchain"].includes(name)) void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
+    if (name === "perps-onchain") void loadPerpetualActivity().catch((error) => toastError(error, "链上记录加载失败"));
+    if (["perpetual", "perps", "perps-add-contract", "perps-create-pool", "perps-pool"].includes(name)) void loadPerpetual().catch((error) => toastError(error, "永续市场加载失败"));
     if ((name === "alerts" || name === "alert-center") && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
     if (name === "revenue-center" || name === "income-center") {
       renderVaults();
@@ -4726,7 +4747,7 @@
       }
       if (event.target.closest("[data-perp-activity-refresh]")) {
         event.preventDefault();
-        loadPerpetualServiceData().catch((error) => toastError(error, "链上记录刷新失败"));
+        loadPerpetualActivity().catch((error) => toastError(error, "链上记录刷新失败"));
         return;
       }
       const activityFilter = event.target.closest("[data-perp-activity-filter]");
