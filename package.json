@@ -9,10 +9,11 @@
     "bundle:launchpad": "esbuild src/client/launchpad-live.js --bundle --minify --legal-comments=none --platform=browser --format=iife --target=es2020 --outfile=public/launchpad/launchpad-live.js",
     "bundle:clients": "npm run bundle:walletconnect && npm run bundle:launchpad",
     "protect:client": "node scripts/protect-client.mjs",
-    "build": "npm run bundle:clients && next build && npm run protect:client",
+    "check:css": "node scripts/check-inline-css.mjs",
+    "build": "npm run check:css && npm run bundle:clients && next build && npm run protect:client",
     "start": "next start",
     "lint": "eslint",
-    "pretest": "npm run bundle:launchpad",
+    "pretest": "npm run check:css && npm run bundle:launchpad",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "eslint-formatter-compact": "^9.0.1",
     "javascript-obfuscator": "5.7.0",
     "linkedom": "^0.18.13",
+    "postcss": "8.5.26",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
