@@ -1052,7 +1052,8 @@
       const submit = $('#perps-submit');
       if (submit) {
         const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
-        submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly));
+        const needsWallet = !state.account;
+        submit.disabled = state.perpSubmitting || (!needsWallet && (!enabled || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly))));
         submit.textContent = state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy('确认市价平仓', 'Confirm market close') : uiCopy(`确认开${isShort ? uiCopy("空", "Short") : uiCopy("多", "Long")}`, `Confirm ${isShort ? 'short' : 'long'}`);
         submit.removeAttribute('data-toast');
       }
@@ -1115,8 +1116,9 @@
       // risk-adding action available so the authenticated prepare request can
       // wake the on-demand keeper. A market-level closeOnly flag remains a
       // hard risk control and is never bypassed here.
-      submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && market?.closeOnly) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
-      submit.textContent = state.perpSubmitting ? "正在校验并等待钱包确认…" : uiCopy("确认并提交链上交易", "Confirm and submit on-chain");
+      const needsWallet = !state.account;
+      submit.disabled = state.perpSubmitting || (!needsWallet && (!enabled || !market || !canClaimPlatformFees || (addsRisk && market?.closeOnly) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest)));
+      submit.textContent = state.perpSubmitting ? "正在校验并等待钱包确认…" : needsWallet ? uiCopy("连接钱包后交易", "Connect wallet to trade") : uiCopy("确认并提交链上交易", "Confirm and submit on-chain");
     }
     const preview = $("[data-perp-preview]");
     if (preview) {
@@ -1422,6 +1424,14 @@
       state.perpSubmitting = false;
       renderPerpetual();
     }
+  };
+  const handlePerpetualSubmit = async () => {
+    if (!state.account) {
+      await connectWallet();
+      await loadPerpetual();
+      return;
+    }
+    await submitPerpetualAction();
   };
   const pumpBasePath = () => "/pump";
   const routeTokenAddress = () => {
@@ -5459,10 +5469,10 @@
       state.preparedPerpRequest = null;
       renderPerpetual();
     }));
-    $("[data-perp-submit]")?.addEventListener("click", () => submitPerpetualAction().catch((error) => toastError(error, "永续操作失败")));
+    $("[data-perp-submit]")?.addEventListener("click", () => handlePerpetualSubmit().catch((error) => toastError(error, "永续操作失败")));
     $("#perps-submit")?.addEventListener("click", (event) => {
       event.preventDefault();
-      submitPerpetualAction().catch((error) => toastError(error, "永续操作失败"));
+      handlePerpetualSubmit().catch((error) => toastError(error, "永续操作失败"));
     });
     root.addEventListener("click", (event) => {
       const shortcut = event.target.closest('[data-perp-shortcut]');
