@@ -7,6 +7,11 @@ import vm from 'node:vm';
 import { parseHTML } from 'linkedom';
 import { compareUi, referencePath } from '../scripts/audit-ui-reference.mjs';
 
+type UiLocale = {
+  apply(language: 'en' | 'zh'): void;
+  message(value: string, language: 'en' | 'zh'): string;
+};
+
 function renderLocale(language: () => string = () => 'zh') {
   const {document, window} = parseHTML('<main id="bitbt-launch"></main>');
   vm.runInNewContext(fs.readFileSync('public/launchpad/ui-locale.js','utf8'), {window,document});
@@ -74,7 +79,7 @@ test('reference language switching preserves live text, input values and event-b
 test('network and contact translations preserve destinations and both language directions', () => {
   const {window,document}=parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html','utf8'));
   vm.runInNewContext(fs.readFileSync('public/launchpad/ui-locale.js','utf8'),{window,document});
-  const locale=(window as any).bitbtUiLocale;
+  const locale=(window as unknown as { bitbtUiLocale: UiLocale }).bitbtUiLocale;
   const contacts=[...document.querySelectorAll('[data-global-official-contacts] a')];
   const hrefs=contacts.map(n=>n.getAttribute('href'));
   locale.apply('en');
@@ -92,7 +97,7 @@ test('network and contact translations preserve destinations and both language d
 test('all fixed friendly errors have English copy; numeric diagnostics and unknown details are retained', () => {
   const {window,document}=parseHTML('<main id="bitbt-launch"></main>');
   vm.runInNewContext(fs.readFileSync('public/launchpad/ui-locale.js','utf8'),{window,document});
-  const locale=(window as any).bitbtUiLocale;
+  const locale=(window as unknown as { bitbtUiLocale: UiLocale }).bitbtUiLocale;
   const source=fs.readFileSync('src/client/launchpad-live.js','utf8');
   const errors=source.slice(source.indexOf('  const friendlyError ='),source.indexOf('  const api ='));
   const messages=[...errors.matchAll(/return "([^"]+)"/g)].map(m=>m[1]);
@@ -185,7 +190,7 @@ test('real announcement detail precedes the list and handles selection, escaping
   const end=source.indexOf('  const loadAnnouncements',start);
   const state={announcements:[{id:'a',title:'<img src=x>',content:'First',category:'product',pinned:true,published_at:'today'},{id:'b',title:'Second',content:'Second body',category:'security',pinned:false,published_at:'today'}],announcementFilter:'all',selectedAnnouncementId:''};
   let read=new Set<string>();
-  const scope=vm.createContext({ ...renderLocale(),state,$:(s:string)=>document.querySelector(s),text:(s:string,v:string)=>document.querySelectorAll(s).forEach(n=>n.textContent=v),readAnnouncementIds:()=>read,saveReadAnnouncementIds:(ids:Set<string>)=>{read=ids;},pumpLocale:()=> 'zh',announcementCopy:(x:any)=>x,announcementCategory:(x:string)=>x,formatDate:(x:string)=>x,escapeHtml:(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')});
+  const scope=vm.createContext({ ...renderLocale(),state,$:(s:string)=>document.querySelector(s),text:(s:string,v:string)=>document.querySelectorAll(s).forEach(n=>n.textContent=v),readAnnouncementIds:()=>read,saveReadAnnouncementIds:(ids:Set<string>)=>{read=ids;},pumpLocale:()=> 'zh',announcementCopy:(x:unknown)=>x,announcementCategory:(x:string)=>x,formatDate:(x:string)=>x,escapeHtml:(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')});
   vm.runInContext(source.slice(start,end)+'\nglobalThis.render=renderAnnouncements;render();',scope);
   const detail=document.querySelector('[data-live-announcement-detail]')!;
   assert.equal(detail.nextElementSibling!.className,'section-title');
@@ -317,7 +322,7 @@ test('pool detail updates data without replacing the original depth and particip
   const panel = document.querySelector('[data-panel="perps-pool"]')!;
   const depth = panel.querySelector('.depth-card');
   const participants = panel.querySelector('.participant-card');
-  let market: any = null;
+  let market: { marketId: number; tokenSymbol: string; quoteDecimals: number; liquidityRaw: string; lockedNotionalRaw: string; longNotionalRaw: string; shortNotionalRaw: string; maxLeverage: number; enabled: boolean } | null = null;
   const context = vm.createContext({ ...renderLocale(),
     $: (selector: string) => document.querySelector(selector),
     selectedPerpMarket: () => market,
@@ -357,16 +362,18 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
   const render = vm.runInContext(source.slice(start,end) + '\n};\nrenderPerpetualServices', context);
   render();
   const amount = pool.querySelector('#perps-pool-amount')!;
-  (input as any).value = '0x1111111111111111111111111111111111111111';
-  (amount as any).value = '12.34';
+  const inputControl = input as unknown as { value: string };
+  const amountControl = amount as unknown as { value: string };
+  inputControl.value = '0x1111111111111111111111111111111111111111';
+  amountControl.value = '12.34';
   state.perpServiceBusy = true;
   render();
   assert.equal(add.querySelector('.contract-shell'), shell);
   assert.equal(pool.querySelector('.pool-builder-grid'), grid);
   assert.equal(add.querySelector('#perps-contract-address'), input);
   assert.equal(pool.querySelector('#perps-pool-amount'), amount);
-  assert.equal((amount as any).value, '12.34');
-  assert.equal((input as any).value, '0x1111111111111111111111111111111111111111');
+  assert.equal(amountControl.value, '12.34');
+  assert.equal(inputControl.value, '0x1111111111111111111111111111111111111111');
   assert.ok(add.querySelector('[data-perp-service-submit="add_contract"]')!.hasAttribute('disabled'));
   assert.ok(pool.querySelector('[data-perp-service-submit="create_pool"]')!.hasAttribute('disabled'));
   assert.doesNotMatch(add.textContent || '', /CASHCAT|\$483K|25,000|已验证/);
