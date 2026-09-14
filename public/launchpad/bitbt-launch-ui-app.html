@@ -334,6 +334,61 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 }
 /* Live-only widgets: do not override the supplied base layout. */
 
+      /* Runtime data must retain the September 14 reference component shapes. */
+      button.token-card {
+        margin: 0;
+        font: inherit;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+      .screen[data-panel="live"] button.live-row,
+      .screen[data-panel="rank"] button.rank-row {
+        display: grid;
+        width: 100%;
+        margin: 0;
+        padding: 11px 0;
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+      .screen[data-panel="rank"] .rank-tabs {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }
+      @media(max-width:760px) {
+        /* iOS wallet browsers zoom controls below 16px and may never restore the viewport. */
+        input:not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+        textarea,
+        select {
+          font-size: 16px !important;
+        }
+        .screen[data-panel="rank"] .rank-tabs {
+          display: flex;
+          overflow-x: auto;
+          scrollbar-width: none;
+          scroll-snap-type: x proximity;
+        }
+        .screen[data-panel="rank"] .rank-tabs::-webkit-scrollbar {
+          display: none;
+        }
+        .screen[data-panel="rank"] .rank-tabs button {
+          flex: 0 0 auto;
+          min-width: 94px;
+          scroll-snap-align: start;
+          white-space: nowrap;
+        }
+      }
+      .screen[data-panel="profile"] .profile-support {
+        display: none;
+      }
+
       .official-contact-footer {
         position: relative;
         z-index: 1;
@@ -3434,7 +3489,7 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
             </section>
 
             <section class="screen" data-panel="success" data-screen-group="launch" data-screen-title="发布成功" data-live-launch-result>
-              <div class="appbar"><span></span><div class="eyebrow">LAUNCH RECEIPT</div><button class="icon-btn" type="button" data-launch-result-share aria-label="复制代币链接" disabled><i class="ico" style="--icon:url('./assets/icons/lucide/share-2.svg')"></i></button></div>
+              <div class="appbar"><button class="icon-btn" type="button" data-open="discover" aria-label="返回市场"><i class="ico" style="--icon:url('./assets/icons/lucide/chevron-left.svg')"></i></button><div class="eyebrow">LAUNCH RECEIPT</div><button class="icon-btn" type="button" data-launch-result-share aria-label="复制代币链接" disabled><i class="ico" style="--icon:url('./assets/icons/lucide/share-2.svg')"></i></button></div>
               <div class="success-mark"><i class="ico" style="--icon:url('./assets/icons/lucide/rocket.svg')"></i></div>
               <div class="success-copy"><h1 data-launch-result-heading>暂无本次发布回执。</h1><p data-launch-result-copy>只有链上交易与后台确认完成后，才显示真实发布结果。</p></div>
               <div class="launch-card"><div class="launch-card-head"><img data-launch-result-image src="./assets/tokens/generic.svg" alt="代币"><div><strong data-launch-result-name>—</strong><small data-launch-result-address>—</small></div><span class="tag lime" data-launch-result-status>待确认</span></div><div class="curve"><i data-launch-result-progress style="width:0%"></i></div><div class="curve-label"><span data-launch-result-curve>—</span><span>链上数据为准</span></div></div>
@@ -3450,6 +3505,9 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 
             <section class="screen" data-panel="my-launches" data-screen-group="portfolio" data-screen-title="我的发射">
               <div class="appbar">
+                <button class="icon-btn" type="button" data-open="profile" aria-label="返回我的">
+                  <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;)"></i>
+                </button>
                 <div>
                   <div class="eyebrow">CREATOR DESK</div>
                   <strong>我的发射</strong>
@@ -3468,10 +3526,14 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 
             <section class="screen" data-panel="activity" data-screen-group="portfolio" data-screen-title="交易与收入记录">
               <div class="appbar">
+                <button class="icon-btn" type="button" data-open="profile" aria-label="返回我的">
+                  <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;)"></i>
+                </button>
                 <div>
                   <div class="eyebrow">YOUR ACTIVITY</div>
                   <strong>交易记录</strong>
                 </div>
+                <span></span>
               </div>
               <div class="page-title">
                 <h1>链上足迹</h1>
@@ -3488,6 +3550,9 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 
             <section class="screen" data-panel="watchlist" data-screen-group="portfolio" data-screen-title="我的自选">
               <div class="appbar">
+                <button class="icon-btn" type="button" data-open="profile" aria-label="返回我的">
+                  <i class="ico" style="--icon: url(&quot;./assets/icons/lucide/chevron-left.svg&quot;)"></i>
+                </button>
                 <div>
                   <div class="eyebrow">WATCHLIST</div>
                   <strong>自选</strong>
