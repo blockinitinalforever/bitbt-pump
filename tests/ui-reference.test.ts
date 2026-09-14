@@ -302,6 +302,133 @@ test('discover search filters perpetual cards locally without overwriting spot c
   assert.equal(state.perpMarkets.length, 2);
 });
 
+test('live market cards retain the September 14 reference hierarchy after real data renders', () => {
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  const start = source.indexOf('  const tokenCard =');
+  const end = source.indexOf('  const renderTokens =', start);
+  assert.ok(start > 0 && end > start);
+  const scope = vm.createContext({
+    ...renderLocale(),
+    number: (value: unknown) => Number(value || 0),
+    tokenAddress: (token: { contract_address?: string }) => token.contract_address || '',
+    assetImage: () => '/real-token.png',
+    tokenIsMigrated: (token: { status?: string }) => token.status === 'migrated',
+    tokenTaxPercent: (token: { buy_tax_percent?: number; sell_tax_percent?: number }) => Math.max(token.buy_tax_percent || 0, token.sell_tax_percent || 0),
+    hasNumber: (value: unknown) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)),
+    escapeHtml: (value: unknown) => String(value),
+    usdOrQuote: (usdValue: unknown, quoteValue: unknown, quote: string) => usdValue == null ? `${quoteValue} ${quote}` : `$${usdValue}`,
+    decimal: (value: unknown) => String(value ?? '0'),
+    age: () => '2 分钟前',
+  });
+  const tokenCard = vm.runInContext(source.slice(start, end) + ';tokenCard', scope) as (token: Record<string, unknown>) => string;
+  const common = { contract_address:'0x1', token_name:'Real Token', symbol:'REAL', status:'deployed', submitted_at:'now', progress_percent:43, price_change_24h_percent:86, market_cap_usd:146000, volume_usd_24h:92000, holders_count:884, total_raised_quote:'1.23', quote_token:'BNB' };
+  const normal = parseHTML(`<main>${tokenCard({ ...common, tax_enabled:true, buy_tax_percent:1, sell_tax_percent:3 })}</main>`).document.querySelector('.token-card')!;
+  assert.deepEqual([...normal.children].map(node => node.className), ['token-head','card-metrics','curve','curve-label']);
+  assert.ok(normal.querySelector('.token-name strong .tag.cyan'));
+  assert.equal(normal.querySelector('.card-metrics > div:nth-child(3) span')!.textContent, '持有人');
+  assert.equal(normal.querySelector('.card-metrics > div:nth-child(3) strong')!.textContent, '884');
+  assert.equal(normal.getAttribute('type'), 'button');
+  assert.equal(normal.querySelector('.market-signals'), null);
+  const migrated = parseHTML(`<main>${tokenCard({ ...common, status:'migrated', dex_profile:'PancakeSwap V3', curve_reserve_usd:184000 })}</main>`).document.querySelector('.token-card')!;
+  assert.deepEqual([...migrated.children].map(node => node.className), ['token-head','card-metrics']);
+  assert.ok(migrated.querySelector('.token-name strong .tag'));
+  assert.equal(migrated.querySelector('.card-metrics > div:nth-child(3) span')!.textContent, '流动性');
+});
+
+test('real on-chain rows keep the reference image-copy-badge order and native buttons are visually reset', () => {
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  const start = source.indexOf('  const renderLiveRows =');
+  const end = source.indexOf('  const renderRank =', start);
+  assert.ok(start > 0 && end > start);
+  const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
+  const state = { liveFilter:'all', tokens:[{ contract_address:'0x1', logo_url:'/real-token.png' }], marketActivity:[{ activity_type:'buy', token_address:'0x1', trader:'0x1234567890', symbol:'REAL', quote_amount:'1', quote_token:'BNB', token_amount:'2', status:'confirmed', timestamp:1 }] };
+  const scope = vm.createContext({
+    ...renderLocale(), state,
+    $: (selector: string) => document.querySelector(selector),
+    tokenAddress: (token: { contract_address?: string }) => token.contract_address || '',
+    assetImage: (token: { logo_url?: string }) => token.logo_url || '/fallback.png',
+    escapeHtml: (value: unknown) => String(value),
+    decimal: (value: unknown) => String(value),
+    age: () => '刚刚',
+    short: (value: string) => value,
+    bindLiveTokenSelection: () => undefined,
+  });
+  const render = vm.runInContext(source.slice(start, end) + ';renderLiveRows', scope) as () => void;
+  render();
+  const row = document.querySelector('[data-panel="live"] .live-row')!;
+  assert.deepEqual([...row.children].map(node => node.tagName), ['IMG','DIV','SPAN']);
+  assert.equal(row.querySelector('img')!.getAttribute('src'), '/real-token.png');
+  assert.match(row.querySelector('p')!.textContent || '', /0x1234567890 买入 REAL/);
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  assert.match(html, /\.screen\[data-panel="live"\] button\.live-row[\s\S]*?width:\s*100%[\s\S]*?background:\s*transparent/);
+});
+
+test('profile hides its duplicate contact strip and uses only the global footer', () => {
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  const { document } = parseHTML(html);
+  assert.equal(document.querySelectorAll('[data-global-official-contacts]').length, 1);
+  assert.equal(document.querySelectorAll('[data-panel="profile"] .profile-support').length, 1);
+  assert.match(html, /\.screen\[data-panel="profile"\] \.profile-support\s*\{\s*display:\s*none/);
+});
+
+test('discover and ranking controls retain every real sorting option in stable order', () => {
+  const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
+  assert.deepEqual(
+    [...document.querySelectorAll('[data-token-filter]')].map(node => node.getAttribute('data-token-filter')),
+    ['trending', 'latest', 'near-migration', 'dex', 'high-tax'],
+  );
+  assert.deepEqual(
+    [...document.querySelectorAll('[data-rank-filter]')].map(node => node.getAttribute('data-rank-filter')),
+    ['progress', 'gainers', 'volume', 'net-flow', 'market-cap', 'latest', 'migrated'],
+  );
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  assert.match(html, /\.screen\[data-panel="rank"\] \.rank-tabs\s*\{[\s\S]*?grid-template-columns:\s*repeat\(7,/);
+  assert.match(html, /@media\(max-width:760px\)[\s\S]*?\.screen\[data-panel="rank"\] \.rank-tabs\s*\{[\s\S]*?overflow-x:\s*auto/);
+});
+
+test('mobile wallet browsers never auto-zoom text entry controls', () => {
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  assert.match(
+    html,
+    /@media\(max-width:760px\)[\s\S]*?input:not\(\[type="file"\]\)[\s\S]*?textarea,[\s\S]*?select\s*\{[\s\S]*?font-size:\s*16px\s*!important/,
+  );
+  assert.doesNotMatch(html, /maximum-scale\s*=\s*1|user-scalable\s*=\s*no/);
+});
+
+test('every secondary workflow has an explicit return control', () => {
+  const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
+  const expectedParents: Record<string, string> = {
+    announcements: 'discover',
+    perps: 'discover',
+    'perps-add-contract': 'perps',
+    'perps-create-pool': 'perps',
+    'perps-pool': 'perps',
+    'perps-onchain': 'perps',
+    detail: 'discover',
+    trade: 'detail',
+    'create-mode': 'discover',
+    'create-basic': 'create-mode',
+    'create-economics': 'create-basic',
+    'create-tax': 'create-economics',
+    'create-review': 'create-tax',
+    success: 'discover',
+    'my-launches': 'profile',
+    activity: 'profile',
+    watchlist: 'profile',
+    'alert-center': 'profile',
+    'invite-center': 'profile',
+    'income-center': 'profile',
+    'vault-store': 'income-center',
+    'developer-tools': 'profile',
+    protection: 'profile',
+    'language-center': 'profile',
+  };
+  for (const [panel, parent] of Object.entries(expectedParents)) {
+    const button = document.querySelector(`[data-panel="${panel}"] > .appbar [data-open="${parent}"]`);
+    assert.ok(button, `${panel} must return to ${parent}`);
+  }
+});
+
 test('alert composer uses real token and existing server-supported event types', () => {
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
   const panel = document.querySelector('[data-reference-alerts]')!;

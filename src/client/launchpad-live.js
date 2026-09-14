@@ -1489,14 +1489,27 @@
     const progress = Math.max(0, Math.min(100, number(token.progress_percent)));
     const address = tokenAddress(token);
     const image = assetImage(token);
+    const migrated = tokenIsMigrated(token);
     const change = Number(token.price_change_24h_percent);
     const hasChange = Number.isFinite(change);
     const changeClass = change < 0 ? "down" : "up";
-    const classification = token.classification ? ` · ${token.classification}` : "";
     const quote = String(token.quote_token || "BNB").toUpperCase();
-    const netFlow = hasNumber(token.net_flow_usd_24h) ? usd(token.net_flow_usd_24h) : hasNumber(token.net_flow_quote_24h) ? `${decimal(token.net_flow_quote_24h)} ${quote}` : "—";
-    const flowClass = number(token.net_flow_usd_24h ?? token.net_flow_quote_24h) < 0 ? "down" : "up";
-    return uiMarkup`<button class="token-card" data-live-token="${escapeHtml(address)}" data-open="detail"><div class="token-head"><img class="token-logo" src="${escapeHtml(image)}" alt="${escapeHtml(token.token_name || token.symbol || "Token")}"><div class="token-name"><strong>${escapeHtml(token.token_name || token.symbol || "—")}</strong><small>${escapeHtml(token.symbol || "—")}${escapeHtml(classification)} · ${escapeHtml(status(token))} · ${escapeHtml(age(token.submitted_at))}</small></div><span class="change ${changeClass}">${hasChange ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : `${progress.toFixed(0)}%`}</span></div><div class="card-metrics"><div><span>市值</span><strong>${escapeHtml(usdOrQuote(token.market_cap_usd, token.market_cap_quote, quote))}</strong></div><div><span>24H 成交</span><strong>${escapeHtml(usdOrQuote(token.volume_usd_24h, token.volume_quote_24h, quote))}</strong></div><div><span>进度</span><strong>${progress.toFixed(0)}%</strong></div></div><div class="market-signals"><span>${escapeHtml(taxSummary(token))}</span><span>${escapeHtml(activitySummary(token))}</span><span class="${flowClass}">净流入 ${escapeHtml(netFlow)}</span></div><div class="curve"><i style="width:${progress}%"></i></div><div class="curve-label"><span>${Number(token.unique_traders_24h || 0).toLocaleString("en-US")} 位交易者</span><span>${escapeHtml(address ? short(address) : uiCopy("地址待定", "Address pending"))}</span></div></button>`;
+    const tax = tokenTaxPercent(token);
+    const badge = migrated
+      ? '<span class="tag">DEX</span>'
+      : tax > 0
+        ? `<span class="tag cyan">TAX ${escapeHtml(`${tax.toFixed(2).replace(/\.?0+$/, "")}%`)}</span>`
+        : '<span class="tag lime">LIVE</span>';
+    const holders = hasNumber(token.holders_count) ? Number(token.holders_count).toLocaleString("en-US") : "—";
+    const raised = number(token.total_raised_quote ?? token.total_raised_bnb);
+    const remaining = progress > 0 && raised >= 0 ? decimal((raised * (100 - progress)) / progress) : "—";
+    const thirdMetric = migrated
+      ? uiMarkup`<div><span>流动性</span><strong>${escapeHtml(usdOrQuote(token.curve_reserve_usd, token.curve_reserve_quote, quote))}</strong></div>`
+      : uiMarkup`<div><span>持有人</span><strong>${escapeHtml(holders)}</strong></div>`;
+    const curve = migrated
+      ? ""
+      : uiMarkup`<div class="curve"><i style="width:${progress}%"></i></div><div class="curve-label"><span>联合曲线 ${progress.toFixed(0)}%</span><span>还差 ${escapeHtml(remaining)} ${escapeHtml(quote)}</span></div>`;
+    return uiMarkup`<button class="token-card" type="button" data-live-token="${escapeHtml(address)}" data-open="detail"><div class="token-head"><img class="token-logo" src="${escapeHtml(image)}" alt="${escapeHtml(token.token_name || token.symbol || "Token")}"><div class="token-name"><strong>${escapeHtml(token.symbol || token.token_name || "—")} ${badge}</strong><small>${escapeHtml(token.token_name || token.symbol || "—")} · ${escapeHtml(migrated ? token.dex_profile || "DEX" : age(token.submitted_at))}</small></div><span class="change ${changeClass}">${hasChange ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : "—"}</span></div><div class="card-metrics"><div><span>市值</span><strong>${escapeHtml(usdOrQuote(token.market_cap_usd, token.market_cap_quote, quote))}</strong></div><div><span>24H 成交</span><strong>${escapeHtml(usdOrQuote(token.volume_usd_24h, token.volume_quote_24h, quote))}</strong></div>${thirdMetric}</div>${curve}</button>`;
   };
   const renderTokens = () => {
     const html = filteredTokens()
@@ -1549,7 +1562,8 @@
         const amount = kind === "create" ? uiMarkup`创建 ${symbol}` : `${decimal(item.quote_amount)} ${item.quote_token || "BNB"} · ${decimal(item.token_amount)} ${symbol}`;
         const timestamp = Number(item.timestamp);
         const eventAge = age(new Date(timestamp > 1e12 ? timestamp : timestamp * 1000).toISOString());
-        return `<button class="live-row" data-live-token="${escapeHtml(item.token_address || "")}" type="button"><span class="trade-type ${kind === "buy" ? "buy" : kind === "sell" ? "sell" : ""}">${label}</span><div><p><b>${escapeHtml(short(item.trader))}</b> · ${escapeHtml(symbol)}</p><small>${escapeHtml(amount)} · ${escapeHtml(item.status || "—")}</small></div><small>${escapeHtml(eventAge)}</small></button>`;
+        const verb = kind === "buy" ? uiCopy("买入", "bought") : kind === "sell" ? uiCopy("卖出", "sold") : uiCopy("创建了", "created");
+        return `<button class="live-row" data-live-token="${escapeHtml(item.token_address || "")}" type="button"><img src="${escapeHtml(assetImage(token || item))}" alt="${escapeHtml(symbol)}"><div><p><b>${escapeHtml(short(item.trader))}</b> ${verb} <b>${escapeHtml(symbol)}</b></p><small>${escapeHtml(eventAge)} · ${escapeHtml(amount)} · ${escapeHtml(item.status || "—")}</small></div><span class="trade-type ${kind === "buy" ? "buy" : kind === "sell" ? "sell" : ""}">${label}</span></button>`;
       })
       .join("");
     const livePanel = $('[data-panel="live"]');
@@ -1580,7 +1594,7 @@
         const quote = String(token.quote_token || "BNB").toUpperCase();
         const right = state.rankFilter === "volume" ? usdOrQuote(marketMetric(token, "volume_usd"), marketMetric(token, "volume_quote"), quote) : state.rankFilter === "net-flow" ? (hasNumber(token.net_flow_usd_24h) ? usd(token.net_flow_usd_24h) : `${decimal(token.net_flow_quote_24h)} ${quote}`) : state.rankFilter === "market-cap" ? usdOrQuote(token.market_cap_usd, token.market_cap_quote, quote) : usdOrQuote(token.current_price_usd, token.current_trade_price || token.current_price_quote || token.current_price_bnb, quote, false);
         const badge = Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : `${number(token.progress_percent).toFixed(0)}%`;
-        return uiMarkup`<button class="rank-row" data-live-token="${escapeHtml(tokenAddress(token))}"><span class="num">${String(index + 1).padStart(2, "0")}</span><img src="${escapeHtml(assetImage(token))}" alt="${escapeHtml(token.symbol || "Token")}"><div><strong>${escapeHtml(token.symbol || token.token_name || "—")}</strong><small>${escapeHtml(status(token))} · ${escapeHtml(taxSummary(token))} · ${windowLabel} ${Number(marketMetric(token, "trade_count") || 0).toLocaleString("en-US")} 笔</small></div><div class="rank-price"><strong>${escapeHtml(right)}</strong><span class="${change < 0 ? "down" : "up"}">${escapeHtml(state.rankFilter === "net-flow" ? activitySummary(token) : badge)}</span></div></button>`;
+        return uiMarkup`<button class="rank-row" type="button" data-live-token="${escapeHtml(tokenAddress(token))}"><span class="num">${String(index + 1).padStart(2, "0")}</span><img src="${escapeHtml(assetImage(token))}" alt="${escapeHtml(token.symbol || "Token")}"><div><strong>${escapeHtml(token.symbol || token.token_name || "—")}</strong><small>${escapeHtml(status(token))} · ${escapeHtml(taxSummary(token))} · ${windowLabel} ${Number(marketMetric(token, "trade_count") || 0).toLocaleString("en-US")} 笔</small></div><div class="rank-price"><strong>${escapeHtml(right)}</strong><span class="${change < 0 ? "down" : "up"}">${escapeHtml(state.rankFilter === "net-flow" ? activitySummary(token) : badge)}</span></div></button>`;
       })
       .join("");
     (panel.querySelector("[data-rank-windows]") || panel.querySelector(".rank-tabs"))?.insertAdjacentHTML("afterend", rows || uiMarkup`<p class="footer-note">暂无真实 Pump 排行数据。</p>`);

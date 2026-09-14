@@ -5,10 +5,13 @@ import path from 'node:path';
 // Local, read-only browser inspection. Uses a separate headless Chrome profile.
 // Optional simulated session/provider; never signing or production API traffic.
 const connected = process.argv.includes('--connected');
+const realData = process.argv.includes('--real-data');
 const height = process.argv.includes('--short') ? 600 : 900;
 const breakpoints = process.argv.includes('--breakpoints');
 const screenArgument = process.argv.find(value => value.startsWith('--screens='));
 const widthArgument = process.argv.find(value => value.startsWith('--widths='));
+const focusArgument = process.argv.find(value => value.startsWith('--focus='));
+const focusSelector = focusArgument ? focusArgument.slice('--focus='.length) : '';
 const requestedScreens = screenArgument ? new Set(screenArgument.slice('--screens='.length).split(',').filter(Boolean)) : null;
 const requestedWidths = widthArgument ? widthArgument.slice('--widths='.length).split(',').map(Number).filter(Number.isFinite) : null;
 const criticalPanels = ['discover','detail','trade','perps','create-basic','create-tax','create-review','profile'];
@@ -24,7 +27,8 @@ socket.onmessage = event => {
   if (!task) return;
   pending.delete(result.id);
   clearTimeout(task.timer);
-  result.error ? task.reject(Error(result.error.message)) : task.resolve(result.result);
+  if (result.error) task.reject(Error(result.error.message));
+  else task.resolve(result.result);
 };
 const send = (method, params = {}) => new Promise((resolve, reject) => {
   const id = ++sequence;
@@ -38,7 +42,7 @@ const transitions = [];
 try {
   await send('Page.enable');
   await send('Network.enable');
-  await send('Network.setBlockedURLs', { urls: ['*/api/pump/*', '*/ws/market*', '*walletconnect*', '*reown*'] });
+  if (!realData) await send('Network.setBlockedURLs', { urls: ['*/api/pump/*', '*/ws/market*', '*walletconnect*', '*reown*'] });
   if (connected) await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__uiPopulated = ${process.argv.includes('--populated')};localStorage.setItem('bitbt_pump_locale', '${process.argv.includes('--english') ? 'en' : 'zh'}');\n` + fs.readFileSync('tests/fixtures/ui-wallet-readonly.js', 'utf8') });
   for (const width of requestedWidths || (breakpoints ? [1100, 760, 560, 440] : [1440, 390, 350])) {
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 760 });
@@ -61,6 +65,9 @@ try {
       // Deliberately blocked API requests can show the expected error dialog.
       // Dismiss via its normal button so screenshots inspect the page beneath.
       await send('Runtime.evaluate', { expression: "document.querySelector('[data-operation-error-dismiss]')?.click()" });
+      if (focusSelector) {
+        await send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(focusSelector)})?.scrollIntoView({block:'center',behavior:'instant'})` });
+      }
       state = await send('Runtime.evaluate', {
         expression: `(() => {
           const panel = document.querySelector('[data-panel].active');
@@ -92,6 +99,11 @@ try {
             bottomTabs:[...document.querySelectorAll('.bottom-nav > button')].map(node => { const r = node.getBoundingClientRect(); return { name:node.dataset.nav, ...box(node), unobstructed:node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) }; }),
             bottomVisible:document.querySelector('.bottom-nav')?.classList.contains('visible'),
             contacts:document.querySelectorAll('[data-global-official-contacts] a').length
+            ,visibleContactStrips:[...document.querySelectorAll('.profile-support,[data-global-official-contacts]')].filter(node=>node.getClientRects().length).length
+            ,runtimeRows:[...panel.querySelectorAll('.live-row,.rank-row')].slice(0,3).map(node=>{const r=node.getBoundingClientRect();const style=getComputedStyle(node);return {width:r.width,panelWidth:panel.clientWidth,background:style.backgroundColor,display:style.display}})
+            ,tokenCardChildren:[...panel.querySelector('.token-card')?.children||[]].map(node=>node.className)
+            ,tokenCardStyle:(()=>{const node=panel.querySelector('.token-card');if(!node)return null;const style=getComputedStyle(node);const r=node.getBoundingClientRect();return {display:style.display,background:style.backgroundColor,borderRadius:style.borderRadius,padding:style.padding,minHeight:style.minHeight,width:r.width}})()
+            ,textControlFonts:[...panel.querySelectorAll('input,textarea,select')].filter(node=>node.type!=='file'&&node.type!=='checkbox'&&node.type!=='radio'&&node.type!=='range').map(node=>getComputedStyle(node).fontSize)
           };
         })()`,
         returnByValue: true,
@@ -179,6 +191,7 @@ try {
   if (report.some(item => item.previewOverflow)) process.exitCode = 1;
   console.log(JSON.stringify({ output, report }, null, 2));
   if (report.some(item => item.pending || item.errorDialog || item.panel !== item.screen || item.overflow || !item.walletIcon || item.contacts !== 4 || item.primaryControl?.reachable === false || (connected && item.walletTitle !== '0x1111111111111111111111111111111111111111'))) process.exitCode = 1;
+  if (report.some(item => item.tokenCardStyle && (item.tokenCardStyle.display !== 'flex' || item.tokenCardStyle.background !== 'rgb(16, 18, 19)' || item.tokenCardStyle.borderRadius !== '14px' || item.tokenCardStyle.padding !== '15px' || item.tokenCardStyle.minHeight !== '150px'))) process.exitCode = 1;
   if (report.some(item => item.bottomTabs?.map(tab => tab.name).join(',') !== 'discover,live,create-mode,rank,profile' || item.bottomVisible !== ['discover','live','rank','create-mode','profile'].includes(item.screen) || (item.width < 760 && item.bottomVisible && item.bottomTabs.some(tab => !tab.unobstructed || tab.width < 44 || tab.height < 44 || tab.x < 0 || tab.x + tab.width > item.width + 1 || Math.abs(tab.y - item.bottomTabs[0].y) > 1)))) process.exitCode = 1;
 } finally {
   socket.close();

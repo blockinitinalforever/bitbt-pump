@@ -20,7 +20,7 @@
   };
   const json = (data, status = 200) => new Response(JSON.stringify(status === 200 ? { success: true, data } : { success: false, error: data }), { status, headers: { 'content-type': 'application/json' } });
   const originalFetch = window.fetch.bind(window);
-  const token = { token_name: 'UI 测试币（仅本地）', symbol: 'UITEST', contract_address: '0x2222222222222222222222222222222222222222', creator_address: address, quote_token: 'BNB', status: 'bonding', submitted_at: new Date().toISOString(), progress_percent: 42, current_price_quote: '0.0001', market_cap_quote: '10', volume_quote_24h: '2', trade_count_24h: 3 };
+  const token = { token_name: 'UI 测试币（仅本地）', symbol: 'UITEST', contract_address: '0x2222222222222222222222222222222222222222', creator_address: address, quote_token: 'BNB', status: 'bonding', submitted_at: new Date().toISOString(), progress_percent: 42, current_price_quote: '0.0001', market_cap_quote: '10', volume_quote_24h: '2', holders_count: 884, trade_count_24h: 3 };
   const market = { marketId: 7, tokenAddress: token.contract_address, tokenName: token.token_name, tokenSymbol: token.symbol, quoteTokenAddress: '0x3333333333333333333333333333333333333333', quoteTokenSymbol: 'tTEST', quoteDecimals: 18, oraclePriceE18: '1000000000000000000', liquidityRaw: '1000000000000000000000', lockedNotionalRaw: '0', longNotionalRaw: '0', shortNotionalRaw: '0', maxPositionNotionalRaw: '100000000000000000000', maxOpenInterestRaw: '500000000000000000000', maxUtilizationPpm: 800000, maxLeverage: 10, maxFundingRatePpmPerDay: 1000, openFeePpm: 500, closeFeePpm: 500, enabled: true, closeOnly: false };
   window.fetch = async (input, init = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url, location.href);
@@ -39,7 +39,10 @@
     if (key === 'v1/app/config') return json({ pump: {} });
     if (key === 'wallet-config') return json({ enabled: false });
     if (key === 'v1/token/launch-options') return json({ network: { id: 'bsc', chain_id: 56, chain_id_hex: '0x38', native_symbol: 'BNB', launch_enabled: true, trade_enabled: true }, quotes: [{ symbol: 'BNB', address: '0x0000000000000000000000000000000000000000' }], dex_profiles: [{ id: 'pancakeswap_v2', name: 'PancakeSwap V2', enabled: true, lp_policy: 'burn' }] });
-    if (key === 'v1/pump/market-activity') return json({ activity: [], summary: {} });
+    if (key === 'v1/pump/market-activity') return json(window.__uiPopulated ? {
+      activity: [{ activity_type:'buy', token_address:token.contract_address, trader:address, symbol:token.symbol, quote_amount:'1', quote_token:'BNB', token_amount:'20000', status:'confirmed', timestamp:Math.floor(Date.now()/1000) }],
+      summary: { total_tokens:1, launches_24h:1, trades_24h:1 },
+    } : { activity: [], summary: {} });
     if (key === 'v1/pump/wallet-activity') return json({ activity: [], launches: [], creator_rewards: [], holdings: [], holdings_complete: true, trade_history_complete: true, summary: {} });
     if (key === 'v1/pump/perpetual/config') return json({ enabled: true, operationsReady: true, openingsPaused: false, maxLeverage: 10, feePercent: '0.05%' });
     if (window.__uiPopulated) {
