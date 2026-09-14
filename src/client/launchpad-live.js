@@ -489,6 +489,24 @@
     if (Math.abs(parsed) < 0.000001) return raw.replace(/(\.\d*?[1-9])0+$/, "$1");
     return parsed.toLocaleString("en-US", { maximumFractionDigits: digits });
   };
+  const exactDecimalDifference = (left, right) => {
+    const parse = (value) => {
+      const match = String(value ?? "").trim().match(/^(\d+)(?:\.(\d+))?$/);
+      return match ? { whole: match[1], fraction: match[2] || "" } : null;
+    };
+    const minuend = parse(left);
+    const subtrahend = parse(right);
+    if (!minuend || !subtrahend) return "";
+    const scale = Math.max(minuend.fraction.length, subtrahend.fraction.length);
+    const units = (value) => BigInt(`${value.whole}${value.fraction.padEnd(scale, "0")}`);
+    const difference = units(minuend) - units(subtrahend);
+    if (difference < 0n) return "";
+    if (scale === 0) return difference.toString();
+    const padded = difference.toString().padStart(scale + 1, "0");
+    const whole = padded.slice(0, -scale);
+    const fraction = padded.slice(-scale).replace(/0+$/, "");
+    return fraction ? `${whole}.${fraction}` : whole;
+  };
   const hasNumber = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
   const usd = (value, compact = true) => {
     if (!hasNumber(value)) return "—";
@@ -1501,8 +1519,15 @@
         ? `<span class="tag cyan">TAX ${escapeHtml(`${tax.toFixed(2).replace(/\.?0+$/, "")}%`)}</span>`
         : '<span class="tag lime">LIVE</span>';
     const holders = hasNumber(token.holders_count) ? Number(token.holders_count).toLocaleString("en-US") : "—";
-    const raised = number(token.total_raised_quote ?? token.total_raised_bnb);
-    const remaining = progress > 0 && raised >= 0 ? decimal((raised * (100 - progress)) / progress) : "—";
+    const raisedRaw = token.total_raised_quote ?? token.total_raised_bnb;
+    const thresholdRaw = token.migration_threshold_quote ?? token.migration_threshold_bnb;
+    const remainingRaw = token.remaining_to_migration_quote ?? token.migration_remaining_quote ?? token.remaining_to_migration_bnb;
+    const thresholdDifference = exactDecimalDifference(thresholdRaw, raisedRaw);
+    const remaining = hasNumber(remainingRaw) && number(remainingRaw) >= 0
+      ? decimal(remainingRaw)
+      : thresholdDifference
+        ? decimal(thresholdDifference)
+        : "—";
     const thirdMetric = migrated
       ? uiMarkup`<div><span>流动性</span><strong>${escapeHtml(usdOrQuote(token.curve_reserve_usd, token.curve_reserve_quote, quote))}</strong></div>`
       : uiMarkup`<div><span>持有人</span><strong>${escapeHtml(holders)}</strong></div>`;

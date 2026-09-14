@@ -304,6 +304,10 @@ test('discover search filters perpetual cards locally without overwriting spot c
 
 test('live market cards retain the September 14 reference hierarchy after real data renders', () => {
   const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  const differenceStart = source.indexOf('  const exactDecimalDifference =');
+  const differenceEnd = source.indexOf('  const hasNumber =', differenceStart);
+  assert.ok(differenceStart > 0 && differenceEnd > differenceStart);
+  const exactDecimalDifference = vm.runInNewContext(source.slice(differenceStart, differenceEnd) + ';exactDecimalDifference');
   const start = source.indexOf('  const tokenCard =');
   const end = source.indexOf('  const renderTokens =', start);
   assert.ok(start > 0 && end > start);
@@ -318,10 +322,11 @@ test('live market cards retain the September 14 reference hierarchy after real d
     escapeHtml: (value: unknown) => String(value),
     usdOrQuote: (usdValue: unknown, quoteValue: unknown, quote: string) => usdValue == null ? `${quoteValue} ${quote}` : `$${usdValue}`,
     decimal: (value: unknown) => String(value ?? '0'),
+    exactDecimalDifference,
     age: () => '2 分钟前',
   });
   const tokenCard = vm.runInContext(source.slice(start, end) + ';tokenCard', scope) as (token: Record<string, unknown>) => string;
-  const common = { contract_address:'0x1', token_name:'Real Token', symbol:'REAL', status:'deployed', submitted_at:'now', progress_percent:43, price_change_24h_percent:86, market_cap_usd:146000, volume_usd_24h:92000, holders_count:884, total_raised_quote:'1.23', quote_token:'BNB' };
+  const common = { contract_address:'0x1', token_name:'Real Token', symbol:'REAL', status:'deployed', submitted_at:'now', progress_percent:43, price_change_24h_percent:86, market_cap_usd:146000, volume_usd_24h:92000, holders_count:884, total_raised_quote:'1.23', migration_threshold_quote:'10', quote_token:'BNB' };
   const normal = parseHTML(`<main>${tokenCard({ ...common, tax_enabled:true, buy_tax_percent:1, sell_tax_percent:3 })}</main>`).document.querySelector('.token-card')!;
   assert.deepEqual([...normal.children].map(node => node.className), ['token-head','card-metrics','curve','curve-label']);
   assert.ok(normal.querySelector('.token-name strong .tag.cyan'));
@@ -329,6 +334,11 @@ test('live market cards retain the September 14 reference hierarchy after real d
   assert.equal(normal.querySelector('.card-metrics > div:nth-child(3) strong')!.textContent, '884');
   assert.equal(normal.getAttribute('type'), 'button');
   assert.equal(normal.querySelector('.market-signals'), null);
+  const nearMigration = parseHTML(`<main>${tokenCard({ ...common, total_raised_quote:'9.99', migration_threshold_quote:'10', progress_percent:99 })}</main>`).document.querySelector('.token-card')!;
+  assert.match(nearMigration.querySelector('.curve-label')!.textContent || '', /还差 0\.01 BNB/);
+  const unknownRemaining = parseHTML(`<main>${tokenCard({ ...common, total_raised_quote:undefined, migration_threshold_quote:undefined, progress_percent:42 })}</main>`).document.querySelector('.token-card')!;
+  assert.match(unknownRemaining.querySelector('.curve-label')!.textContent || '', /还差 — BNB/);
+  assert.doesNotMatch(unknownRemaining.querySelector('.curve-label')!.textContent || '', /还差 0 BNB/);
   const migrated = parseHTML(`<main>${tokenCard({ ...common, status:'migrated', dex_profile:'PancakeSwap V3', curve_reserve_usd:184000 })}</main>`).document.querySelector('.token-card')!;
   assert.deepEqual([...migrated.children].map(node => node.className), ['token-head','card-metrics']);
   assert.ok(migrated.querySelector('.token-name strong .tag'));
