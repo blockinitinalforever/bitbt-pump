@@ -126,6 +126,9 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(html, /data-perp-submit[^>]*>确认并提交链上交易/);
   assert.doesNotMatch(html, /data-perp-(?:prepare|execute)/);
   assert.match(bridge, /await preparePerpetualAction\(\);\s*await executePerpetualAction\(\);/);
+  assert.match(bridge, /const handlePerpetualSubmit = async \(\) =>/);
+  assert.match(bridge, /if \(!state\.account\) \{\s*await connectWallet\(\);\s*await loadPerpetual\(\);\s*return;/);
+  assert.match(bridge, /needsWallet[\s\S]*Connect wallet to trade/);
 });
 
 test("perpetual terminal binds live candles, indexed activity, honest order capability, and wallet-created pools", () => {
@@ -938,7 +941,7 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
   providerEvents.accountsChanged?.(["0x2222222222222222222222222222222222222222"]);
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "连接钱包");
   assert.equal((window.document.querySelector('#trade-submit') as HTMLButtonElement).disabled, true);
-  assert.equal((window.document.querySelector('#perps-submit') as HTMLButtonElement).disabled, true);
+  assert.equal((window.document.querySelector('#perps-submit') as HTMLButtonElement).disabled, false);
   assert.equal(window.document.querySelector('#perps-submit')?.textContent, '连接钱包后开仓');
   resolveActivity({ ok: true, json: async () => ({ data: { activity: [{ token_name: "STALE ACCOUNT TRADE" }], launches: [{ token_name: "STALE ACCOUNT TOKEN" }], creator_rewards: [{ status: "accrued", amount_wei: "1" }], summary: {} } }) });
   await new Promise((resolve) => setTimeout(resolve, 30));
