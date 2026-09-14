@@ -168,6 +168,7 @@ function launchFixture() {
     sessionStorage:{setItem:(k:string,v:string)=>stored.set(k,v),getItem:(k:string)=>stored.get(k)||null,removeItem:(k:string)=>stored.delete(k)},
     clearLaunchReview(){},$:()=>null,window:{setTimeout:(fn:any)=>fn()},document:{documentElement:{dataset:{}}},
     tokenAddress:(t:any)=>t?.contract_address||'',renderTokens:()=>events.push('render'),toast:()=>events.push('toast'),
+    renderLaunchResult:()=>events.push('receipt'),
     setTokenPath:()=>events.push('navigate'),openToken:async()=>{events.push('open');return true;},
     api:async()=>({status:'deployed',contract_address:contract}),
   };

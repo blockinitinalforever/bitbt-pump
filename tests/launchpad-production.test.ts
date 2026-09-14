@@ -36,7 +36,10 @@ test("production Launchpad JavaScript is minified without source maps", () => {
 
 test("perpetual is a first-level desktop and mobile route that survives refresh", () => {
   assert.match(html, /class="screen-switcher"[\s\S]*data-open="perps">MEME 永续合约/);
-  assert.match(html, /class="bottom-nav visible"[\s\S]*data-nav="perps"/);
+  const navigation = parseHTML(html).document.querySelector('.bottom-nav');
+  assert.ok(navigation);
+  assert.deepEqual(Array.from(navigation.querySelectorAll('[data-nav]')).map(node => node.getAttribute('data-nav')), ['discover', 'live', 'create-mode', 'rank', 'profile']);
+  assert.match(html, /data-open="perps"/); // Still available from the original top-level entry.
   assert.match(bridge, /const routeScreen = \(\) =>/);
   assert.match(bridge, /const initialScreen = routeScreen\(\);\s*if \(initialScreen\) show\(initialScreen\)/);
   assert.match(bridge, /data-nav[^\n]*classList\.toggle\("active"/);
@@ -136,7 +139,7 @@ test("perpetual terminal binds live candles, indexed activity, honest order capa
   assert.match(bridge, /当前合约仅支持钱包签名后立即上链的市价操作/);
   assert.match(bridge, /当前合约未开放止盈止损条件单/);
   assert.match(bridge, /data-perp-activity-filter/);
-  assert.match(bridge, /tokenDraft/);
+  assert.match(bridge, /initializePerpetualForms/);
   assert.match(bridge, /poolAmountDraft/);
   assert.match(html, /data-perps-equity/);
   assert.match(html, /data-perps-available/);
@@ -197,7 +200,9 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   const clipboardWrites: string[] = [];
   const location = { origin: "https://bitbt.fun", pathname: options.pathname || "/pump", search: "", assign: (path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
   const history = { pushState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); }, replaceState: (_state: unknown, _title: string, path: string) => { location.pathname = path.split("?", 1)[0]; historyPaths.push(path); } };
-  const navigator = { clipboard: { writeText: async (value: string) => { clipboardWrites.push(value); } } };
+  // This suite asserts Chinese UI copy. English and live switching are covered
+  // by ui-reference tests and the connected browser audit.
+  const navigator = { language: 'zh-CN', clipboard: { writeText: async (value: string) => { clipboardWrites.push(value); } } };
   const account = options.account || "";
   let currentChainId = options.chainId ?? "0x38";
   let sendRejectsRemaining = options.sendRejects ?? 0;
@@ -867,6 +872,34 @@ test("bridge contains provider-state, session-expiry, non-zero launch, and quote
   assert.equal(bridge.includes("Math.sin"), false);
 });
 
+test('reference tax shortcuts retain editable advanced fields and never submit transactions', async () => {
+  const response = async (input: string) => {
+    if (String(input).includes('app/config')) return {ok:true,json:async()=>({data:{pump:{}}})};
+    return {ok:true,json:async()=>({data:[]})};
+  };
+  const {window, providerCalls} = await boot(response);
+  const d = window.document;
+  const click = (selector: string) => d.querySelector(selector)!.dispatchEvent(new window.Event('click', {bubbles:true}));
+  click('[data-tax-preset="3"]');
+  assert.equal((d.querySelector('#buy-tax-rate') as HTMLInputElement).value, '3');
+  assert.equal((d.querySelector('#sell-tax-rate') as HTMLInputElement).value, '3');
+  assert.equal((d.querySelector('[data-panel="create-tax"] .launch-advanced') as HTMLElement).hidden, false);
+  click('[data-tax-plan="holders"]');
+  assert.equal((d.querySelector('#holders-pct') as HTMLInputElement).value, '100');
+  assert.equal((d.querySelector('#funds-recipient-pct') as HTMLInputElement).value, '0');
+  (d.querySelector('#sell-tax-rate') as HTMLInputElement).value = '4';
+  d.querySelector('#sell-tax-rate')!.dispatchEvent(new window.Event('input', {bubbles:true}));
+  assert.equal(d.querySelectorAll('[data-tax-preset].active').length, 0);
+  click('[data-tax-preset="0"]');
+  assert.equal((d.querySelector('[data-panel="create-tax"] .launch-advanced') as HTMLElement).hidden, true);
+  assert.equal((d.querySelector('#sell-tax-rate') as HTMLInputElement).value, '4');
+  assert.ok(d.querySelector('[data-panel="success"] .launch-card'));
+  assert.ok(d.querySelector('[data-panel="action-center"] #action-center-body'));
+  assert.equal((d.querySelector('[data-launch-result-open]') as HTMLButtonElement).disabled, true);
+  assert.doesNotMatch(d.querySelector('[data-panel="success"]')?.textContent || '', /16\.84M|28\.4K|MoonBun/);
+  assert.equal(providerCalls.some(method => /sendTransaction|personal_sign/.test(method)), false);
+});
+
 test("a valid SIWE session restores the wallet label after a page refresh", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   let resolveActivity: (value: unknown) => void = () => undefined;
@@ -882,10 +915,15 @@ test("a valid SIWE session restores the wallet label after a page refresh", asyn
   };
   const { window, providerEvents, storage } = await boot(response, { account, session: { token: "session", address: account } });
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
+  assert.equal(window.document.querySelector('#trade-submit')?.textContent, '请先选择代币');
+  assert.equal((window.document.querySelector('#trade-submit') as HTMLButtonElement).disabled, true);
   providerEvents.accountsChanged?.([account]);
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "0x1111…1111");
   providerEvents.accountsChanged?.(["0x2222222222222222222222222222222222222222"]);
   assert.equal(window.document.querySelector(".connect-global")?.textContent, "连接钱包");
+  assert.equal((window.document.querySelector('#trade-submit') as HTMLButtonElement).disabled, true);
+  assert.equal((window.document.querySelector('#perps-submit') as HTMLButtonElement).disabled, true);
+  assert.equal(window.document.querySelector('#perps-submit')?.textContent, '连接钱包后开仓');
   resolveActivity({ ok: true, json: async () => ({ data: { activity: [{ token_name: "STALE ACCOUNT TRADE" }], launches: [{ token_name: "STALE ACCOUNT TOKEN" }], creator_rewards: [{ status: "accrued", amount_wei: "1" }], summary: {} } }) });
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.doesNotMatch(window.document.body.textContent || "", /STALE ACCOUNT/);
@@ -1190,7 +1228,8 @@ test("Pump static shells expose the official Website favicon and contact channel
   assert.match(html, /overflow-x:\s*auto/);
   assert.match(html, /scroll-snap-type:\s*x proximity/);
   assert.match(html, /\.official-contact-bar strong\s*\{[^}]*display:\s*none/s);
-  assert.match(html, /calc\(100dvh\s*-\s*155px\)/);
+  assert.match(html, /\.launch-stage\s*\{\s*display:flex;\s*flex-direction:column;/);
+  assert.match(html, /\.workbench\s*\{\s*flex:1;\s*min-height:0;\s*height:auto;/);
 });
 
 test("clicking the visible logo button opens the hidden native file input", () => {
@@ -1329,11 +1368,12 @@ test("token filters sort the already-loaded list locally without another token-l
   assert.match(bridge, /bindMarketSelect/);
 });
 
-test("mobile market keeps search visible and floats trade actions above the bottom navigation", () => {
-  assert.match(html, /class="field token-search-field" data-token-search/);
+test("mobile market keeps search visible and detail actions clear of the original subpage navigation", () => {
+  const { document } = parseHTML(html);
+  assert.ok(document.querySelector('.home-search-box input[data-token-search]'));
   assert.doesNotMatch(html, /data-token-search[^>]*hidden/);
-  assert.match(compactHtml, /\.fixed-trade\{height:76px;bottom:calc\(72px\+env\(safe-area-inset-bottom\)\)/);
-  assert.match(compactHtml, /screen\[data-panel="detail"\]\.has-bottom-nav\{padding-bottom:calc\(166px\+env\(safe-area-inset-bottom\)\)/);
+  assert.match(compactHtml, /\.fixed-trade\{height:calc\(76px\+env\(safe-area-inset-bottom\)\);bottom:0/);
+  assert.match(compactHtml, /screen\[data-panel="detail"\]\{padding-bottom:calc\(90px\+env\(safe-area-inset-bottom\)\)/);
 });
 
 test("all launch entry points are wallet-gated until SIWE connection succeeds", () => {
@@ -1429,7 +1469,9 @@ test("perpetual market creation is SIWE-bound, user-signed, template-bound, and 
   for (const endpoint of ["v1/pump/perpetual/prepare-market", "v1/pump/perpetual/service-requests", "v1/pump/perpetual/service-requests/confirm", "v1/pump/perpetual/service-requests/complete"]) {
     assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   }
-  for (const marker of ["data-perp-service-submit=\"add_contract\"", "data-perp-service-submit=\"create_pool\"", "data-perp-pool-resume", "data-perp-activity-export", "completePaidPoolRequest", "createPermissionlessPerpetualMarket", "平台费 0 BNB", "0x723219d3", "已阻止签名"]) {
+  assert.match(bridge, /dataset\.perpServiceSubmit = 'add_contract'/);
+  assert.match(bridge, /dataset\.perpServiceSubmit = 'create_pool'/);
+  for (const marker of ["data-perp-pool-resume", "data-perp-activity-export", "completePaidPoolRequest", "createPermissionlessPerpetualMarket", "平台费 0 BNB", "0x723219d3", "已阻止签名"]) {
     assert.match(bridge, new RegExp(marker));
   }
   assert.match(bridge, /平台服务费/);
@@ -1443,7 +1485,7 @@ test("perpetual market creation is SIWE-bound, user-signed, template-bound, and 
 });
 
 test("Split Vault and three-tier Vault Store stay SIWE-bound and fail closed before factory deployment", () => {
-  for (const marker of ["data-panel=\"revenue-center\"", "data-panel=\"vault-store\"", "data-vault-claim-all", "data-strategy-template-list"]) assert.match(html, new RegExp(marker));
+  for (const marker of ["data-panel=\"income-center\"", "data-panel=\"vault-store\"", "data-vault-claim-all", "data-strategy-template-list"]) assert.match(html, new RegExp(marker));
   for (const endpoint of ["v1/pump/vaults", "v1/pump/vaults/prepare", "v1/pump/vault-store/templates", "v1/pump/vault-store/registry", "v1/pump/strategies", "v1/pump/strategies/prepare"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   for (const marker of ["prepareVault", "sendVaultTransaction", "claimAllVaults", "claimHolderDividend", "prepareStrategy", "deployStrategy", "prepareStrategyAction", "executeStrategyAction", "submitVaultRegistry", "eth_estimateGas", "waitReceipt"]) assert.match(bridge, new RegExp(marker));
   for (const marker of ["data-strategy-use-selected-lp", "lp_assignment_verified", "pair_address"]) assert.match(html + bridge, new RegExp(marker));
@@ -1453,7 +1495,7 @@ test("Split Vault and three-tier Vault Store stay SIWE-bound and fail closed bef
 });
 
 test("Developer Center exposes signed Webhook lifecycle without leaking its one-time secret", () => {
-  for (const marker of ["data-panel=\"developer-center\"", "data-webhook-create", "data-webhook-delete", "data-integration-status", "X-BitBT-Signature"]) assert.match(html + bridge, new RegExp(marker));
+  for (const marker of ["data-panel=\"developer-tools\"", "data-webhook-create", "data-webhook-delete", "data-integration-status", "X-BitBT-Signature"]) assert.match(html + bridge, new RegExp(marker));
   for (const endpoint of ["v1/pump/integrations/status", "v1/pump/integrations/webhooks"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   for (const marker of ["loadIntegrationStatus", "loadWebhooks", "createWebhook", "deleteWebhook", "signing_secret"]) assert.match(bridge, new RegExp(marker));
 });

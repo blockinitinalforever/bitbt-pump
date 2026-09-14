@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "product": "BitBT Pump",
+  "sourceOfTruth": "public/bitbt-launch-ui-app.html",
+  "entry": "public/bitbt-wallet-ui.html",
+  "screenCount": 28,
+  "routePattern": "/bitbt-wallet-ui.html?screen={id}",
+  "mainScreens": ["discover", "live", "rank", "create-mode", "profile"],
+  "groups": [
+    {
+      "id": "market",
+      "title": "市场发现",
+      "screens": ["discover", "live", "rank", "announcements"]
+    },
+    {
+      "id": "spot",
+      "title": "MEME 现货",
+      "screens": ["detail", "trade"]
+    },
+    {
+      "id": "perps",
+      "title": "MEME 永续",
+      "screens": ["perps", "perps-add-contract", "perps-create-pool", "perps-pool", "perps-onchain"]
+    },
+    {
+      "id": "launch",
+      "title": "代币发射流程",
+      "screens": ["create-mode", "create-basic", "create-economics", "create-tax", "create-review", "success"]
+    },
+    {
+      "id": "portfolio",
+      "title": "创作者资产与记录",
+      "screens": ["my-launches", "activity", "watchlist"]
+    },
+    {
+      "id": "account",
+      "title": "账户、成长与安全",
+      "screens": ["profile", "income-center", "developer-tools", "invite-center", "alert-center", "protection", "language-center"]
+    },
+    {
+      "id": "system",
+      "title": "通用系统操作",
+      "screens": ["action-center"]
+    }
+  ],
+  "screens": [
+    {"id":"discover","title":"发现市场","group":"market","bottomNav":true,"opens":["detail","perps","create-mode","action-center"]},
+    {"id":"live","title":"实时链上","group":"market","bottomNav":true,"opens":["detail","action-center"]},
+    {"id":"rank","title":"排行榜","group":"market","bottomNav":true,"opens":["detail"]},
+    {"id":"announcements","title":"公告中心","group":"market","bottomNav":false,"opens":["discover"]},
+    {"id":"detail","title":"代币详情与 K 线","group":"spot","bottomNav":false,"opens":["trade"],"tabs":["curve","trades","holders","data"],"chart":"launch-kline"},
+    {"id":"trade","title":"MEME 现货交易","group":"spot","bottomNav":false,"opens":["detail","activity","action-center"],"states":["buy","sell"],"chart":"trade-kline"},
+    {"id":"perps","title":"MEME 永续交易终端","group":"perps","bottomNav":false,"opens":["perps-add-contract","perps-create-pool","perps-pool","perps-onchain","action-center"],"states":["long","short"],"chart":"perps-kline"},
+    {"id":"perps-add-contract","title":"添加链上 MEME 合约","group":"perps","bottomNav":false,"opens":["perps","perps-create-pool"]},
+    {"id":"perps-create-pool","title":"创建 MEME 对手池","group":"perps","bottomNav":false,"opens":["perps","perps-pool"]},
+    {"id":"perps-pool","title":"对手池详情","group":"perps","bottomNav":false,"opens":["perps","action-center"]},
+    {"id":"perps-onchain","title":"链上开仓记录","group":"perps","bottomNav":false,"opens":["perps","action-center"]},
+    {"id":"create-mode","title":"创建方式选择","group":"launch","bottomNav":true,"opens":["create-basic"]},
+    {"id":"create-basic","title":"创建代币：资料","group":"launch","bottomNav":false,"opens":["create-mode","create-economics"]},
+    {"id":"create-economics","title":"创建代币：发行参数","group":"launch","bottomNav":false,"opens":["create-basic","create-tax"],"states":["bnb","robinhood"]},
+    {"id":"create-tax","title":"创建代币：税费与分配","group":"launch","bottomNav":false,"opens":["create-economics","create-review"]},
+    {"id":"create-review","title":"发布确认","group":"launch","bottomNav":false,"opens":["create-tax","success"]},
+    {"id":"success","title":"发布成功","group":"launch","bottomNav":false,"opens":["trade","my-launches","action-center"]},
+    {"id":"my-launches","title":"我的发射","group":"portfolio","bottomNav":false,"opens":["profile","create-mode","detail"]},
+    {"id":"activity","title":"交易与收入记录","group":"portfolio","bottomNav":false,"opens":["profile","detail","action-center"]},
+    {"id":"watchlist","title":"我的自选","group":"portfolio","bottomNav":false,"opens":["profile","detail","action-center"]},
+    {"id":"profile","title":"我的 / 账户中心","group":"account","bottomNav":true,"opens":["my-launches","activity","watchlist","income-center","developer-tools","invite-center","alert-center","protection","language-center","perps"]},
+    {"id":"income-center","title":"收入中心与 Split Vault","group":"account","bottomNav":false,"opens":["profile"],"tabs":["income-overview","income-split","income-records"]},
+    {"id":"developer-tools","title":"开发者工具","group":"account","bottomNav":false,"opens":["profile","action-center"]},
+    {"id":"invite-center","title":"邀请返佣与 KOL","group":"account","bottomNav":false,"opens":["profile","create-mode"],"tabs":["invite-fee","invite-kol"]},
+    {"id":"alert-center","title":"价格与迁移提醒","group":"account","bottomNav":false,"opens":["profile"]},
+    {"id":"protection","title":"交易保护","group":"account","bottomNav":false,"opens":["profile"]},
+    {"id":"language-center","title":"语言与显示","group":"account","bottomNav":false,"opens":["profile"]},
+    {"id":"action-center","title":"通用操作中心","group":"system","bottomNav":false,"opens":["lastScreen"],"modes":["wallet","search","settings","order","liquidity","export","activity"]}
+  ],
+  "interactionAttributes": {
+    "screenNavigation": ["data-open", "data-nav"],
+    "feedback": ["data-action-confirm", "data-action-back", "data-toast"],
+    "tabs": ["data-account-tab", "data-detail-tab", "data-market-type"],
+    "tradeState": ["data-trade-side", "data-perps-side"],
+    "networkState": ["data-global-chain-option", "data-launch-chain"],
+    "settings": ["data-profile-toggle", "data-profile-choice", "data-set-language"]
+  },
+  "constraints": {
+    "networks": ["BNB Chain", "Robinhood Chain"],
+    "offlineAssets": true,
+    "runtimeLucide": false,
+    "cdn": false,
+    "base64Assets": false,
+    "wrapperCspRequired": true,
+    "sandboxedIframeRequired": true
+  }
+}
