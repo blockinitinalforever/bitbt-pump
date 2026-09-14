@@ -307,7 +307,7 @@ test('live market cards retain the September 14 reference hierarchy after real d
   const differenceStart = source.indexOf('  const exactDecimalDifference =');
   const differenceEnd = source.indexOf('  const hasNumber =', differenceStart);
   assert.ok(differenceStart > 0 && differenceEnd > differenceStart);
-  const exactDecimalDifference = vm.runInNewContext(source.slice(differenceStart, differenceEnd) + ';exactDecimalDifference');
+  const { exactDecimalDifference, formatExactDecimal } = vm.runInNewContext(source.slice(differenceStart, differenceEnd) + ';({exactDecimalDifference,formatExactDecimal})');
   const start = source.indexOf('  const tokenCard =');
   const end = source.indexOf('  const renderTokens =', start);
   assert.ok(start > 0 && end > start);
@@ -323,6 +323,7 @@ test('live market cards retain the September 14 reference hierarchy after real d
     usdOrQuote: (usdValue: unknown, quoteValue: unknown, quote: string) => usdValue == null ? `${quoteValue} ${quote}` : `$${usdValue}`,
     decimal: (value: unknown) => String(value ?? '0'),
     exactDecimalDifference,
+    formatExactDecimal,
     age: () => '2 分钟前',
   });
   const tokenCard = vm.runInContext(source.slice(start, end) + ';tokenCard', scope) as (token: Record<string, unknown>) => string;
@@ -336,6 +337,14 @@ test('live market cards retain the September 14 reference hierarchy after real d
   assert.equal(normal.querySelector('.market-signals'), null);
   const nearMigration = parseHTML(`<main>${tokenCard({ ...common, total_raised_quote:'9.99', migration_threshold_quote:'10', progress_percent:99 })}</main>`).document.querySelector('.token-card')!;
   assert.match(nearMigration.querySelector('.curve-label')!.textContent || '', /还差 0\.01 BNB/);
+  const preciseWhole = parseHTML(`<main>${tokenCard({ ...common, total_raised_quote:'9', migration_threshold_quote:'10.000000000000000001' })}</main>`).document.querySelector('.token-card')!;
+  assert.match(preciseWhole.querySelector('.curve-label')!.textContent || '', /还差 1\.000000000000000001 BNB/);
+  const preciseFraction = parseHTML(`<main>${tokenCard({ ...common, total_raised_quote:'9.999999999999999999', migration_threshold_quote:'10' })}</main>`).document.querySelector('.token-card')!;
+  assert.match(preciseFraction.querySelector('.curve-label')!.textContent || '', /还差 0\.000000000000000001 BNB/);
+  const preciseLarge = parseHTML(`<main>${tokenCard({ ...common, total_raised_quote:'0', migration_threshold_quote:'1000000000000000000.1' })}</main>`).document.querySelector('.token-card')!;
+  assert.match(preciseLarge.querySelector('.curve-label')!.textContent || '', /还差 1,000,000,000,000,000,000\.1 BNB/);
+  const directPrecise = parseHTML(`<main>${tokenCard({ ...common, remaining_to_migration_quote:'1.000000000000000001', total_raised_quote:undefined, migration_threshold_quote:undefined })}</main>`).document.querySelector('.token-card')!;
+  assert.match(directPrecise.querySelector('.curve-label')!.textContent || '', /还差 1\.000000000000000001 BNB/);
   const unknownRemaining = parseHTML(`<main>${tokenCard({ ...common, total_raised_quote:undefined, migration_threshold_quote:undefined, progress_percent:42 })}</main>`).document.querySelector('.token-card')!;
   assert.match(unknownRemaining.querySelector('.curve-label')!.textContent || '', /还差 — BNB/);
   assert.doesNotMatch(unknownRemaining.querySelector('.curve-label')!.textContent || '', /还差 0 BNB/);

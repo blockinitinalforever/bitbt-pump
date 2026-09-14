@@ -507,6 +507,13 @@
     const fraction = padded.slice(-scale).replace(/0+$/, "");
     return fraction ? `${whole}.${fraction}` : whole;
   };
+  const formatExactDecimal = (value) => {
+    const match = String(value ?? "").trim().match(/^(\d+)(?:\.(\d+))?$/);
+    if (!match) return "—";
+    const whole = (match[1].replace(/^0+(?=\d)/, "") || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    const fraction = (match[2] || "").replace(/0+$/, "");
+    return fraction ? `${whole}.${fraction}` : whole;
+  };
   const hasNumber = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
   const usd = (value, compact = true) => {
     if (!hasNumber(value)) return "—";
@@ -1523,10 +1530,11 @@
     const thresholdRaw = token.migration_threshold_quote ?? token.migration_threshold_bnb;
     const remainingRaw = token.remaining_to_migration_quote ?? token.migration_remaining_quote ?? token.remaining_to_migration_bnb;
     const thresholdDifference = exactDecimalDifference(thresholdRaw, raisedRaw);
-    const remaining = hasNumber(remainingRaw) && number(remainingRaw) >= 0
-      ? decimal(remainingRaw)
+    const directRemaining = formatExactDecimal(remainingRaw);
+    const remaining = directRemaining !== "—"
+      ? directRemaining
       : thresholdDifference
-        ? decimal(thresholdDifference)
+        ? formatExactDecimal(thresholdDifference)
         : "—";
     const thirdMetric = migrated
       ? uiMarkup`<div><span>流动性</span><strong>${escapeHtml(usdOrQuote(token.curve_reserve_usd, token.curve_reserve_quote, quote))}</strong></div>`
