@@ -15,6 +15,20 @@
       window.localStorage?.setItem(key, value);
     } catch {}
   };
+  // Display-only preferences. Never feed rounded values back into transaction amounts.
+  const displayPrecision = () => ['6', '8'].includes(readLocalPreference('bitbt_price_precision')) ? Number(readLocalPreference('bitbt_price_precision')) : null;
+  const displayTimeZone = () => {
+    const value = readLocalPreference('bitbt_time_zone');
+    return ['Asia/Shanghai', 'UTC', 'America/New_York'].includes(value) ? value : undefined;
+  };
+  const displayPrice = (value, fallback) => {
+    const digits = displayPrecision();
+    if (digits === null || !Number.isFinite(Number(value))) return fallback;
+    const parsed = Number(value);
+    // A positive price must never look like zero after rounding.
+    if (parsed !== 0 && Math.abs(parsed) < 10 ** -digits) return `${parsed < 0 ? '>−' : '<'}${(10 ** -digits).toFixed(digits)}`;
+    return parsed.toLocaleString('en-US', {minimumFractionDigits: digits, maximumFractionDigits: digits});
+  };
   const state = {
     tokens: [],
     tokenFilter: "trending",
@@ -35,6 +49,7 @@
     referral: null,
     campaigns: [],
     announcements: [],
+    marketActivityReady: false,
     announcementFilter: "all",
     selectedAnnouncementId: "",
     perpConfig: null,
@@ -480,6 +495,7 @@
     const parsed = Number(value);
     const absolute = Math.abs(parsed);
     if (absolute === 0) return "$0";
+    if (!compact && displayPrecision() !== null) return `$${displayPrice(value, String(value))}`;
     if (compact && absolute >= 1000)
       return new Intl.NumberFormat("en-US", {
         style: "currency",
@@ -496,8 +512,8 @@
     });
   };
   const usdOrQuote = (usdValue, quoteValue, quote, compact = true) => (hasNumber(usdValue) ? usd(usdValue, compact) : `${decimal(quoteValue)} ${quote}`);
-  const taxSummary = (token) => (token?.tax_enabled ? `税 买${number(token.buy_tax_percent).toFixed(2).replace(/\.00$/, "")}% / 卖${number(token.sell_tax_percent).toFixed(2).replace(/\.00$/, "")}%` : "无税");
-  const activitySummary = (token) => (hasNumber(token?.buy_ratio_24h_percent) ? `买入 ${number(token.buy_ratio_24h_percent).toFixed(0)}%` : `${Number(token?.trade_count_24h || 0).toLocaleString("en-US")} 笔`);
+  const taxSummary = (token) => (token?.tax_enabled ? uiMarkup`税 买${number(token.buy_tax_percent).toFixed(2).replace(/\.00$/, "")}% / 卖${number(token.sell_tax_percent).toFixed(2).replace(/\.00$/, "")}%` : uiCopy("无税", "No transfer tax"));
+  const activitySummary = (token) => (hasNumber(token?.buy_ratio_24h_percent) ? uiMarkup`买入 ${number(token.buy_ratio_24h_percent).toFixed(0)}%` : uiMarkup`${Number(token?.trade_count_24h || 0).toLocaleString("en-US")} 笔`);
   const baseUnits = (value, digits = 6) => {
     try {
       const raw = String(value || "");
@@ -507,8 +523,19 @@
     }
   };
   const formatDate = (value) => {
+    if (value === null || value === undefined || value === '') return '—';
     const date = new Date(value || 0);
-    return Number.isFinite(date.getTime()) ? date.toLocaleString() : "—";
+    return Number.isFinite(date.getTime()) ? date.toLocaleString(pumpLocale() === 'zh' ? 'zh-CN' : 'en-US', {timeZone: displayTimeZone()}) : "—";
+  };
+  const chartLocalization = () => ({
+    locale: pumpLocale() === 'zh' ? 'zh-CN' : 'en-US',
+    timeFormatter: timestamp => formatDate(typeof timestamp === 'number' ? timestamp * 1000 : `${timestamp.year}-${String(timestamp.month).padStart(2,'0')}-${String(timestamp.day).padStart(2,'0')}T00:00:00Z`),
+    priceFormatter: value => displayPrice(value, Number(value).toLocaleString('en-US', {maximumSignificantDigits:8})),
+  });
+  const chartTick = (timestamp, type) => {
+    const date = new Date(typeof timestamp === 'number' ? timestamp * 1000 : `${timestamp.year}-${String(timestamp.month).padStart(2,'0')}-${String(timestamp.day).padStart(2,'0')}T00:00:00Z`);
+    const fields = type === 0 ? {year:'numeric'} : type === 1 ? {month:'short'} : type === 2 ? {month:'short',day:'numeric'} : {hour:'2-digit',minute:'2-digit',hour12:false};
+    return date.toLocaleString(pumpLocale() === 'zh' ? 'zh-CN' : 'en-US', {...fields,timeZone:displayTimeZone()});
   };
   const age = (value) => {
     if (!value) return "—";
@@ -597,11 +624,12 @@
   const toast = (message, duration = 2200) => {
     const node = $(".toast");
     if (!node) return;
-    node.textContent = message;
+    node.textContent = window.bitbtUiLocale?.message(message, pumpLocale()) ?? message;
     node.classList.add("show");
     window.clearTimeout(node._hideTimer);
     node._hideTimer = window.setTimeout(() => node.classList.remove("show"), duration);
   };
+  let operationDialogCopy = null;
   const showOperationDialog = (message, { title = "请调整参数后重试", tag = "操作未完成", success = false } = {}) => {
     const overlay = $("[data-operation-error]");
     const content = $("[data-operation-error-message]");
@@ -609,10 +637,11 @@
     const titleNode = $("[data-operation-dialog-title]");
     const tagNode = $("[data-operation-dialog-tag]");
     if (!overlay || !content || !dismiss) return toast(message, 6000);
-    content.textContent = message;
-    if (titleNode) titleNode.textContent = title;
+    operationDialogCopy = {message, title, tag, success};
+    content.textContent = window.bitbtUiLocale?.message(message, pumpLocale()) ?? message;
+    if (titleNode) titleNode.textContent = window.bitbtUiLocale?.message(title, pumpLocale()) ?? title;
     if (tagNode) {
-      tagNode.textContent = tag;
+      tagNode.textContent = window.bitbtUiLocale?.message(tag, pumpLocale()) ?? tag;
       tagNode.classList.toggle("lime", success);
     }
     overlay.hidden = false;
@@ -654,10 +683,12 @@
   })();
   const routeLocation = () => routeWindow.location || location;
   const routeHistory = () => routeWindow.history || history;
+  const screenAliases = { 'revenue-center': 'income-center', 'developer-center': 'developer-tools', 'growth': 'invite-center', 'alerts': 'alert-center' };
+  const resolveScreenName = (name) => root.querySelector(`[data-panel="${CSS.escape(name)}"]`) ? name : screenAliases[name] || name;
   const routeScreen = () => {
     try {
       const screen = new URLSearchParams(routeLocation()?.search || "").get("screen") || "";
-      return root.querySelector(`[data-panel="${CSS.escape(screen)}"]`) ? screen : "";
+      return root.querySelector(`[data-panel="${CSS.escape(resolveScreenName(screen))}"]`) ? screen : "";
     } catch {
       return "";
     }
@@ -669,6 +700,11 @@
     } catch {}
     return /^zh(?:-|$)/i.test(String(navigator?.language || "")) ? "zh" : "en";
   };
+  // Translate only application-owned copy at its render site. Never rewrite
+  // names, addresses, quotes or arbitrary backend errors by scanning live DOM.
+  const uiCopy = (zh, en) => pumpLocale() === 'zh' ? zh : en;
+  const literalCopy = value => window.bitbtUiLocale?.literal(String(value ?? ''), pumpLocale()) ?? String(value ?? '');
+  const uiMarkup = (strings, ...values) => strings.reduce((result, literal, index) => result + (window.bitbtUiLocale?.literal(literal, pumpLocale()) ?? literal) + (index < values.length ? String(values[index]) : ''), '');
   const readAnnouncementIds = () => {
     try {
       const parsed = JSON.parse(window.localStorage?.getItem(ANNOUNCEMENT_READ_KEY) || "[]");
@@ -704,6 +740,18 @@
     const readIds = readAnnouncementIds();
     text("[data-announcement-unread]", String(state.announcements.filter((item) => !readIds.has(item.id)).length));
     const filtered = state.announcements.filter((item) => state.announcementFilter === "all" || item.category === state.announcementFilter);
+    text('[data-announcement-count]', pumpLocale() === 'zh' ? uiMarkup`${filtered.length} 条 · ${filtered.filter(item => !readIds.has(item.id)).length} 条未读` : `${filtered.length} notices · ${filtered.filter(item => !readIds.has(item.id)).length} unread`);
+    const detailHost = $('[data-live-announcement-detail]');
+    const selected = filtered.find((item) => item.id === state.selectedAnnouncementId) || filtered.find(item => item.pinned) || filtered[0];
+    if (detailHost) {
+      detailHost.hidden = !selected;
+      detailHost.replaceChildren();
+      if (selected) {
+        const copy = announcementCopy(selected);
+        const network = ({bsc:'BNB Chain', bnb:'BNB Chain', robinhood:'Robinhood Chain'})[selected.chain_id] || (pumpLocale() === 'zh' ? '公告未指定' : 'Not specified in notice');
+        detailHost.innerHTML = `<span class="tag lime">${escapeHtml(selected.pinned ? (pumpLocale() === 'zh' ? '置顶公告' : 'Pinned notice') : announcementCategory(selected.category))}</span><h2>${escapeHtml(copy.title)}</h2><p>${escapeHtml(copy.content).replace(/\n/g, '<br>')}</p><div class="review-row"><span>${pumpLocale() === 'zh' ? (selected.effective_at ? '生效时间' : '发布时间') : (selected.effective_at ? 'Effective' : 'Published')}</span><strong>${escapeHtml(formatDate(selected.effective_at || selected.published_at))}</strong></div><div class="review-row"><span>${pumpLocale() === 'zh' ? '适用网络' : 'Network'}</span><strong>${escapeHtml(network)}</strong></div><button class="primary" type="button" data-open="create-mode">${pumpLocale() === 'zh' ? uiCopy("创建代币", "Create Token") : 'Create token'}</button>`;
+      }
+    }
     if (!filtered.length) {
       list.innerHTML = `<p class="footer-note">${pumpLocale() === "zh" ? "当前分类暂无官方公告。" : "No official notices in this category."}</p>`;
       return;
@@ -713,19 +761,15 @@
       const unread = !readIds.has(announcement.id);
       return `<button class="announcement-card${unread ? " unread" : ""}" type="button" data-announcement-id="${escapeHtml(announcement.id)}"><span class="announcement-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${announcement.category === "security" ? "shield-check" : "bell"}.svg')"></i></span><span><h3>${announcement.pinned ? `${pumpLocale() === "zh" ? "置顶 · " : "Pinned · "}` : ""}${escapeHtml(copy.title)}</h3><p>${escapeHtml(copy.content).slice(0, 180)}${copy.content.length > 180 ? "…" : ""}</p></span><time>${escapeHtml(formatDate(announcement.published_at))}</time></button>`;
     }).join("");
-    const selected = filtered.find((item) => item.id === state.selectedAnnouncementId);
-    const detail = selected ? (() => {
-      const copy = announcementCopy(selected);
-      return `<article class="announcement-detail"><div class="eyebrow">${escapeHtml(announcementCategory(selected.category))}</div><h2>${escapeHtml(copy.title)}</h2><p>${escapeHtml(copy.content).replace(/\n/g, "<br>")}</p><div class="review-row"><span>${pumpLocale() === "zh" ? "发布时间" : "Published"}</span><strong>${escapeHtml(formatDate(selected.published_at))}</strong></div></article>`;
-    })() : "";
-    list.innerHTML = cards + detail;
+    list.innerHTML = cards;
     list.querySelectorAll("[data-announcement-id]").forEach((node) => node.addEventListener("click", () => {
       const id = node.dataset.announcementId;
       const nextRead = readAnnouncementIds();
       nextRead.add(id);
       saveReadAnnouncementIds(nextRead);
-      state.selectedAnnouncementId = state.selectedAnnouncementId === id ? "" : id;
+      state.selectedAnnouncementId = id;
       renderAnnouncements();
+      detailHost?.scrollIntoView?.({block:'start', behavior:'auto'});
     }));
   };
   const loadAnnouncements = async () => {
@@ -745,6 +789,7 @@
   const formatPerpPrice = (value) => {
     const price = Number(value);
     if (!Number.isFinite(price) || price <= 0) return "—";
+    if (displayPrecision() !== null) return `$${displayPrice(value, String(value))}`;
     if (price >= 1) return `$${price.toLocaleString("en-US", { maximumFractionDigits: 6 })}`;
     return `$${price.toLocaleString("en-US", { minimumSignificantDigits: 2, maximumSignificantDigits: 8 })}`;
   };
@@ -770,8 +815,8 @@
       if (fallback) {
         fallback.hidden = false;
         fallback.textContent = selectedPerpMarket()
-          ? "该 MEME 暂无可生成 K 线的真实成交。"
-          : "选择已开放市场后显示真实成交 K 线。";
+          ? uiCopy("该 MEME 暂无可生成 K 线的真实成交。", "No real trades are available to build candles for this MEME.")
+          : uiCopy("选择已开放市场后显示真实成交 K 线。", "Select an open market to view real trade candles.");
       }
       return;
     }
@@ -781,12 +826,13 @@
       entry?.chart.remove?.();
       host.replaceChildren();
       const chart = window.LightweightCharts.createChart(host, {
+        localization: chartLocalization(),
         width: host.clientWidth || 720,
         height: 320,
         layout: { background: { type: "solid", color: "#0a0b0c" }, textColor: "#777c78" },
         grid: { vertLines: { color: "#1d2021" }, horzLines: { color: "#1d2021" } },
         rightPriceScale: { borderColor: "#303334", scaleMargins: { top: 0.08, bottom: 0.25 } },
-        timeScale: { borderColor: "#303334", timeVisible: true },
+        timeScale: { borderColor: "#303334", timeVisible: true, tickMarkFormatter: chartTick },
       });
       const series = chart.addCandlestickSeries({
         upColor: "#32cf7c", downColor: "#ff5c73", borderUpColor: "#32cf7c",
@@ -813,9 +859,11 @@
     const account = state.account, chain = state.selectedChain, provider = selectedProvider();
     const session = walletSessionEpoch;
     const marketId = state.selectedPerpMarketId;
-    return () => perpReadVersions.get(key) === version && state.account === account
-      && state.selectedChain === chain && selectedProvider() === provider
-      && walletSessionEpoch === session && (!bindMarket || state.selectedPerpMarketId === marketId);
+    // Public configuration belongs to a chain, not a wallet session. Restoring
+    // SIWE during initial load must not discard the only configuration response.
+    return () => perpReadVersions.get(key) === version && state.selectedChain === chain
+      && (key === 'config' || (state.account === account && selectedProvider() === provider && walletSessionEpoch === session))
+      && (!bindMarket || state.selectedPerpMarketId === marketId);
   };
   const setPerpReadError = (key, message = "") => {
     state.perpReadErrors[key] = message;
@@ -852,6 +900,17 @@
     renderPerpetual();
     setPerpReadError('candles');
   };
+  const renderPerpetualMarketCards = () => {
+    const config = state.perpConfig;
+    const query = state.tokenSearch.trim().toLowerCase();
+    const markets = state.perpMarkets.filter(item => !query || `${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase().includes(query));
+    const marketGrid = $('[data-market-panel="perps"] .token-grid');
+    if (marketGrid) {
+      marketGrid.innerHTML = markets.length
+        ? markets.map((item) => uiMarkup`<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><img class="token-logo" src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div class="token-name"><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>${escapeHtml(state.selectedChain === 'robinhood' ? 'Robinhood' : 'BNB Chain')} · ${escapeHtml(item.quoteTokenSymbol || short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? uiCopy("已开放", "Available") : uiCopy("已暂停", "Paused")}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
+        : `<p class="footer-note">${escapeHtml(query ? '没有匹配的永续市场，请修改名称或地址搜索。' : config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
+    }
+  };
   let perpUnreadySince = 0;
   let perpStatusRefreshInFlight = false;
   const renderPerpetual = () => {
@@ -861,10 +920,10 @@
     else if (enabled && !perpUnreadySince) perpUnreadySince = Date.now();
     const keeperStandby = enabled && config?.operationsState === "standby";
     const keeperSyncing = enabled && (config?.operationsState === "preparing" || (!config?.operationsState && !config?.operationsReady && Date.now() - perpUnreadySince < 60_000));
-    text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')} 个`);
-    text("[data-perp-menu-status]", enabled ? (keeperStandby ? "按需待命" : keeperSyncing ? "准备中" : config?.openingsPaused ? "只减仓" : "已开放") : "未开放");
-    text("[data-perp-status]", keeperStandby ? "Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。" : keeperSyncing ? "Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。" : config?.statusNote || "正在读取永续合约状态…");
-    text("[data-perp-fee]", config?.feePercent ? `默认 ${config.feePercent} / ${config.feePercent}` : "—");
+    text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')}${uiCopy(' 个', '')}`);
+    text("[data-perp-menu-status]", enabled ? (keeperStandby ? uiCopy("按需待命", "Standby") : keeperSyncing ? uiCopy("准备中", "Preparing") : config?.openingsPaused ? uiCopy("只减仓", "Reduce only") : uiCopy("已开放", "Available")) : uiCopy("未开放", "Unavailable"));
+    text("[data-perp-status]", keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
+    text("[data-perp-fee]", config?.feePercent ? uiMarkup`默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
     text("[data-perp-version]", config?.contractVersion ? `V${config.contractVersion}` : "—");
@@ -872,18 +931,25 @@
     if (select) {
       const previous = select.value;
       select.innerHTML = state.perpMarkets.length
-        ? state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}">${escapeHtml(market.tokenName)} (${escapeHtml(market.tokenSymbol)}) · #${Number(market.marketId)}${market.enabled ? "" : " · 已暂停"}</option>`).join("")
-        : `<option value="">当前没有已启用市场</option>`;
+        ? state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}">${escapeHtml(market.tokenName)} (${escapeHtml(market.tokenSymbol)}) · #${Number(market.marketId)}${market.enabled ? "" : uiCopy(" · 已暂停", " · Paused")}</option>`).join("")
+        : uiMarkup`<option value="">当前没有已启用市场</option>`;
       if (state.perpMarkets.some((market) => String(market.marketId) === previous)) select.value = previous;
     }
     const market = selectedPerpMarket();
     if (market?.dataStale) text("[data-perp-status]", "行情暂时更新失败，正在显示最近快照；交易前会重新校验，不会使用旧行情签名。");
     if (ui20260911) {
-      const marketGrid = $('[data-market-panel="perps"] .token-grid');
-      if (marketGrid) {
-        marketGrid.innerHTML = state.perpMarkets.length
-          ? state.perpMarkets.map((item) => `<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><img class="token-logo" src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div class="token-name"><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>BNB Chain · ${escapeHtml(short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? '已开放' : '已暂停'}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
-          : `<p class="footer-note">${escapeHtml(config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
+      renderPerpetualMarketCards();
+      const marketSearch = $('#perps-market-search');
+      if (marketSearch) {
+        marketSearch.disabled = !enabled || !state.perpMarkets.length;
+        marketSearch.placeholder = !config ? uiCopy('正在读取真实永续市场…', 'Loading perpetual markets…') : !enabled ? uiCopy('当前网络永续市场未开放', 'Perpetuals are unavailable on this network') : !state.perpMarkets.length ? uiCopy('当前没有已开放的永续市场', 'No active perpetual markets') : uiCopy('搜索 MEME 名称、符号或合约地址', 'Search MEME name, symbol or contract');
+      }
+      text('[data-perps-leverage-range]', market ? `1–${market.maxLeverage}×` : '—');
+      text('[data-perps-settlement-note]', market ? `${market.quoteTokenSymbol || 'Quote Token'} ${uiCopy('本位', 'settled')} · ${selectedNetwork().name} · ${uiCopy('资金费按链上规则随时间累计', 'Funding accrues under on-chain rules')}` : uiCopy('选择市场后显示结算资产与资金费规则', 'Select a market to view settlement and funding rules'));
+      const marketImage = $('[data-perps-image]');
+      if (marketImage) {
+        marketImage.src = market?.tokenImage || './assets/tokens/generic.svg';
+        marketImage.alt = market?.tokenSymbol || '永续市场';
       }
       const pairRow = $('[data-panel="perps"] .perps-pairs');
       if (pairRow) {
@@ -891,7 +957,7 @@
       }
       const searchResults = $('[data-panel="perps"] .perps-search-results');
       if (searchResults) {
-        searchResults.innerHTML = `<div class="perps-search-head"><span>搜索结果</span><span>市场状态</span></div>${state.perpMarkets.map((item) => `<div class="perps-search-item ready" data-real-perp-search data-search="${escapeHtml(`${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase())}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>${escapeHtml(short(item.tokenAddress || ''))} · BSC · <span class="pool-state">${item.enabled ? '可交易' : '已暂停'}</span></small></div><button type="button" data-real-perp-market="${Number(item.marketId)}">选择交易</button></div>`).join('')}<div class="perps-search-empty" data-perps-search-empty>未找到已接入的真实 MEME 永续市场。</div>`;
+        searchResults.innerHTML = uiMarkup`<div class="perps-search-head"><span>搜索结果</span><span>市场状态</span></div>${state.perpMarkets.map((item) => uiMarkup`<div class="perps-search-item ready" data-real-perp-search data-search="${escapeHtml(`${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase())}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(item.tokenSymbol || item.tokenName || 'MEME')}-PERP</strong><small>${escapeHtml(short(item.tokenAddress || ''))} · BSC · <span class="pool-state">${item.enabled ? uiCopy("可交易", "Tradable") : uiCopy("已暂停", "Paused")}</span></small></div><button type="button" data-real-perp-market="${Number(item.marketId)}">选择交易</button></div>`).join('')}<div class="perps-search-empty" data-perps-search-empty>未找到已接入的真实 MEME 永续市场。</div>`;
       }
       const latestCandle = state.perpCandles.at(-1);
       const latestPrice = Number(latestCandle?.close || 0);
@@ -904,49 +970,65 @@
         ? Number(formatUnits(BigInt(market.oraclePriceE18), 18))
         : 0;
       text('[data-perps-symbol]', market?.tokenSymbol || '—');
+      text('[data-perps-quote-unit]', market?.quoteTokenSymbol || '—');
+      text('[data-perps-margin-title]', `${market?.quoteTokenSymbol || 'QUOTE'}-M PERPETUAL`);
+      const leverageInput = $('#perps-leverage');
+      const maximumLeverage = Math.max(1, Number(market?.maxLeverage || config?.maxLeverage || 1));
+      if (leverageInput) {
+        if (market) {
+          leverageInput.max = String(maximumLeverage);
+          leverageInput.value = String(Math.max(1, Math.min(maximumLeverage, Number(leverageInput.value) || 1)));
+        }
+        leverageInput.disabled = !market || state.perpSubmitting;
+        text('[data-perps-leverage]', leverageInput.value);
+      }
+      $$('[data-panel="perps"] .leverage-scale span').forEach((node, index, nodes) => {
+        node.textContent = `${Math.round(1 + (maximumLeverage - 1) * index / (nodes.length - 1))}×`;
+      });
+      $$('[data-perps-size]').forEach(button => { button.disabled = !state.account || state.perpQuoteBalance == null || !market || state.perpSubmitting; });
       text('[data-perps-price]', formatPerpPrice(latestPrice));
       text('[data-perps-mark]', formatPerpPrice(oraclePrice));
       text('[data-perps-change]', priceChange == null ? '—' : `${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%`);
       text('[data-perps-volume]', market ? `${volume24h.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${market.quoteTokenSymbol || 'QUOTE'}` : '—');
       text('[data-perps-oi]', market ? `${formatUnits(BigInt(market.lockedNotionalRaw || '0'), quoteDecimals)} ${market.quoteTokenSymbol || 'QUOTE'}` : '—');
-      text('[data-perps-funding]', market ? `上限 ${(Number(market.maxFundingRatePpmPerDay || 0) / 10_000).toFixed(4)}% / 日` : '—');
+      text('[data-perps-funding]', market ? uiMarkup`上限 ${(Number(market.maxFundingRatePpmPerDay || 0) / 10_000).toFixed(4)}% / 日` : '—');
       text('[data-perps-entry]', state.perpPosition?.open ? formatPerpPrice(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18)) : '—');
       text('[data-perps-liq]', '—');
       const margin = Number($("#perps-size")?.value || 0);
       const leverage = Number($("#perps-leverage")?.value || 1);
       const notional = Number.isFinite(margin) && margin > 0 && Number.isFinite(leverage) ? margin * leverage : 0;
       text('[data-perps-notional]', market && notional > 0 ? `${notional.toLocaleString('en-US', { maximumFractionDigits: 6 })} ${market.quoteTokenSymbol || 'QUOTE'}` : '—');
-      text('[data-perps-est-liq]', state.perpPosition?.open ? '以链上风险校验为准' : '提交前由合约校验');
+      text('[data-perps-est-liq]', state.perpPosition?.open ? '以链上风险校验为准' : uiCopy("提交前由合约校验", "Validated by the contract before execution"));
       text('[data-perps-open-fee]', market ? `${(Number(market.openFeePpm || 0) / 10_000).toFixed(4)}%` : '—');
       text('[data-perps-maintenance-margin]', config ? `${(Number(config.maintenanceMarginPpm || 0) / 10_000).toFixed(2)}%` : '—');
       const quoteBalanceLabel = state.account && state.perpQuoteBalance != null && market
         ? `${formatUnits(BigInt(state.perpQuoteBalance), quoteDecimals)} ${market.quoteTokenSymbol || 'QUOTE'}`
-        : state.account ? '读取中…' : '连接钱包后读取';
+        : state.account ? '读取中…' : uiCopy("连接钱包后读取", "Connect wallet to load");
       text('[data-perps-equity], [data-perps-available]', quoteBalanceLabel);
-      text('[data-perps-position]', !state.account ? '连接钱包后读取' : state.perpPosition?.open ? `${state.perpPosition.isLong ? 'LONG' : 'SHORT'} · ${formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), Number(market?.quoteDecimals || 18))}` : '当前无持仓');
+      text('[data-perps-position]', !state.account ? uiCopy("连接钱包后读取", "Connect wallet to load") : state.perpPosition?.open ? `${state.perpPosition.isLong ? 'LONG' : 'SHORT'} · ${formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), Number(market?.quoteDecimals || 18))}` : uiCopy("当前无持仓", "No open position"));
       const modernPosition = $('[data-panel="perps"] [data-perps-panel="positions"]');
       if (modernPosition) {
         const decimals = Number(market?.quoteDecimals || 18);
         modernPosition.innerHTML = !state.account
-          ? `<p class="footer-note">连接钱包后读取当前真实仓位。</p>`
+          ? uiMarkup`<p class="footer-note">连接钱包后读取当前真实仓位。</p>`
           : !state.perpPosition?.open
-            ? `<p class="footer-note">当前钱包在该市场没有未平仓仓位。</p>`
-            : `<div class="perps-position-head"><div class="perps-position-name"><img src="${escapeHtml(market?.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(market?.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(market?.tokenSymbol || 'MEME')}-PERP <span class="tag lime">${state.perpPosition.isLong ? '多' : '空'}</span></strong><small>逐仓 · Quote Token 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(new Date(Number(state.perpPosition.openedAt) * 1000).toLocaleString()) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
+            ? uiMarkup`<p class="footer-note">当前钱包在该市场没有未平仓仓位。</p>`
+            : uiMarkup`<div class="perps-position-head"><div class="perps-position-name"><img src="${escapeHtml(market?.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(market?.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(market?.tokenSymbol || 'MEME')}-PERP <span class="tag lime">${state.perpPosition.isLong ? uiCopy("多", "Long") : uiCopy("空", "Short")}</span></strong><small>逐仓 · Quote Token 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
       }
       const orders = $('[data-panel="perps"] [data-perps-panel="orders"]');
       if (orders) orders.innerHTML = '<p class="footer-note">当前合约仅支持钱包签名后立即上链的市价操作，没有待成交挂单。</p>';
       const triggers = $('[data-panel="perps"] [data-perps-panel="triggers"]');
-      if (triggers) triggers.innerHTML = '<p class="footer-note">当前合约未开放止盈止损条件单，界面不会伪造委托数据。</p>';
+      if (triggers) triggers.innerHTML = uiCopy("<p class=\"footer-note\">当前合约未开放止盈止损条件单，界面不会伪造委托数据。</p>", "<p class=\"footer-note\">Stop-loss and take-profit orders are not supported by the current contract. No simulated orders are shown.</p>");
       const onchain = $('[data-panel="perps"] [data-perps-panel="onchain"]');
       if (onchain) {
-        const rows = perpMarketActivity(market).slice(0, 5).map((item) => `<div class="compact-order"><strong>${escapeHtml(market?.tokenSymbol || `Market #${Number(item.marketId)}`)}-PERP <small class="${item.isOpen ? 'up' : ''}">${item.isOpen ? '持仓中' : '已平仓 / 已结算'}</small></strong><span>交易者<small>${escapeHtml(short(item.traderAddress || ''))}</small></span><span>区块<small>#${Number(item.blockNumber).toLocaleString('en-US')}</small></span><span>交易哈希<small>${escapeHtml(short(item.lastTxHash || ''))}</small></span><a class="secondary" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${item.lastTxHash}`)}" target="_blank" rel="noopener noreferrer">查看</a></div>`).join('');
+        const rows = perpMarketActivity(market).slice(0, 5).map((item) => uiMarkup`<div class="compact-order"><strong>${escapeHtml(market?.tokenSymbol || `Market #${Number(item.marketId)}`)}-PERP <small class="${item.isOpen ? 'up' : ''}">${item.isOpen ? uiCopy("持仓中", "Open") : uiCopy("已平仓 / 已结算", "Closed / settled")}</small></strong><span>交易者<small>${escapeHtml(short(item.traderAddress || ''))}</small></span><span>区块<small>#${Number(item.blockNumber).toLocaleString('en-US')}</small></span><span>交易哈希<small>${escapeHtml(short(item.lastTxHash || ''))}</small></span><a class="secondary" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${item.lastTxHash}`)}" target="_blank" rel="noopener noreferrer">查看</a></div>`).join('');
         onchain.innerHTML = rows || '<p class="footer-note">该市场当前没有已索引的真实链上仓位记录。</p>';
       }
       const submit = $('#perps-submit');
       if (submit) {
-        const side = $('[data-perps-side="short"]')?.classList.contains('active') ? '空' : '多';
+        const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
         submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly));
-        submit.textContent = state.perpSubmitting ? '正在准备链上参数…' : !state.account ? '连接钱包后开仓' : state.perpModernAction === 'close_position' ? '确认市价平仓' : `确认开${side}`;
+        submit.textContent = state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy('确认市价平仓', 'Confirm market close') : uiCopy(`确认开${isShort ? uiCopy("空", "Short") : uiCopy("多", "Long")}`, `Confirm ${isShort ? 'short' : 'long'}`);
         submit.removeAttribute('data-toast');
       }
       renderPerpetualChart();
@@ -957,10 +1039,10 @@
       text("[data-perp-market-liquidity]", `${formatUnits(BigInt(market.liquidityRaw), decimals)} / ${formatUnits(BigInt(market.lockedNotionalRaw), decimals)}`);
       text("[data-perp-market-exposure]", `${formatUnits(BigInt(market.longNotionalRaw), decimals)} / ${formatUnits(BigInt(market.shortNotionalRaw), decimals)}`);
       text("[data-perp-market-limits]", `${formatUnits(BigInt(market.maxPositionNotionalRaw), decimals)} / ${formatUnits(BigInt(market.maxOpenInterestRaw), decimals)}`);
-      text("[data-perp-market-utilization]", `${(Number(market.maxUtilizationPpm || 0) / 10_000).toFixed(2)}%${market.closeOnly ? " · 只减仓" : ""}`);
+      text("[data-perp-market-utilization]", `${(Number(market.maxUtilizationPpm || 0) / 10_000).toFixed(2)}%${market.closeOnly ? uiCopy(" · 只减仓", " · Reduce-only") : ""}`);
       text("[data-perp-market-funding]", `${(Number(market.maxFundingRatePpmPerDay || 0) / 10_000).toFixed(4)}%`);
-      text("[data-perp-market-epoch]", market.epochEnd ? new Date(Number(market.epochEnd) * 1000).toLocaleString() : "—");
-      text("[data-perp-market-duration]", market.maxPositionDurationSeconds ? `${(Number(market.maxPositionDurationSeconds) / 86400).toFixed(2)} 天` : "—");
+      text("[data-perp-market-epoch]", market.epochEnd ? formatDate(Number(market.epochEnd) * 1000) : "—");
+      text("[data-perp-market-duration]", market.maxPositionDurationSeconds ? uiMarkup`${(Number(market.maxPositionDurationSeconds) / 86400).toFixed(2)} 天` : "—");
       text("[data-perp-market-keeper]", formatUnits(BigInt(market.minKeeperRewardRaw || "0"), decimals));
       const openFeePercent = (Number(market.openFeePpm || 0) / 10_000).toFixed(4);
       const closeFeePercent = (Number(market.closeFeePpm || 0) / 10_000).toFixed(4);
@@ -971,16 +1053,16 @@
       text("[data-perp-market-fee-split]", `${platformSharePercent}% / ${lpSharePercent}%`);
       text("[data-perp-market-fee-recipient]", short(market.platformFeeRecipient || ""));
       text("[data-perp-market-fee-claimable]", `${formatUnits(BigInt(market.platformFeeClaimableRaw || "0"), decimals)} / ${formatUnits(BigInt(market.platformFeeLiabilityRaw || "0"), decimals)}`);
-      text("[data-perp-market-emergency]", market.emergencySettlementActive ? `已启用 · ${formatUnits(BigInt(market.emergencySettlementPriceE18 || "0"), 18)}` : market.emergencySettlementActivateAfter ? `等待至 ${new Date(Number(market.emergencySettlementActivateAfter) * 1000).toLocaleString()}` : "未启用");
+      text("[data-perp-market-emergency]", market.emergencySettlementActive ? uiMarkup`已启用 · ${formatUnits(BigInt(market.emergencySettlementPriceE18 || "0"), 18)}` : market.emergencySettlementActivateAfter ? uiMarkup`等待至 ${formatDate(Number(market.emergencySettlementActivateAfter) * 1000)}` : uiCopy("未启用", "Disabled"));
     } else {
       text("[data-perp-market-pair], [data-perp-market-liquidity], [data-perp-market-exposure], [data-perp-market-limits], [data-perp-market-utilization], [data-perp-market-funding], [data-perp-market-epoch], [data-perp-market-duration], [data-perp-market-keeper], [data-perp-market-fees], [data-perp-market-fee-split], [data-perp-market-fee-recipient], [data-perp-market-fee-claimable], [data-perp-market-emergency]", "—");
     }
     const position = state.perpPosition;
     const quoteDecimals = Number(market?.quoteDecimals || 18);
-    text("[data-perp-position]", !state.account ? "连接钱包后读取" : position?.open ? `${position.isLong ? "LONG" : "SHORT"} · 保证金 ${formatUnits(BigInt(position.collateralRaw), quoteDecimals)} · 名义 ${formatUnits(BigInt(position.notionalRaw), quoteDecimals)}` : "当前无持仓");
+    text("[data-perp-position]", !state.account ? uiCopy("连接钱包后读取", "Connect wallet to load") : position?.open ? uiMarkup`${position.isLong ? "LONG" : "SHORT"} · 保证金 ${formatUnits(BigInt(position.collateralRaw), quoteDecimals)} · 名义 ${formatUnits(BigInt(position.notionalRaw), quoteDecimals)}` : uiCopy("当前无持仓", "No open position"));
     text("[data-perp-position-pnl]", position?.open ? formatUnits(BigInt(position.currentPnlRaw || "0"), quoteDecimals) : "—");
     text("[data-perp-shares]", state.account ? formatUnits(BigInt(position?.liquiditySharesRaw || "0"), quoteDecimals) : "—");
-    text("[data-perp-wallet-fee-claimable]", state.account ? formatUnits(BigInt(position?.platformFeeClaimableRaw || "0"), quoteDecimals) : "连接钱包后读取");
+    text("[data-perp-wallet-fee-claimable]", state.account ? formatUnits(BigInt(position?.platformFeeClaimableRaw || "0"), quoteDecimals) : uiCopy("连接钱包后读取", "Connect wallet to load"));
     const action = $("#perp-action")?.value || "open_position";
     $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select').forEach((node) => {
       node.disabled = state.perpSubmitting;
@@ -1009,13 +1091,13 @@
       // wake the on-demand keeper. A market-level closeOnly flag remains a
       // hard risk control and is never bypassed here.
       submit.disabled = state.perpSubmitting || !enabled || !state.account || !market || !canClaimPlatformFees || (addsRisk && market?.closeOnly) || (action === "open_position" && epochEnded) || (changesLiquidity && hasOpenInterest);
-      submit.textContent = state.perpSubmitting ? "正在校验并等待钱包确认…" : "确认并提交链上交易";
+      submit.textContent = state.perpSubmitting ? "正在校验并等待钱包确认…" : uiCopy("确认并提交链上交易", "Confirm and submit on-chain");
     }
     const preview = $("[data-perp-preview]");
     if (preview) {
       preview.hidden = !state.preparedPerpAction;
       preview.innerHTML = state.preparedPerpAction
-        ? `<div class="section-title"><h3>链上交易快照</h3><span class="tag lime">${state.preparedPerpAction.transactions.length} 笔</span></div>${state.preparedPerpAction.transactions.map((transaction, index) => `<div class="review-row"><span>${index + 1}. ${escapeHtml(transaction.label)}</span><strong>${escapeHtml(short(transaction.to))}</strong></div>`).join("")}`
+        ? uiMarkup`<div class="section-title"><h3>链上交易快照</h3><span class="tag lime">${state.preparedPerpAction.transactions.length} 笔</span></div>${state.preparedPerpAction.transactions.map((transaction, index) => `<div class="review-row"><span>${index + 1}. ${escapeHtml(transaction.label)}</span><strong>${escapeHtml(short(transaction.to))}</strong></div>`).join("")}`
         : "";
     }
     renderPerpetualServices();
@@ -1414,15 +1496,15 @@
     const quote = String(token.quote_token || "BNB").toUpperCase();
     const netFlow = hasNumber(token.net_flow_usd_24h) ? usd(token.net_flow_usd_24h) : hasNumber(token.net_flow_quote_24h) ? `${decimal(token.net_flow_quote_24h)} ${quote}` : "—";
     const flowClass = number(token.net_flow_usd_24h ?? token.net_flow_quote_24h) < 0 ? "down" : "up";
-    return `<button class="token-card" data-live-token="${escapeHtml(address)}" data-open="detail"><div class="token-head"><img class="token-logo" src="${escapeHtml(image)}" alt="${escapeHtml(token.token_name || token.symbol || "Token")}"><div class="token-name"><strong>${escapeHtml(token.token_name || token.symbol || "—")}</strong><small>${escapeHtml(token.symbol || "—")}${escapeHtml(classification)} · ${escapeHtml(status(token))} · ${escapeHtml(age(token.submitted_at))}</small></div><span class="change ${changeClass}">${hasChange ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : `${progress.toFixed(0)}%`}</span></div><div class="card-metrics"><div><span>市值</span><strong>${escapeHtml(usdOrQuote(token.market_cap_usd, token.market_cap_quote, quote))}</strong></div><div><span>24H 成交</span><strong>${escapeHtml(usdOrQuote(token.volume_usd_24h, token.volume_quote_24h, quote))}</strong></div><div><span>进度</span><strong>${progress.toFixed(0)}%</strong></div></div><div class="market-signals"><span>${escapeHtml(taxSummary(token))}</span><span>${escapeHtml(activitySummary(token))}</span><span class="${flowClass}">净流入 ${escapeHtml(netFlow)}</span></div><div class="curve"><i style="width:${progress}%"></i></div><div class="curve-label"><span>${Number(token.unique_traders_24h || 0).toLocaleString("en-US")} 位交易者</span><span>${escapeHtml(address ? short(address) : "地址待定")}</span></div></button>`;
+    return uiMarkup`<button class="token-card" data-live-token="${escapeHtml(address)}" data-open="detail"><div class="token-head"><img class="token-logo" src="${escapeHtml(image)}" alt="${escapeHtml(token.token_name || token.symbol || "Token")}"><div class="token-name"><strong>${escapeHtml(token.token_name || token.symbol || "—")}</strong><small>${escapeHtml(token.symbol || "—")}${escapeHtml(classification)} · ${escapeHtml(status(token))} · ${escapeHtml(age(token.submitted_at))}</small></div><span class="change ${changeClass}">${hasChange ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : `${progress.toFixed(0)}%`}</span></div><div class="card-metrics"><div><span>市值</span><strong>${escapeHtml(usdOrQuote(token.market_cap_usd, token.market_cap_quote, quote))}</strong></div><div><span>24H 成交</span><strong>${escapeHtml(usdOrQuote(token.volume_usd_24h, token.volume_quote_24h, quote))}</strong></div><div><span>进度</span><strong>${progress.toFixed(0)}%</strong></div></div><div class="market-signals"><span>${escapeHtml(taxSummary(token))}</span><span>${escapeHtml(activitySummary(token))}</span><span class="${flowClass}">净流入 ${escapeHtml(netFlow)}</span></div><div class="curve"><i style="width:${progress}%"></i></div><div class="curve-label"><span>${Number(token.unique_traders_24h || 0).toLocaleString("en-US")} 位交易者</span><span>${escapeHtml(address ? short(address) : uiCopy("地址待定", "Address pending"))}</span></div></button>`;
   };
   const renderTokens = () => {
     const html = filteredTokens()
       .filter((token) => tokenAddress(token))
       .map(tokenCard)
       .join("");
-    $$(ui20260911 ? '[data-panel="discover"] .token-grid, [data-market-panel="spot"] .token-grid' : ".token-grid").forEach((node) => {
-      node.innerHTML = html || `<p class="footer-note">暂无真实 Pump 项目数据。</p>`;
+    $$(ui20260911 ? '[data-panel="discover"] [data-live-token-grid], [data-market-panel="spot"] .token-grid' : ".token-grid").forEach((node) => {
+      node.innerHTML = html || uiMarkup`<p class="footer-note">暂无真实 Pump 项目数据。</p>`;
     });
     bindLiveTokenSelection();
     renderRank();
@@ -1447,13 +1529,13 @@
     const launches = Number.isFinite(Number(summary.launches_24h)) ? Number(summary.launches_24h) : 0;
     const trades = Number.isFinite(Number(summary.trades_24h)) ? Number(summary.trades_24h) : 0;
     text("[data-market-total]", total.toLocaleString("en-US"));
-    text("[data-market-spot-count]", `${total.toLocaleString("en-US")} 个`);
+    text("[data-market-spot-count]", `${total.toLocaleString("en-US")}${uiCopy(' 个', '')}`);
     text("[data-market-launches]", launches.toLocaleString("en-US"));
     text("[data-market-trades]", trades.toLocaleString("en-US"));
     text("[data-market-live-count]", `LIVE ${state.marketActivity.length}`);
-    text("[data-market-stream-status]", `${selectedNetwork().shortName} 数据流已连接 · 最近 ${state.marketActivity.length} 条真实动态`);
+    text("[data-market-stream-status]", uiCopy(uiMarkup`${selectedNetwork().shortName} 数据流已连接 · 最近 ${state.marketActivity.length} 条真实动态`, `${selectedNetwork().shortName} feed connected · ${state.marketActivity.length} recent events`));
     const banner = $("[data-api-status]");
-    if (banner) banner.textContent = `实时 Pump 数据已连接 · ${total} 个项目 · ${state.marketActivity.length} 条最新动态`;
+    if (banner) banner.textContent = uiCopy(uiMarkup`实时 Pump 数据已连接 · ${total} 个项目 · ${state.marketActivity.length} 条最新动态`, `Live Pump data connected · ${total} projects · ${state.marketActivity.length} recent events`);
   };
   const renderLiveRows = () => {
     const visible = state.marketActivity.filter((item) => state.liveFilter === "all" || String(item.activity_type).toLowerCase() === state.liveFilter);
@@ -1464,7 +1546,7 @@
         const label = kind === "buy" ? "BUY" : kind === "sell" ? "SELL" : "NEW";
         const token = state.tokens.find((entry) => tokenAddress(entry).toLowerCase() === String(item.token_address || "").toLowerCase());
         const symbol = item.symbol || item.token_name || token?.symbol || "TOKEN";
-        const amount = kind === "create" ? `创建 ${symbol}` : `${decimal(item.quote_amount)} ${item.quote_token || "BNB"} · ${decimal(item.token_amount)} ${symbol}`;
+        const amount = kind === "create" ? uiMarkup`创建 ${symbol}` : `${decimal(item.quote_amount)} ${item.quote_token || "BNB"} · ${decimal(item.token_amount)} ${symbol}`;
         const timestamp = Number(item.timestamp);
         const eventAge = age(new Date(timestamp > 1e12 ? timestamp : timestamp * 1000).toISOString());
         return `<button class="live-row" data-live-token="${escapeHtml(item.token_address || "")}" type="button"><span class="trade-type ${kind === "buy" ? "buy" : kind === "sell" ? "sell" : ""}">${label}</span><div><p><b>${escapeHtml(short(item.trader))}</b> · ${escapeHtml(symbol)}</p><small>${escapeHtml(amount)} · ${escapeHtml(item.status || "—")}</small></div><small>${escapeHtml(eventAge)}</small></button>`;
@@ -1473,14 +1555,14 @@
     const livePanel = $('[data-panel="live"]');
     if (livePanel) {
       [...livePanel.querySelectorAll(".live-row, .footer-note")].forEach((node) => node.remove());
-      livePanel.querySelector(".filter-row")?.insertAdjacentHTML("afterend", rows || `<p class="footer-note">暂无真实全市场链上动态。</p>`);
+      livePanel.querySelector(".filter-row")?.insertAdjacentHTML("afterend", rows || uiMarkup`<p class="footer-note">暂无真实全市场链上动态。</p>`);
     }
     bindLiveTokenSelection();
   };
   const renderRank = () => {
     const panel = $('[data-panel="rank"]');
     if (!panel) return;
-    [...panel.querySelectorAll(".rank-row")].forEach((node) => node.remove());
+    [...panel.querySelectorAll(".rank-row, .footer-note")].forEach((node) => node.remove());
     let ranked = [...state.tokens];
     if (state.rankFilter === "latest") ranked.sort((a, b) => tokenCreatedAt(b) - tokenCreatedAt(a));
     else if (state.rankFilter === "migrated") ranked = ranked.filter(tokenIsMigrated).sort((a, b) => tokenCreatedAt(b) - tokenCreatedAt(a));
@@ -1498,10 +1580,10 @@
         const quote = String(token.quote_token || "BNB").toUpperCase();
         const right = state.rankFilter === "volume" ? usdOrQuote(marketMetric(token, "volume_usd"), marketMetric(token, "volume_quote"), quote) : state.rankFilter === "net-flow" ? (hasNumber(token.net_flow_usd_24h) ? usd(token.net_flow_usd_24h) : `${decimal(token.net_flow_quote_24h)} ${quote}`) : state.rankFilter === "market-cap" ? usdOrQuote(token.market_cap_usd, token.market_cap_quote, quote) : usdOrQuote(token.current_price_usd, token.current_trade_price || token.current_price_quote || token.current_price_bnb, quote, false);
         const badge = Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : `${number(token.progress_percent).toFixed(0)}%`;
-        return `<button class="rank-row" data-live-token="${escapeHtml(tokenAddress(token))}"><span class="num">${String(index + 1).padStart(2, "0")}</span><img src="${escapeHtml(assetImage(token))}" alt="${escapeHtml(token.symbol || "Token")}"><div><strong>${escapeHtml(token.symbol || token.token_name || "—")}</strong><small>${escapeHtml(status(token))} · ${escapeHtml(taxSummary(token))} · ${windowLabel} ${Number(marketMetric(token, "trade_count") || 0).toLocaleString("en-US")} 笔</small></div><div class="rank-price"><strong>${escapeHtml(right)}</strong><span class="${change < 0 ? "down" : "up"}">${escapeHtml(state.rankFilter === "net-flow" ? activitySummary(token) : badge)}</span></div></button>`;
+        return uiMarkup`<button class="rank-row" data-live-token="${escapeHtml(tokenAddress(token))}"><span class="num">${String(index + 1).padStart(2, "0")}</span><img src="${escapeHtml(assetImage(token))}" alt="${escapeHtml(token.symbol || "Token")}"><div><strong>${escapeHtml(token.symbol || token.token_name || "—")}</strong><small>${escapeHtml(status(token))} · ${escapeHtml(taxSummary(token))} · ${windowLabel} ${Number(marketMetric(token, "trade_count") || 0).toLocaleString("en-US")} 笔</small></div><div class="rank-price"><strong>${escapeHtml(right)}</strong><span class="${change < 0 ? "down" : "up"}">${escapeHtml(state.rankFilter === "net-flow" ? activitySummary(token) : badge)}</span></div></button>`;
       })
       .join("");
-    (panel.querySelector("[data-rank-windows]") || panel.querySelector(".rank-tabs"))?.insertAdjacentHTML("afterend", rows || `<p class="footer-note">暂无真实 Pump 排行数据。</p>`);
+    (panel.querySelector("[data-rank-windows]") || panel.querySelector(".rank-tabs"))?.insertAdjacentHTML("afterend", rows || uiMarkup`<p class="footer-note">暂无真实 Pump 排行数据。</p>`);
     bindLiveTokenSelection();
     text("[data-rank-total]", state.tokens.length);
     text("[data-rank-migrated]", state.tokens.filter(tokenIsMigrated).length);
@@ -1510,13 +1592,15 @@
   const renderHolders = (address, payload) => {
     if (tokenAddress(state.selected).toLowerCase() !== String(address || "").toLowerCase()) return;
     const rows = Array.isArray(payload?.top_holders) ? payload.top_holders : [];
+    text('[data-detail-holder-total]', payload?.available !== false && hasNumber(payload?.holders_count) ? String(payload.holders_count) : '—');
+    text('[data-detail-top-ten]', payload?.available !== false && rows.length && rows.slice(0, 10).every(holder => hasNumber(holder.percentage)) ? `${rows.slice(0, 10).reduce((sum, holder) => sum + Number(holder.percentage), 0).toFixed(2)}%` : '—');
     if (payload?.available === false) {
-      text("[data-holder-count]", "等待链上索引");
+      text("[data-holder-count]", uiCopy("等待链上索引", "Waiting for on-chain indexing"));
       const list = $("[data-holder-list]");
-      if (list) list.innerHTML = `<p class="footer-note">该代币已上线，但持有人数据源尚未完成索引。请稍后刷新；这里不会展示推测数据。</p>`;
+      if (list) list.innerHTML = uiMarkup`<p class="footer-note">该代币已上线，但持有人数据源尚未完成索引。请稍后刷新；这里不会展示推测数据。</p>`;
       return;
     }
-    text("[data-holder-count]", payload?.holders_count ? `${Number(payload.holders_count).toLocaleString("en-US")} 位持有人` : "暂无可用持有人数据");
+    text("[data-holder-count]", payload?.holders_count ? uiMarkup`${Number(payload.holders_count).toLocaleString("en-US")} 位持有人` : uiCopy("暂无可用持有人数据", "Holder data unavailable"));
     const list = $("[data-holder-list]");
     if (!list) return;
     list.innerHTML = rows.length
@@ -1529,7 +1613,7 @@
             return `<div class="holder-bar"><div class="holder-address"><span class="num">${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(short(holderAddress))}</strong>${holderAddress.toLowerCase() === String(state.detail?.creator || "").toLowerCase() ? '<span class="creator-badge">CREATOR</span>' : ""}</div><i style="--w:${safePercentage}%"></i><strong>${safePercentage ? `${safePercentage.toFixed(2)}%` : "—"}</strong></div>`;
           })
           .join("")}</div>`
-      : `<p class="footer-note">当前数据源尚未返回该代币的持有人分布，不展示推测数据。</p>`;
+      : uiMarkup`<p class="footer-note">当前数据源尚未返回该代币的持有人分布，不展示推测数据。</p>`;
   };
   const loadHolders = async () => {
     const address = tokenAddress(state.selected).toLowerCase();
@@ -1554,15 +1638,15 @@
   };
   const renderComments = (address = tokenAddress(state.selected).toLowerCase()) => {
     const comments = state.comments[address] || [];
-    text("[data-comment-count]", `${comments.length} 条`);
+    text("[data-comment-count]", uiMarkup`${comments.length} 条`);
     const list = $("[data-comment-list]");
-    if (list) list.innerHTML = comments.length ? comments.map((comment) => `<article class="comment-card"><div class="between"><strong>${escapeHtml(short(comment.author_address))}</strong><span>${escapeHtml(age(comment.created_at))}</span></div><p>${escapeHtml(comment.body)}</p></article>`).join("") : `<p class="footer-note">暂无评论。这里不会展示模拟内容。</p>`;
+    if (list) list.innerHTML = comments.length ? comments.map((comment) => `<article class="comment-card"><div class="between"><strong>${escapeHtml(short(comment.author_address))}</strong><span>${escapeHtml(age(comment.created_at))}</span></div><p>${escapeHtml(comment.body)}</p></article>`).join("") : uiMarkup`<p class="footer-note">暂无评论。这里不会展示模拟内容。</p>`;
     const input = $("[data-comment-input]");
     if (input) input.disabled = !state.account;
     const submit = $("[data-comment-submit]");
     if (submit) {
       submit.disabled = !state.account;
-      submit.textContent = state.account ? "发布" : "连接钱包";
+      submit.textContent = state.account ? "发布" : uiCopy("连接钱包", "Connect Wallet");
     }
   };
   const loadComments = async (force = false) => {
@@ -1610,6 +1694,13 @@
   const renderAlerts = () => {
     const list = $("[data-alert-list]");
     if (!list) return;
+    const tokenSelect = $('#alert-token-select');
+    if (tokenSelect) {
+      const previous = tokenSelect.value;
+      tokenSelect.innerHTML = '<option value="">请选择代币</option>' + state.tokens.map(item => `<option value="${escapeHtml(tokenAddress(item))}">${escapeHtml(item.token_name || item.symbol || short(tokenAddress(item)))}</option>`).join('');
+      if (state.tokens.some(item => tokenAddress(item) === previous)) tokenSelect.value = previous;
+    }
+    text('[data-alert-record-count]', uiMarkup`${state.alerts.length} 条`);
     const labels = {
       curve_80: "曲线达到 80%",
       curve_90: "曲线达到 90%",
@@ -1621,18 +1712,18 @@
       ? state.alerts
           .map((alert) => {
             const token = state.tokens.find((item) => tokenAddress(item).toLowerCase() === alert.token_address.toLowerCase());
-            const alertState = alert.enabled ? "监控中" : alert.last_triggered_at ? `已触发 · ${formatDate(alert.last_triggered_at)}` : "已关闭";
-            return `<article class="profile-card alert-card"><div class="between"><div><strong>${escapeHtml(token?.token_name || token?.symbol || short(alert.token_address))}</strong><p class="footer-note">${escapeHtml(labels[alert.alert_type] || alert.alert_type)}${alert.threshold ? ` · ${escapeHtml(alert.threshold)}` : ""} · ${escapeHtml(alertState)}</p></div>${alert.enabled ? `<button class="secondary" data-alert-remove="${escapeHtml(alert.id)}">关闭</button>` : ""}</div></article>`;
+            const alertState = alert.enabled ? "监控中" : alert.last_triggered_at ? uiMarkup`已触发 · ${formatDate(alert.last_triggered_at)}` : "已关闭";
+            return `<article class="profile-card alert-card"><div class="between"><div><strong>${escapeHtml(token?.token_name || token?.symbol || short(alert.token_address))}</strong><p class="footer-note">${escapeHtml(labels[alert.alert_type] || alert.alert_type)}${alert.threshold ? ` · ${escapeHtml(alert.threshold)}` : ""} · ${escapeHtml(alertState)}</p></div>${alert.enabled ? uiMarkup`<button class="secondary" data-alert-remove="${escapeHtml(alert.id)}">关闭</button>` : ""}</div></article>`;
           })
           .join("")
-      : `<p class="footer-note">${state.account ? "尚未设置提醒。请在代币详情中开启。" : "连接钱包后显示提醒。"}</p>`;
+      : `<p class="footer-note">${state.account ? uiCopy("尚未设置提醒。请在代币详情中开启。", "No alerts set. Enable them on a token's detail page.") : "连接钱包后显示提醒。"}</p>`;
     $$("[data-alert-remove]").forEach((node) => node.addEventListener("click", () => removeAlert(node.dataset.alertRemove).catch((error) => toastError(error, "提醒关闭失败"))));
     renderAlertButtons();
   };
-  const setTokenAlert = async (alertType) => {
+  const setTokenAlert = async (alertType, requestedAddress = tokenAddress(state.selected)) => {
     if (!state.account) await connectWallet();
     await assertProviderState();
-    const address = tokenAddress(state.selected).toLowerCase();
+    const address = String(requestedAddress || '').toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(address)) throw new Error("请先选择代币");
     const existing = state.alerts.find((alert) => alert.token_address?.toLowerCase() === address && alert.alert_type === alertType);
     if (existing?.enabled) return removeAlert(existing.id);
@@ -1681,34 +1772,69 @@
     const visibleHistory = state.history.filter((tx) => selectedActivityType === "all" || activityType(tx) === selectedActivityType);
     const launchPanel = $('[data-panel="my-launches"]');
     if (launchPanel) {
-      launchPanel.querySelectorAll(".launch-card, .summary-hero").forEach((node) => node.remove());
-      launchPanel.querySelector(".filter-row")?.insertAdjacentHTML("beforebegin", `<div class="summary-hero"><span class="eyebrow">CREATOR OVERVIEW</span><h1>${state.account ? "真实链上数据" : "—"}</h1><p>${state.account ? "当前钱包的真实发射记录" : "连接并验证钱包后显示真实数据"}</p><div class="summary-grid"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>已迁移</span><strong>${launches.filter((item) => item.status === "migrated").length}</strong></div><div><span>交易记录</span><strong>${state.history.length}</strong></div></div></div>`);
-      const cards = visibleLaunches.map((launch) => `<button class="launch-card" data-live-token="${escapeHtml(launch.contract_address || "")}"><div class="launch-card-head"><img src="${escapeHtml(assetImage(launch))}" alt="${escapeHtml(launch.token_name || launch.symbol || "Token")}"><div><strong>${escapeHtml(launch.token_name || launch.symbol || "—")} · ${escapeHtml(launch.symbol || "—")}</strong><small>${escapeHtml(status(launch))} · ${escapeHtml(age(launch.submitted_at))}</small></div><span class="tag lime">${escapeHtml(String(launch.status || "").toUpperCase())}</span></div><div class="card-metrics"><div><span>计价</span><strong>${escapeHtml(launch.quote_token || "BNB")}</strong></div><div><span>地址</span><strong>${escapeHtml(short(launch.contract_address))}</strong></div><div><span>网络</span><strong>${escapeHtml(launch.chain_id || "bsc")}</strong></div></div></button>`).join("");
-      launchPanel.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">${state.account ? "当前筛选暂无真实发射记录。" : "连接并验证钱包后显示真实发射记录。"}</p>`);
+      launchPanel.querySelectorAll(".launch-card, .summary-hero, .footer-note").forEach((node) => node.remove());
+      launchPanel.querySelector(".filter-row")?.insertAdjacentHTML("beforebegin", uiMarkup`<div class="summary-hero"><span class="eyebrow">CREATOR OVERVIEW</span><h1>${state.account ? uiCopy("真实链上数据", "Real on-chain data") : "—"}</h1><p>${state.account ? uiCopy("当前钱包的真实发射记录", "Launches by this wallet") : "连接并验证钱包后显示真实数据"}</p><div class="summary-grid"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>已迁移</span><strong>${launches.filter((item) => item.status === "migrated").length}</strong></div><div><span>交易记录</span><strong>${state.history.length}</strong></div></div></div>`);
+      const cards = visibleLaunches.map((launch) => uiMarkup`<button class="launch-card" data-live-token="${escapeHtml(launch.contract_address || "")}"><div class="launch-card-head"><img src="${escapeHtml(assetImage(launch))}" alt="${escapeHtml(launch.token_name || launch.symbol || "Token")}"><div><strong>${escapeHtml(launch.token_name || launch.symbol || "—")} · ${escapeHtml(launch.symbol || "—")}</strong><small>${escapeHtml(status(launch))} · ${escapeHtml(age(launch.submitted_at))}</small></div><span class="tag lime">${escapeHtml(String(launch.status || "").toUpperCase())}</span></div><div class="card-metrics"><div><span>计价</span><strong>${escapeHtml(launch.quote_token || "BNB")}</strong></div><div><span>地址</span><strong>${escapeHtml(short(launch.contract_address))}</strong></div><div><span>网络</span><strong>${escapeHtml(launch.chain_id || "bsc")}</strong></div></div></button>`).join("");
+      launchPanel.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">${state.account ? uiCopy("当前筛选暂无真实发射记录。", "No launches match this filter.") : "连接并验证钱包后显示真实发射记录。"}</p>`);
       bindLiveTokenSelection();
     }
     const activity = $('[data-panel="activity"]');
     if (activity) {
-      activity.querySelectorAll(".activity-card").forEach((node) => node.remove());
+      activity.querySelectorAll(".activity-card, .footer-note").forEach((node) => node.remove());
       const cards = visibleHistory
         .map((tx) => {
           const kind = activityType(tx);
-          const label = kind === "buy" ? "买入" : kind === "sell" ? "卖出" : kind === "create" ? "创建代币" : "交易";
+          const label = kind === "buy" ? uiCopy("买入", "Buy") : kind === "sell" ? uiCopy("卖出", "Sell") : kind === "create" ? uiCopy("创建代币", "Create Token") : "交易";
           const amount = kind === "create" ? `${tx.symbol || tx.token_name || "—"} · ${short(tx.token_address)}` : `${decimal(tx.quote_amount)} ${tx.quote_token || "BNB"} · ${decimal(tx.token_amount)} ${tx.symbol || tx.token_name || "TOKEN"}`;
           const txHash = validTxHash(tx.tx_hash);
           const content = `<span class="activity-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${kind === "sell" ? "arrow-up-right" : kind === "buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><div><strong>${escapeHtml(label)} · ${escapeHtml(tx.token_name || tx.symbol || "—")}</strong><small>${escapeHtml(amount)} · ${escapeHtml(tx.status || "—")}</small></div><div class="right"><strong>${escapeHtml(txHash ? short(txHash) : "—")}</strong><small>${escapeHtml(age(tx.created_at))}</small></div>`;
           return txHash ? `<a class="activity-card" href="${escapeHtml(selectedNetwork().explorer)}/tx/${txHash}" target="_blank" rel="noopener noreferrer">${content}</a>` : `<div class="activity-card">${content}</div>`;
         })
         .join("");
-      activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || `<p class="footer-note">暂无真实交易记录。</p>`);
+      activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || uiMarkup`<p class="footer-note">暂无真实交易记录。</p>`);
     }
     const profilePanel = $('[data-panel="profile"]');
-    profilePanel?.querySelector("[data-profile-summary]")?.remove();
-    profilePanel?.querySelector("[data-reward-summary]")?.remove();
-    if (profilePanel) {
-      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("beforebegin", `<div class="profile-card" data-profile-summary><div class="profile-head"><span class="profile-avatar">${state.account ? state.account.slice(2, 4).toUpperCase() : "—"}</span><div><h2>${state.account ? short(state.account) : "请连接钱包"}</h2><p>${state.account ? `${escapeHtml(selectedNetwork().shortName.toUpperCase())} · 实时数据` : "连接钱包后显示账户数据"}</p></div><span class="tag lime">PUMP</span></div><div class="card-metrics"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>交易次数</span><strong>${state.history.length}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div>${state.account ? `<div class="points-summary"><div><span>PUMP 积分</span><strong>${Number(state.points?.wallet_points || 0).toLocaleString("en-US")}</strong></div><div><span>积分排名</span><strong>${state.points?.wallet_rank ? `#${state.points.wallet_rank}` : "—"}</strong></div></div>` : ""}</div>`);
+    if (!profilePanel?.hasAttribute('data-reference-profile')) {
+      profilePanel?.querySelector("[data-profile-summary]")?.remove();
+      profilePanel?.querySelector("[data-reward-summary]")?.remove();
+    }
+    if (profilePanel?.hasAttribute('data-reference-profile')) {
+      const setProfile = (selector, value) => {
+        profilePanel.querySelectorAll(selector).forEach(node => { node.textContent = value; });
+      };
+      setProfile('.profile-connect-copy strong', state.account ? short(state.account) : uiCopy("连接钱包，查看你的账户", "Connect wallet to view your account"));
+      setProfile('.profile-avatar', state.account ? state.account.slice(2, 4).toUpperCase() : '—');
+      setProfile('.profile-connect-action', state.account ? uiCopy("已连接", "Connected") : uiCopy("连接钱包", "Connect Wallet"));
+      const stats = profilePanel.querySelectorAll('.profile-stats > div');
+      const migrated = launches.filter(tokenIsMigrated).length;
+      if (stats[0]) {
+        stats[0].querySelector('strong').textContent = state.account ? String(launches.length) : '—';
+        stats[0].querySelector('small').textContent = state.account ? uiMarkup`${migrated} 个已迁移` : uiCopy("连接钱包后读取", "Connect wallet to load");
+      }
+      if (stats[1]) {
+        stats[1].querySelector('strong').textContent = state.account ? String(state.history.length) : '—';
+        stats[1].querySelector('small').textContent = uiCopy("已加载的真实记录", "Loaded records");
+      }
+      if (stats[2]) {
+        stats[2].querySelector('span').textContent = uiCopy("奖励账本", "Reward ledger");
+        stats[2].querySelector('strong').textContent = state.account ? uiMarkup`${state.creatorRewards.length} 条` : '—';
+        stats[2].querySelector('small').textContent = uiCopy("实际领取状态以账本为准", "Claim status follows the ledger");
+      }
+      setProfile('.launch-tool .tag', state.account ? uiMarkup`${launches.length} 个项目` : '— 个项目');
+      setProfile('.launch-tool .tool-foot > span', state.account ? uiMarkup`${migrated} 个项目已迁移` : uiCopy("连接钱包后读取", "Connect wallet to load"));
+      setProfile('[data-open="activity"] .tool-copy small', state.account ? uiCopy(`${state.history.length} 条已加载记录`, `${state.history.length} loaded records`) : uiCopy('当前钱包链上记录', 'On-chain activity for this wallet'));
+      setProfile('.creator-reward-card strong', state.account ? uiCopy(`${state.creatorRewards.length} 条真实奖励记录 · 查看明细`, `${state.creatorRewards.length} reward records · View details`) : uiCopy('连接钱包后读取真实奖励账本', 'Connect wallet to load reward ledger'));
+      setProfile('.revenue-tool .tool-value', state.account ? uiCopy(`${state.creatorRewards.length} 条记录`, `${state.creatorRewards.length} records`) : '—');
+      const details = profilePanel.querySelector('[data-profile-extra-content]');
+      if (details) {
+        const rewards = state.creatorRewards.map(reward => `<div class="review-row"><span>${escapeHtml(reward.quote_symbol || 'BNB')} · ${escapeHtml(reward.status || '—')}</span><strong>${escapeHtml(baseUnits(reward.amount_wei))} ${escapeHtml(reward.quote_symbol || 'BNB')}</strong></div>`).join('');
+        const emptyRewards = uiCopy('<p class="footer-note">暂无已加载的奖励记录。</p>', '<p class="footer-note">No reward records loaded.</p>');
+        details.innerHTML = uiMarkup`<div class="points-summary"><div><span>PUMP 积分</span><strong>${state.account ? Number(state.points?.wallet_points || 0).toLocaleString('en-US') : '—'}</strong></div><div><span>积分排名</span><strong>${state.account && state.points?.wallet_rank ? `#${Number(state.points.wallet_rank)}` : '—'}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div>${rewards || emptyRewards}<p class="footer-note">未执行链上兑付的金额不代表已到账。</p>`;
+      }
+    } else if (profilePanel) {
+      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("beforebegin", uiMarkup`<div class="profile-card" data-profile-summary><div class="profile-head"><span class="profile-avatar">${state.account ? state.account.slice(2, 4).toUpperCase() : "—"}</span><div><h2>${state.account ? short(state.account) : uiCopy("请连接钱包", "Connect wallet")}</h2><p>${state.account ? uiMarkup`${escapeHtml(selectedNetwork().shortName.toUpperCase())} · 实时数据` : uiCopy("连接钱包后显示账户数据", "Connect your wallet to view account data")}</p></div><span class="tag lime">PUMP</span></div><div class="card-metrics"><div><span>已发射</span><strong>${launches.length}</strong></div><div><span>交易次数</span><strong>${state.history.length}</strong></div><div><span>收藏</span><strong>${state.favorites.length}</strong></div></div>${state.account ? uiMarkup`<div class="points-summary"><div><span>PUMP 积分</span><strong>${Number(state.points?.wallet_points || 0).toLocaleString("en-US")}</strong></div><div><span>积分排名</span><strong>${state.points?.wallet_rank ? `#${state.points.wallet_rank}` : "—"}</strong></div></div>` : ""}</div>`);
       const rewards = state.creatorRewards.map((reward) => `<div class="review-row"><span>${escapeHtml(reward.quote_symbol || "BNB")} · ${escapeHtml(reward.status === "accrued" ? "可签署凭证" : reward.status === "pending_contract_upgrade" ? "待曲线合约升级" : reward.status)}</span><strong>${escapeHtml(baseUnits(reward.amount_wei))} ${escapeHtml(reward.quote_symbol || "BNB")}</strong></div>`).join("");
-      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("afterend", `<div class="profile-card" data-reward-summary><div class="section-title"><h3>创作者奖励账本</h3><span class="tag lime">API</span></div>${rewards || `<p class="footer-note">${state.account ? "暂无已记录的创作者奖励。" : "连接钱包后显示奖励账本。"}</p>`}<p class="footer-note">这里只展示后端真实累计；未执行链上兑付的金额不会标记为已到账。</p></div>`);
+      profilePanel.querySelector(".section-title")?.insertAdjacentHTML("afterend", uiMarkup`<div class="profile-card" data-reward-summary><div class="section-title"><h3>创作者奖励账本</h3><span class="tag lime">API</span></div>${rewards || `<p class="footer-note">${state.account ? "暂无已记录的创作者奖励。" : "连接钱包后显示奖励账本。"}</p>`}<p class="footer-note">这里只展示后端真实累计；未执行链上兑付的金额不会标记为已到账。</p></div>`);
     }
     const watchlist = $('[data-panel="watchlist"] .token-grid');
     if (watchlist) {
@@ -1717,7 +1843,7 @@
         .filter((token) => favoriteAddresses.has(tokenAddress(token).toLowerCase()))
         .map(tokenCard)
         .join("");
-      watchlist.innerHTML = cards || `<p class="footer-note">暂无自选代币。请在代币详情中点击收藏。</p>`;
+      watchlist.innerHTML = cards || uiMarkup`<p class="footer-note">暂无自选代币。请在代币详情中点击收藏。</p>`;
       bindLiveTokenSelection();
     }
     renderAlerts();
@@ -1760,24 +1886,24 @@
     }
     const prepared = state.preparedVault;
     preview.hidden = false;
-    preview.innerHTML = `<div class="section-title"><h3>部署快照</h3><span class="tag lime">不可修改</span></div><div class="review-row"><span>预测 Vault</span><strong>${escapeHtml(prepared.predicted_vault_address)}</strong></div><div class="review-row"><span>计价资产</span><strong>${escapeHtml(prepared.quote_symbol)}</strong></div>${prepared.recipients.map((item) => `<div class="review-row"><span>${escapeHtml(short(item.address))}</span><strong>${(Number(item.bps) / 100).toFixed(2)}%</strong></div>`).join("")}<p class="footer-note">请再次核对地址。链上部署后，收款地址和比例不可修改。</p>`;
+    preview.innerHTML = uiMarkup`<div class="section-title"><h3>部署快照</h3><span class="tag lime">不可修改</span></div><div class="review-row"><span>预测 Vault</span><strong>${escapeHtml(prepared.predicted_vault_address)}</strong></div><div class="review-row"><span>计价资产</span><strong>${escapeHtml(prepared.quote_symbol)}</strong></div>${prepared.recipients.map((item) => `<div class="review-row"><span>${escapeHtml(short(item.address))}</span><strong>${(Number(item.bps) / 100).toFixed(2)}%</strong></div>`).join("")}<p class="footer-note">请再次核对地址。链上部署后，收款地址和比例不可修改。</p>`;
     deploy.disabled = !state.account || !state.vaultConfig?.enabled;
   };
   const renderVaults = () => {
     renderVaultRecipientRows();
     const firstRecipient = $(`[data-vault-recipient-list] [data-vault-recipient-address]`);
     if (state.account && firstRecipient && !firstRecipient.value) firstRecipient.value = state.account;
-    text("[data-vault-feature-status]", state.vaultConfig?.enabled ? "已启用" : "尚未部署");
+    text("[data-vault-feature-status]", state.vaultConfig?.enabled ? uiCopy("已启用", "Enabled") : uiCopy("尚未部署", "Not deployed"));
     text("[data-vault-keeper-status]", state.vaultConfig?.keeper_status === "ready" ? "READY" : "DISABLED");
     text("[data-vault-keeper-threshold]", state.vaultConfig?.auto_distribution_threshold_wei || "—");
     text("[data-vault-count]", String(state.vaults.length));
     const rewardList = $(`[data-unified-revenue-list]`);
     if (rewardList) {
-      const creator = state.creatorRewards.map((reward) => `<div class="profile-card vault-card"><div class="review-row"><span>创建者奖励 · ${escapeHtml(reward.status || "—")}</span><strong>${escapeHtml(baseUnits(reward.amount_wei))} ${escapeHtml(reward.quote_symbol || "BNB")}</strong></div></div>`).join("");
-      const dividends = state.holderDividends.map((reward) => `<div class="profile-card vault-card"><div class="review-row"><span>持币分红 · ${escapeHtml(reward.symbol)}</span><strong>${escapeHtml(baseUnits(reward.claimable_wei))} ${escapeHtml(reward.quote_symbol)}</strong></div><button class="secondary" type="button" data-holder-dividend-claim="${escapeHtml(reward.token_address)}">领取持币分红</button></div>`).join("");
-      const v3Rewards = state.v3FeeRewards.map((reward) => `<div class="profile-card vault-card"><div class="section-title"><h3>V3 LP 手续费奖励</h3><span class="tag lime">Epoch ${escapeHtml(reward.onchain_epoch)}</span></div><div class="review-row"><span>项目 / 奖励资产</span><strong>${escapeHtml(short(reward.token_address))} / ${escapeHtml(short(reward.reward_token_address))}</strong></div><div class="review-row"><span>${reward.claimed ? "已领取" : "可领取"}</span><strong>${escapeHtml(baseUnits(reward.amount_raw))}</strong></div><a class="review-row" href="https://bscscan.com/tx/${escapeHtml(reward.publish_tx_hash)}" target="_blank" rel="noopener noreferrer"><span>分配快照区块 ${Number(reward.snapshot_block).toLocaleString("en-US")}</span><strong>查看发布交易</strong></a>${reward.claim_transaction ? `<button class="secondary" type="button" data-v3-fee-claim="${escapeHtml(reward.id)}">领取 V3 手续费奖励</button>` : ""}</div>`).join("");
-      const vaultRows = state.vaults.flatMap((vault) => vault.recipients.filter((item) => item.is_current_wallet).map((item) => `<div class="profile-card vault-card"><div class="review-row"><span>Vault 可领取 · ${escapeHtml(vault.quote_symbol)}</span><strong>${escapeHtml(baseUnits(item.claimable_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div><div class="review-row"><span>Vault 已领取</span><strong>${escapeHtml(baseUnits(item.claimed_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div></div>`)).join("");
-      rewardList.innerHTML = creator || dividends || v3Rewards || vaultRows ? creator + dividends + v3Rewards + vaultRows : `<p class="footer-note">${state.account ? "当前没有可展示的收入。" : "连接钱包后显示创建者奖励、持币分红和链上 Vault 收入。"}</p>`;
+      const creator = state.creatorRewards.map((reward) => uiMarkup`<div class="profile-card vault-card"><div class="review-row"><span>创建者奖励 · ${escapeHtml(reward.status || "—")}</span><strong>${escapeHtml(baseUnits(reward.amount_wei))} ${escapeHtml(reward.quote_symbol || "BNB")}</strong></div></div>`).join("");
+      const dividends = state.holderDividends.map((reward) => uiMarkup`<div class="profile-card vault-card"><div class="review-row"><span>持币分红 · ${escapeHtml(reward.symbol)}</span><strong>${escapeHtml(baseUnits(reward.claimable_wei))} ${escapeHtml(reward.quote_symbol)}</strong></div><button class="secondary" type="button" data-holder-dividend-claim="${escapeHtml(reward.token_address)}">领取持币分红</button></div>`).join("");
+      const v3Rewards = state.v3FeeRewards.map((reward) => uiMarkup`<div class="profile-card vault-card"><div class="section-title"><h3>V3 LP 手续费奖励</h3><span class="tag lime">Epoch ${escapeHtml(reward.onchain_epoch)}</span></div><div class="review-row"><span>项目 / 奖励资产</span><strong>${escapeHtml(short(reward.token_address))} / ${escapeHtml(short(reward.reward_token_address))}</strong></div><div class="review-row"><span>${reward.claimed ? "已领取" : "可领取"}</span><strong>${escapeHtml(baseUnits(reward.amount_raw))}</strong></div><a class="review-row" href="https://bscscan.com/tx/${escapeHtml(reward.publish_tx_hash)}" target="_blank" rel="noopener noreferrer"><span>分配快照区块 ${Number(reward.snapshot_block).toLocaleString("en-US")}</span><strong>查看发布交易</strong></a>${reward.claim_transaction ? uiMarkup`<button class="secondary" type="button" data-v3-fee-claim="${escapeHtml(reward.id)}">领取 V3 手续费奖励</button>` : ""}</div>`).join("");
+      const vaultRows = state.vaults.flatMap((vault) => vault.recipients.filter((item) => item.is_current_wallet).map((item) => uiMarkup`<div class="profile-card vault-card"><div class="review-row"><span>Vault 可领取 · ${escapeHtml(vault.quote_symbol)}</span><strong>${escapeHtml(baseUnits(item.claimable_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div><div class="review-row"><span>Vault 已领取</span><strong>${escapeHtml(baseUnits(item.claimed_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div></div>`)).join("");
+      rewardList.innerHTML = creator || dividends || v3Rewards || vaultRows ? creator + dividends + v3Rewards + vaultRows : `<p class="footer-note">${state.account ? uiCopy("当前没有可展示的收入。", "No income available to display.") : "连接钱包后显示创建者奖励、持币分红和链上 Vault 收入。"}</p>`;
       $$(`[data-holder-dividend-claim]`).forEach((button) => button.addEventListener("click", () => claimHolderDividend(button.dataset.holderDividendClaim).catch((error) => toastError(error, "持币分红领取失败"))));
       $$(`[data-v3-fee-claim]`).forEach((button) => button.addEventListener("click", () => claimV3FeeReward(button.dataset.v3FeeClaim).catch((error) => toastError(error, "V3 手续费奖励领取失败"))));
     }
@@ -1786,11 +1912,11 @@
     const list = $(`[data-vault-list]`);
     if (!list) return;
     if (!state.account) {
-      list.innerHTML = `<p class="footer-note">连接并验证钱包后读取链上 Vault。</p>`;
+      list.innerHTML = uiMarkup`<p class="footer-note">连接并验证钱包后读取链上 Vault。</p>`;
       return;
     }
     if (!state.vaultConfig?.enabled) {
-      list.innerHTML = `<p class="footer-note">Split Vault Factory 尚未部署到当前网络，创建与领取功能保持禁用。</p>`;
+      list.innerHTML = uiMarkup`<p class="footer-note">Split Vault Factory 尚未部署到当前网络，创建与领取功能保持禁用。</p>`;
       return;
     }
     list.innerHTML = state.vaults.length
@@ -1798,13 +1924,13 @@
           .map((vault) => {
             const mine = vault.recipients.find((item) => item.is_current_wallet);
             const recipients = vault.recipients.map((item) => {
-              const history = (item.claim_history || []).slice(0, 10).map((claim) => `<a class="review-row" href="https://bscscan.com/tx/${escapeHtml(claim.tx_hash)}" target="_blank" rel="noopener noreferrer"><span>区块 ${Number(claim.block_number).toLocaleString("en-US")} · ${escapeHtml(short(claim.tx_hash))}</span><strong>已领 ${escapeHtml(baseUnits(claim.amount_raw))} ${escapeHtml(vault.quote_symbol)}</strong></a>`).join("");
-              return `<div class="review-row"><span>${escapeHtml(short(item.address))} · ${(Number(item.bps) / 100).toFixed(2)}%</span><strong>可领 ${escapeHtml(baseUnits(item.claimable_wei))} · 已领 ${escapeHtml(baseUnits(item.claimed_wei))}</strong></div>${history ? `<details><summary>领取流水（${item.claim_history.length}）</summary>${history}</details>` : ""}`;
+              const history = (item.claim_history || []).slice(0, 10).map((claim) => uiMarkup`<a class="review-row" href="https://bscscan.com/tx/${escapeHtml(claim.tx_hash)}" target="_blank" rel="noopener noreferrer"><span>区块 ${Number(claim.block_number).toLocaleString("en-US")} · ${escapeHtml(short(claim.tx_hash))}</span><strong>已领 ${escapeHtml(baseUnits(claim.amount_raw))} ${escapeHtml(vault.quote_symbol)}</strong></a>`).join("");
+              return uiMarkup`<div class="review-row"><span>${escapeHtml(short(item.address))} · ${(Number(item.bps) / 100).toFixed(2)}%</span><strong>可领 ${escapeHtml(baseUnits(item.claimable_wei))} · 已领 ${escapeHtml(baseUnits(item.claimed_wei))}</strong></div>${history ? uiMarkup`<details><summary>领取流水（${item.claim_history.length}）</summary>${history}</details>` : ""}`;
             }).join("");
-            return `<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(vault.quote_symbol)} Split Vault</h3><span class="tag lime">${escapeHtml(short(vault.vault_address))}</span></div><div class="review-row"><span>累计收入</span><strong>${escapeHtml(baseUnits(vault.total_received_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div><div class="review-row"><span>当前余额</span><strong>${escapeHtml(baseUnits(vault.current_balance_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div>${recipients}${mine?.claim_transaction ? `<button class="primary" type="button" data-vault-claim="${escapeHtml(vault.vault_address)}" ${BigInt(mine.claimable_wei || "0") > 0n ? "" : "disabled"}>领取 ${escapeHtml(baseUnits(mine.claimable_wei))} ${escapeHtml(vault.quote_symbol)}</button>` : ""}</article>`;
+            return uiMarkup`<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(vault.quote_symbol)} Split Vault</h3><span class="tag lime">${escapeHtml(short(vault.vault_address))}</span></div><div class="review-row"><span>累计收入</span><strong>${escapeHtml(baseUnits(vault.total_received_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div><div class="review-row"><span>当前余额</span><strong>${escapeHtml(baseUnits(vault.current_balance_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div>${recipients}${mine?.claim_transaction ? uiMarkup`<button class="primary" type="button" data-vault-claim="${escapeHtml(vault.vault_address)}" ${BigInt(mine.claimable_wei || "0") > 0n ? "" : "disabled"}>领取 ${escapeHtml(baseUnits(mine.claimable_wei))} ${escapeHtml(vault.quote_symbol)}</button>` : ""}</article>`;
           })
           .join("")
-      : `<p class="footer-note">当前钱包尚未创建 Split Vault。</p>`;
+      : uiMarkup`<p class="footer-note">当前钱包尚未创建 Split Vault。</p>`;
     $$(`[data-vault-claim]`).forEach((button) => button.addEventListener("click", () => claimVault(button.dataset.vaultClaim).catch((error) => toastError(error, "Vault 领取失败"))));
   };
   const loadVaultConfig = async () => {
@@ -2019,7 +2145,7 @@
     if (!entry) return;
     text("[data-vault-schema-title]", `${entry.name} · v${entry.version}`);
     text("[data-vault-schema-risk]", `${entry.tier} · ${entry.risk_level} risk`);
-    text("[data-vault-schema-note]", `${entry.audit_status}；开发者费 ${Number(entry.developer_fee_bps || 0)} bps。Schema 仅生成受审核字段与动作；签名前仍需核对目标 Factory 和 calldata。`);
+    text("[data-vault-schema-note]", uiMarkup`${entry.audit_status}；开发者费 ${Number(entry.developer_fee_bps || 0)} bps。Schema 仅生成受审核字段与动作；签名前仍需核对目标 Factory 和 calldata。`);
     const fields = Array.isArray(entry.vault_data_schema?.fields) ? entry.vault_data_schema.fields : [];
     const fieldsRoot = $(`[data-vault-schema-fields]`);
     if (fieldsRoot) fieldsRoot.innerHTML = fields.map((field) => {
@@ -2030,10 +2156,10 @@
       if (field.type === "select" && Array.isArray(field.options)) return `<label>${label}${description}</label><select class="field" data-vault-schema-input="${name}">${field.options.slice(0, 50).map((option) => `<option value="${escapeHtml(option.value ?? option)}">${escapeHtml(option.label ?? option)}</option>`).join("")}</select>`;
       const inputType = field.type === "uint256" ? "text" : "text";
       return `<label>${label}${description}</label><input class="field" type="${inputType}" data-vault-schema-input="${name}" placeholder="${escapeHtml(field.placeholder || field.type || "")}" ${field.required ? "required" : ""} />`;
-    }).join("") || `<p class="footer-note">该 Factory 没有部署参数。</p>`;
+    }).join("") || uiMarkup`<p class="footer-note">该 Factory 没有部署参数。</p>`;
     const actions = Array.isArray(entry.vault_ui_schema?.actions) ? entry.vault_ui_schema.actions : [];
     const actionsRoot = $(`[data-vault-schema-actions]`);
-    if (actionsRoot) actionsRoot.innerHTML = actions.map((action) => `<div class="review-row"><span>${escapeHtml(action.label || action.name)}</span><strong>${escapeHtml(action.description || "需钱包确认")}</strong></div>`).join("") || `<p class="footer-note">该 Factory 没有公开 Vault 操作。</p>`;
+    if (actionsRoot) actionsRoot.innerHTML = actions.map((action) => `<div class="review-row"><span>${escapeHtml(action.label || action.name)}</span><strong>${escapeHtml(action.description || "需钱包确认")}</strong></div>`).join("") || uiMarkup`<p class="footer-note">该 Factory 没有公开 Vault 操作。</p>`;
     const actionForm = $(`[data-vault-schema-action-form]`);
     if (actionForm) actionForm.hidden = !actions.length;
     const actionSelect = $("#registry-vault-action");
@@ -2049,19 +2175,19 @@
     const execute = $(`[data-vault-schema-execute]`);
     if (preview && execute) {
       preview.hidden = !state.preparedRegisteredVault;
-      preview.innerHTML = state.preparedRegisteredVault ? `<div class="review-row"><span>目标 Factory</span><strong>${escapeHtml(state.preparedRegisteredVault.to)}</strong></div><div class="review-row"><span>交易 value</span><strong>${escapeHtml(state.preparedRegisteredVault.value)}</strong></div><p class="footer-note">calldata 仅由已审核 Schema 在 API 端编码；请在钱包中再次核对。</p>` : "";
+      preview.innerHTML = state.preparedRegisteredVault ? uiMarkup`<div class="review-row"><span>目标 Factory</span><strong>${escapeHtml(state.preparedRegisteredVault.to)}</strong></div><div class="review-row"><span>交易 value</span><strong>${escapeHtml(state.preparedRegisteredVault.value)}</strong></div><p class="footer-note">calldata 仅由已审核 Schema 在 API 端编码；请在钱包中再次核对。</p>` : "";
       execute.disabled = !state.account || !state.preparedRegisteredVault;
     }
     const actionPreview = $(`[data-vault-schema-action-preview]`);
     const actionExecute = $(`[data-vault-schema-action-execute]`);
     if (actionPreview && actionExecute) {
       actionPreview.hidden = !state.preparedRegisteredVaultAction;
-      actionPreview.innerHTML = state.preparedRegisteredVaultAction ? `<div class="review-row"><span>目标 Vault</span><strong>${escapeHtml(state.preparedRegisteredVaultAction.to)}</strong></div><p class="footer-note">API 已调用已审核 Schema 中的 Factory 验证函数，确认该 Vault 由当前已激活 Factory 登记。</p>` : "";
+      actionPreview.innerHTML = state.preparedRegisteredVaultAction ? uiMarkup`<div class="review-row"><span>目标 Vault</span><strong>${escapeHtml(state.preparedRegisteredVaultAction.to)}</strong></div><p class="footer-note">API 已调用已审核 Schema 中的 Factory 验证函数，确认该 Vault 由当前已激活 Factory 登记。</p>` : "";
       actionExecute.disabled = !state.account || !state.preparedRegisteredVaultAction;
     }
   };
   const renderStrategyStore = () => {
-    text("[data-strategy-status]", state.strategyConfig?.enabled ? "已启用" : "尚未部署");
+    text("[data-strategy-status]", state.strategyConfig?.enabled ? uiCopy("已启用", "Enabled") : uiCopy("尚未部署", "Not deployed"));
     text("[data-strategy-count]", String(state.strategies.length));
     const typeSelect = $("#strategy-type");
     const enabledTemplates = (state.strategyConfig?.templates || []).filter((template) => template.enabled !== false);
@@ -2071,11 +2197,11 @@
       typeSelect.value = enabledTemplates.some((template) => template.id === previous) ? previous : enabledTemplates[0].id;
     }
     const templates = $(`[data-strategy-template-list]`);
-    if (templates) templates.innerHTML = (state.strategyConfig?.templates || []).map((template) => `<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(template.name)}</h3><span class="tag ${template.tier === "official" ? "lime" : ""}">${escapeHtml(template.tier || "unverified")} · v${escapeHtml(template.factory_version || "—")}</span></div><p class="footer-note">${escapeHtml(template.purpose)}</p><div class="review-row"><span>控制权</span><strong>${escapeHtml(template.control_model)}</strong></div><div class="review-row"><span>审计 / 开发者费</span><strong>${escapeHtml(template.audit_status || "unverified")} / ${Number(template.developer_fee_bps || 0)} bps</strong></div><div class="review-row"><span>风险</span><strong>${escapeHtml((template.risks || []).join(" · "))}</strong></div></article>`).join("") || `<p class="footer-note">策略模板暂不可用。</p>`;
+    if (templates) templates.innerHTML = (state.strategyConfig?.templates || []).map((template) => uiMarkup`<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(template.name)}</h3><span class="tag ${template.tier === "official" ? "lime" : ""}">${escapeHtml(template.tier || "unverified")} · v${escapeHtml(template.factory_version || "—")}</span></div><p class="footer-note">${escapeHtml(template.purpose)}</p><div class="review-row"><span>控制权</span><strong>${escapeHtml(template.control_model)}</strong></div><div class="review-row"><span>审计 / 开发者费</span><strong>${escapeHtml(template.audit_status || "unverified")} / ${Number(template.developer_fee_bps || 0)} bps</strong></div><div class="review-row"><span>风险</span><strong>${escapeHtml((template.risks || []).join(" · "))}</strong></div></article>`).join("") || uiMarkup`<p class="footer-note">策略模板暂不可用。</p>`;
     text("[data-vault-registry-count]", String(state.vaultRegistry.length));
     const registry = $(`[data-vault-registry-list]`);
     if (registry) {
-      registry.innerHTML = state.vaultRegistry.length ? state.vaultRegistry.map((entry) => `<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(entry.name)}</h3><span class="tag ${entry.tier === "official" ? "lime" : ""}">${escapeHtml(entry.tier)} · ${escapeHtml(entry.risk_level)} risk</span></div><div class="review-row"><span>Factory / 版本</span><strong>${escapeHtml(short(entry.factory_address))} · v${escapeHtml(entry.version)}</strong></div><div class="review-row"><span>审计状态</span><strong>${escapeHtml(entry.audit_status)}</strong></div><div class="review-row"><span>支持资产 / 开发者费</span><strong>${escapeHtml((entry.supported_assets || []).join(" · "))} / ${Number(entry.developer_fee_bps || 0)} bps</strong></div><button class="secondary" type="button" data-vault-schema-open="${escapeHtml(entry.id)}">查看动态配置与操作</button></article>`).join("") : `<p class="footer-note">当前没有已审核上架的社区 Factory。</p>`;
+      registry.innerHTML = state.vaultRegistry.length ? state.vaultRegistry.map((entry) => uiMarkup`<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(entry.name)}</h3><span class="tag ${entry.tier === "official" ? "lime" : ""}">${escapeHtml(entry.tier)} · ${escapeHtml(entry.risk_level)} risk</span></div><div class="review-row"><span>Factory / 版本</span><strong>${escapeHtml(short(entry.factory_address))} · v${escapeHtml(entry.version)}</strong></div><div class="review-row"><span>审计状态</span><strong>${escapeHtml(entry.audit_status)}</strong></div><div class="review-row"><span>支持资产 / 开发者费</span><strong>${escapeHtml((entry.supported_assets || []).join(" · "))} / ${Number(entry.developer_fee_bps || 0)} bps</strong></div><button class="secondary" type="button" data-vault-schema-open="${escapeHtml(entry.id)}">查看动态配置与操作</button></article>`).join("") : uiMarkup`<p class="footer-note">当前没有已审核上架的社区 Factory。</p>`;
       $$(`[data-vault-schema-open]`).forEach((button) => button.addEventListener("click", () => {
         state.selectedVaultRegistryId = button.dataset.vaultSchemaOpen || "";
         state.preparedRegisteredVault = null;
@@ -2085,11 +2211,11 @@
     }
     renderRegistrySchema();
     const list = $(`[data-strategy-list]`);
-    if (list) list.innerHTML = state.strategies.length ? state.strategies.map((item) => `<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(strategyName(item.strategy))}</h3><span class="tag lime">${escapeHtml(short(item.vault_address))}</span></div><div class="review-row"><span>链上地址</span><strong>${escapeHtml(item.vault_address)}</strong></div></article>`).join("") : `<p class="footer-note">${state.account ? "当前钱包尚未部署策略 Vault。" : "连接钱包后读取。"}</p>`;
+    if (list) list.innerHTML = state.strategies.length ? state.strategies.map((item) => uiMarkup`<article class="profile-card vault-card"><div class="section-title"><h3>${escapeHtml(strategyName(item.strategy))}</h3><span class="tag lime">${escapeHtml(short(item.vault_address))}</span></div><div class="review-row"><span>链上地址</span><strong>${escapeHtml(item.vault_address)}</strong></div></article>`).join("") : `<p class="footer-note">${state.account ? uiCopy("当前钱包尚未部署策略 Vault。", "This wallet has not deployed a strategy Vault.") : uiCopy("连接钱包后读取。", "Connect wallet to load。")}</p>`;
     const actionVault = $("#strategy-action-vault");
     if (actionVault) {
       const previous = actionVault.value;
-      actionVault.innerHTML = state.strategies.length ? state.strategies.map((item) => `<option value="${escapeHtml(item.vault_address)}" data-strategy-id="${Number(item.strategy_id)}">${escapeHtml(strategyName(item.strategy))} · ${escapeHtml(short(item.vault_address))}</option>`).join("") : `<option value="">请先部署或加载策略</option>`;
+      actionVault.innerHTML = state.strategies.length ? state.strategies.map((item) => `<option value="${escapeHtml(item.vault_address)}" data-strategy-id="${Number(item.strategy_id)}">${escapeHtml(strategyName(item.strategy))} · ${escapeHtml(short(item.vault_address))}</option>`).join("") : uiMarkup`<option value="">请先部署或加载策略</option>`;
       if (state.strategies.some((item) => item.vault_address === previous)) actionVault.value = previous;
     }
     renderStrategyActionControls();
@@ -2112,7 +2238,7 @@
     if (useSelectedLp) {
       useSelectedLp.hidden = type !== "lp_dividend";
       useSelectedLp.disabled = !selectedLpReady;
-      useSelectedLp.textContent = selectedLpReady ? `使用 ${state.detail?.symbol || "当前项目"} LP · ${short(selectedLp)}` : "使用当前迁移项目 LP";
+      useSelectedLp.textContent = selectedLpReady ? uiMarkup`使用 ${state.detail?.symbol || "当前项目"} LP · ${short(selectedLp)}` : "使用当前迁移项目 LP";
     }
     const lpHint = $(`[data-strategy-lp-hint]`);
     if (lpHint) lpHint.hidden = type !== "lp_dividend" || selectedLpReady;
@@ -2127,7 +2253,7 @@
         deploy.disabled = true;
       } else {
         preview.hidden = false;
-        preview.innerHTML = `<div class="section-title"><h3>部署快照</h3><span class="tag lime">${escapeHtml(strategyName(state.preparedStrategy.strategy))}</span></div><div class="review-row"><span>预测地址</span><strong>${escapeHtml(state.preparedStrategy.predicted_vault_address)}</strong></div><div class="review-row"><span>主资产</span><strong>${escapeHtml(state.preparedStrategy.primary_asset)}</strong></div><div class="review-row"><span>第二资产</span><strong>${escapeHtml(state.preparedStrategy.secondary_asset || "不需要")}</strong></div>${state.preparedStrategy.unlock_at ? `<div class="review-row"><span>解锁时间</span><strong>${escapeHtml(formatDate(Number(state.preparedStrategy.unlock_at) * 1000))}</strong></div>` : ""}<p class="footer-note">请核对模板、资产、解锁规则和预测地址后再签名。</p>`;
+        preview.innerHTML = uiMarkup`<div class="section-title"><h3>部署快照</h3><span class="tag lime">${escapeHtml(strategyName(state.preparedStrategy.strategy))}</span></div><div class="review-row"><span>预测地址</span><strong>${escapeHtml(state.preparedStrategy.predicted_vault_address)}</strong></div><div class="review-row"><span>主资产</span><strong>${escapeHtml(state.preparedStrategy.primary_asset)}</strong></div><div class="review-row"><span>第二资产</span><strong>${escapeHtml(state.preparedStrategy.secondary_asset || "不需要")}</strong></div>${state.preparedStrategy.unlock_at ? uiMarkup`<div class="review-row"><span>解锁时间</span><strong>${escapeHtml(formatDate(Number(state.preparedStrategy.unlock_at) * 1000))}</strong></div>` : ""}<p class="footer-note">请核对模板、资产、解锁规则和预测地址后再签名。</p>`;
         deploy.disabled = !state.account || !state.strategyConfig?.enabled;
       }
     }
@@ -2346,11 +2472,14 @@
     }
   };
   const renderGrowth = () => {
+    text('[data-referral-invited]', state.account && state.referral ? Number(state.referral.referred_wallets || 0) : '—');
+    text('[data-referral-activated]', state.account && state.referral ? Number(state.referral.activated_wallets || 0) : '—');
+    $$('[data-referral-copy-code], [data-referral-share]').forEach(node => { node.disabled = !state.account || !state.referral?.referral_code; });
     text("[data-referral-code]", state.referral?.referral_code || "—");
     text("[data-referral-counts]", state.account ? `${Number(state.referral?.referred_wallets || 0)} / ${Number(state.referral?.activated_wallets || 0)}` : "—");
-    text("[data-referrer-address]", state.referral?.referrer_address ? short(state.referral.referrer_address) : "未绑定");
+    text("[data-referrer-address]", state.referral?.referrer_address ? short(state.referral.referrer_address) : uiCopy("未绑定", "Not linked"));
     const createButton = $("[data-referral-create]");
-    if (createButton) createButton.textContent = state.referral?.referral_code ? "复制邀请链接" : "生成我的邀请码";
+    if (createButton) createButton.textContent = state.referral?.referral_code ? "复制邀请链接" : uiCopy("生成我的邀请码", "Generate my referral code");
     const campaignList = $("[data-campaign-list]");
     if (campaignList)
       campaignList.innerHTML = state.campaigns.length
@@ -2358,10 +2487,10 @@
             .map((entry) => {
               const campaign = entry.campaign || {};
               const joined = Boolean(entry.participation_status);
-              return `<article class="profile-card"><div class="section-title"><h3>${escapeHtml(campaign.title || "活动")}</h3><span class="tag ${joined ? "lime" : ""}">${escapeHtml(joined ? entry.participation_status : campaign.status || "active")}</span></div><p class="footer-note">${escapeHtml(campaign.description || "以活动页面展示的真实规则为准。")}</p><div class="review-row"><span>积分奖励</span><strong>${Number(campaign.points_reward || 0).toLocaleString("en-US")}</strong></div><button class="secondary" data-campaign-join="${escapeHtml(campaign.id || "")}" type="button" ${joined ? "disabled" : ""}>${joined ? "已参加" : "参加活动"}</button></article>`;
+              return uiMarkup`<article class="profile-card"><div class="section-title"><h3>${escapeHtml(campaign.title || "活动")}</h3><span class="tag ${joined ? "lime" : ""}">${escapeHtml(joined ? entry.participation_status : campaign.status || "active")}</span></div><p class="footer-note">${escapeHtml(campaign.description || "以活动页面展示的真实规则为准。")}</p><div class="review-row"><span>积分奖励</span><strong>${Number(campaign.points_reward || 0).toLocaleString("en-US")}</strong></div><button class="secondary" data-campaign-join="${escapeHtml(campaign.id || "")}" type="button" ${joined ? "disabled" : ""}>${joined ? "已参加" : "参加活动"}</button></article>`;
             })
             .join("")
-        : `<p class="footer-note">当前没有开放中的活动。</p>`;
+        : uiMarkup`<p class="footer-note">当前没有开放中的活动。</p>`;
     $$("[data-campaign-join]").forEach((node) => node.addEventListener("click", () => joinCampaign(node.dataset.campaignJoin).catch((error) => toastError(error, "活动参加失败"))));
     text("[data-kol-status]", state.kol?.status || "未提交");
     const social = $("#kol-social-url");
@@ -2521,6 +2650,17 @@
     toast("KOL 申请已提交");
   };
   const bindGrowth = () => {
+    $('[data-referral-copy-code]')?.addEventListener('click', async () => {
+      if (!state.account || !state.referral?.referral_code) return toast('请先生成邀请码');
+      try { await navigator.clipboard.writeText(state.referral.referral_code); toast('邀请码已复制'); }
+      catch (error) { toastError(error, '邀请码复制失败'); }
+    });
+    $$('[data-referral-share]').forEach(button => button.addEventListener('click', () => {
+      if (!state.account || !state.referral?.referral_code) return toast('请先生成邀请码');
+      const link = `https://bitbt.fun/pump?ref=${encodeURIComponent(state.referral.referral_code)}`;
+      const base = button.dataset.referralShare === 'telegram' ? 'https://t.me/share/url?url=' : 'https://twitter.com/intent/tweet?url=';
+      window.open(base + encodeURIComponent(link), '_blank', 'noopener,noreferrer');
+    }));
     $("[data-referral-create]")?.addEventListener("click", () => createOrCopyReferral().catch((error) => toastError(error, "邀请码操作失败")));
     $("[data-referral-bind]")?.addEventListener("click", () => bindReferral().catch((error) => toastError(error, "邀请码绑定失败")));
     $("[data-kol-submit]")?.addEventListener("click", () => submitKol().catch((error) => toastError(error, "KOL 申请提交失败")));
@@ -2590,10 +2730,10 @@
   };
   const renderWebhooks = () => {
     text("[data-webhook-count]", state.webhooks.length);
-    text("[data-webhook-status]", state.account ? "SIWE 已验证" : "连接钱包后管理");
+    text("[data-webhook-status]", state.account ? uiCopy("SIWE 已验证", "SIWE Verified") : "连接钱包后管理");
     const list = $("[data-webhook-list]");
     if (!list) return;
-    list.innerHTML = state.account ? state.webhooks.map((hook) => `<div class="profile-card"><div class="review-row"><span>${escapeHtml(hook.endpoint_url)}</span><strong>${hook.active ? "ACTIVE" : "PAUSED"}</strong></div><div class="review-row"><span>事件</span><strong>${escapeHtml((hook.events || []).join(" · "))}</strong></div><div class="review-row"><span>最近状态 / 失败</span><strong>${hook.last_status ?? "—"} / ${hook.failure_count ?? 0}</strong></div><button class="secondary" type="button" data-webhook-delete="${escapeHtml(hook.id)}">删除</button></div>`).join("") || `<p class="footer-note">尚未创建 Webhook。</p>` : `<p class="footer-note">连接钱包后读取。</p>`;
+    list.innerHTML = state.account ? state.webhooks.map((hook) => uiMarkup`<div class="profile-card"><div class="review-row"><span>${escapeHtml(hook.endpoint_url)}</span><strong>${hook.active ? "ACTIVE" : "PAUSED"}</strong></div><div class="review-row"><span>事件</span><strong>${escapeHtml((hook.events || []).join(" · "))}</strong></div><div class="review-row"><span>最近状态 / 失败</span><strong>${hook.last_status ?? "—"} / ${hook.failure_count ?? 0}</strong></div><button class="secondary" type="button" data-webhook-delete="${escapeHtml(hook.id)}">删除</button></div>`).join("") || uiMarkup`<p class="footer-note">尚未创建 Webhook。</p>` : uiMarkup`<p class="footer-note">连接钱包后读取。</p>`;
     $$("[data-webhook-delete]").forEach((button) => button.addEventListener("click", () => deleteWebhook(button.dataset.webhookDelete).catch((error) => toastError(error, "Webhook 删除失败"))));
   };
   const loadIntegrationStatus = async () => {
@@ -2657,79 +2797,235 @@
       return "—";
     }
   };
+  const filteredPerpetualActivity = () => state.perpActivity.filter(item => {
+    const filter = state.perpActivityFilter;
+    if (filter === 'all') return true;
+    if (filter === 'bsc' || filter === 'robinhood') return filter === state.selectedChain;
+    if (filter === 'open') return item.eventType === 'open';
+    if (filter === 'closed') return ['close', 'liquidate', 'expire'].includes(item.eventType);
+    return false;
+  });
+  const initializePerpetualForms = () => {
+    const add = $('[data-panel="perps-add-contract"]');
+    const pool = $('[data-panel="perps-create-pool"]');
+    if (!add || !pool || add.dataset.liveServiceShell) return;
+    add.dataset.liveServiceShell = pool.dataset.liveServiceShell = 'true';
+    for (const panel of [add, pool]) {
+      panel.querySelectorAll('[data-toast], [data-action-confirm]').forEach(node => { node.removeAttribute('data-toast'); node.removeAttribute('data-action-confirm'); });
+    }
+    add.querySelector('.page-guide span').textContent = uiCopy("无需人工审批。代币须有受信任 Oracle 和报价资产配置；创建后仍需注资、Oracle 就绪及市场启用。", "No manual approval. A trusted oracle and quote asset are required. Fund the market and satisfy oracle and activation requirements after creation.");
+    add.querySelectorAll('[data-contract-chain]').forEach(node => { node.disabled = true; node.title = '请通过页头切换网络；当前永续创建仅开放 BSC'; node.querySelector('.tag').textContent = node.dataset.contractChain === 'bsc' ? uiCopy("当前支持", "Supported") : uiCopy("未开放", "Not open"); });
+    const address = add.querySelector('#perps-contract-address');
+    address.value = ''; address.placeholder = '0x...'; address.autocomplete = 'off';
+    const verify = add.querySelector('[data-verify-contract]');
+    verify.removeAttribute('data-verify-contract'); verify.textContent = uiCopy("核对安全参数", "Check safety parameters");
+    verify.addEventListener('click', () => add.querySelectorAll('.contract-shell')[1].scrollIntoView({ block:'start' }));
+    const preview = add.querySelector('[data-contract-preview]');
+    preview.querySelector('img').src = './assets/tokens/generic.svg'; preview.querySelector('img').alt = 'MEME';
+    preview.querySelector('strong').textContent = uiCopy("待输入并校验合约", "Enter a contract to validate"); preview.querySelector('small').textContent = uiCopy("校验在创建交易签名前执行", "Validation runs before signing the creation transaction"); preview.querySelector('.tag').textContent = uiCopy("待校验", "Pending validation");
+    add.querySelector('.eligibility-grid').innerHTML = [uiCopy("禁止零地址及报价币自身", "Zero address and the quote token itself are not allowed"),uiCopy("受信任 Oracle", "Trusted oracle"),uiCopy("已注册安全模板", "Registered safety template"),uiCopy("链上及后端双重校验", "Validated on-chain and by the backend")].map(label => `<div class="eligibility-item">${label}</div>`).join('');
+    const settings = add.querySelectorAll('.contract-shell')[1];
+    settings.querySelector('p').textContent = uiCopy("使用已批准的安全模板；用户不可替换任意 Oracle 或修改市场风控。", "Uses an approved safety template. Users cannot substitute arbitrary oracles or override market risk controls."); settings.querySelector('.tag').textContent = uiCopy("安全模板", "Safety template");
+    settings.querySelectorAll('select,input').forEach((node, index) => { node.disabled = true; node.dataset.serviceSetting = String(index); if (node.tagName === 'SELECT') node.innerHTML = '<option>等待安全配置</option>'; else node.value = '等待安全配置'; });
+    const direct = add.querySelector('.direct-chain-flow');
+    direct.querySelector('p').textContent = uiCopy("平台费 0 BNB；网络 Gas 由钱包实时估算，确认后才发送交易。", "Platform fee 0 BNB; network Gas is estimated by your wallet. The transaction is sent only after confirmation.");
+    direct.querySelector('.plain-summary').dataset.serviceSummary = '';
+    direct.querySelectorAll('.execution-path span')[2].textContent = uiCopy("市场创建后继续注资及启用", "Fund and activate after market creation");
+    const addButtons = direct.querySelectorAll('.flow-actions button');
+    addButtons[0].removeAttribute('data-open'); addButtons[0].dataset.perpServiceSubmit = 'add_contract';
+    addButtons[1].dataset.open = 'perps-create-pool'; addButtons[1].textContent = uiCopy("已有市场，前往注资", "Existing market? Deposit liquidity");
+    pool.querySelector('.appbar .tag').textContent = uiCopy("链上聚合 LP", "On-chain pooled LP");
+    pool.querySelector('.page-title p').textContent = uiCopy("选择真实市场、核对规则、填入报价资产；按链上份额承担盈亏。", "Select a real market, review its rules and deposit quote assets. Profit and loss follow your on-chain shares.");
+    pool.querySelector('.page-guide span').textContent = uiCopy("当前每个市场使用聚合 LP 池。独立做市池和自选风控方案尚未开放，不会创建虚假的独立池。", "Each market uses a pooled LP. Independent market-making pools and custom risk plans are not available.");
+    pool.querySelectorAll('[data-pool-role], [data-pool-preset]').forEach(node => { node.disabled = true; node.title = '使用所选市场的现有协议规则'; });
+    pool.querySelector('[data-pool-role="retail"] strong').textContent = uiCopy("聚合 LP 池", "Pooled LP");
+    pool.querySelector('[data-pool-role="retail"] small').textContent = uiCopy("按实际报价资产和链上份额分享手续费，承担对手盘盈亏。", "Share fees and counterparty profit or loss using actual quote assets and on-chain shares.");
+    pool.querySelector('[data-pool-role="maker"] .tag').textContent = uiCopy("未开放", "Not open");
+    pool.querySelectorAll('[data-pool-preset] em').forEach(node => { node.textContent = uiCopy("以所选市场为准", "Determined by the selected market"); });
+    const risk = pool.querySelectorAll('.pool-form-card')[0]; risk.querySelector('p').textContent = uiCopy("LP 注资不能修改现有市场杠杆、资金费率或仓位上限。", "LP deposits cannot change market leverage, funding rates or position limits.");
+    risk.querySelector('.form-group label').textContent = uiCopy("市场最高杠杆（只读）", "Market maximum leverage (read-only)");
+    pool.querySelector('#pool-leverage').disabled = true;
+    pool.querySelector('.auto-config-list').innerHTML = [uiCopy("多空容量按市场限制", "Long and short capacity follows market limits"),uiCopy("强平遵循协议规则", "Liquidation follows protocol rules"),uiCopy("资金费率按当前配置", "Funding follows current configuration"),uiCopy("单账户上限不可由 LP 修改", "LPs cannot change per-account limits")].map(label => `<div>${label}</div>`).join('');
+    const funds = pool.querySelectorAll('.pool-form-card')[1]; funds.querySelector('p').textContent = uiCopy("服务费与注资分开处理；注资资产进入合约，不进入平台收款地址。", "Service fees and liquidity deposits are separate. Deposits go to the contract, not the platform fee recipient.");
+    const selects = funds.querySelectorAll('select'); selects[0].disabled = true; selects[0].innerHTML = uiCopy("<option>BNB Chain（当前支持）</option>", "<option>BNB Chain（Supported）</option>");
+    selects[1].id = 'perps-pool-market'; selects[1].innerHTML = '<option value="">等待真实市场</option>';
+    const amount = pool.querySelector('[data-pool-funding]'); amount.id = 'perps-pool-amount'; amount.value = ''; amount.placeholder = '0.00';
+    amount.closest('.form-group').querySelector('label span').textContent = uiCopy("所选 Quote Token", "Selected quote token");
+    const reserve = pool.querySelector('[data-pool-reserve]'); reserve.disabled = true; reserve.value = '不单独收取'; reserve.closest('.form-group').querySelector('label').textContent = uiCopy("单独风险储备（当前不收取）", "Separate risk reserve (not currently collected)");
+    funds.querySelectorAll('.advanced-content select').forEach(node => { node.disabled = true; node.innerHTML = '<option>当前市场协议规则</option>'; });
+    pool.querySelector('.pool-summary-hero').dataset.poolRealSummary = '';
+    pool.querySelector('.pool-split').dataset.poolRealRules = '';
+    pool.querySelector('.quote').dataset.poolRealFees = '';
+    const buttons = pool.querySelectorAll('.pool-summary-card > button');
+    buttons[0].removeAttribute('data-open'); buttons[0].dataset.perpServiceSubmit = 'create_pool';
+    buttons[1].dataset.open = 'perps-pool'; buttons[1].textContent = uiCopy("查看当前池详情", "View current pool");
+    const resume = document.createElement('div'); resume.dataset.perpPoolResumable = ''; pool.querySelector('.pool-builder-grid').before(resume);
+    selects[1].addEventListener('change', renderPerpetualServices);
+    amount.addEventListener('input', renderPerpetualServices);
+  };
   const renderPerpetualServices = () => {
     if (!ui20260911) return;
+    initializePerpetualForms();
     const config = state.perpConfig || {};
     const feeRecipient = config.serviceFeeRecipient || "—";
-    const tokenDraft = String($("#perps-service-token")?.value || "");
+    // The address input remains mounted so refreshes preserve the user's draft.
     const poolAmountDraft = String($("#perps-pool-amount")?.value || "");
     const poolMarketDraft = String($("#perps-pool-market")?.value || state.selectedPerpMarketId || "");
     const marketOptions = state.perpMarkets.length
       ? state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}" ${String(market.marketId) === poolMarketDraft ? "selected" : ""}>${escapeHtml(market.tokenSymbol || market.tokenName || "MEME")}-PERP · #${Number(market.marketId)}</option>`).join("")
-      : '<option value="">当前没有可用市场</option>';
+      : uiCopy("<option value=\"\">当前没有可用市场</option>", "<option value=\"\">No markets available</option>");
     const resumablePools = state.perpServiceRequests
       .filter((request) => request.requestType === "create_pool" && request.status === "paid")
-      .map((request) => `<article class="risk-note"><strong>服务费已支付 · Market #${Number(request.payload?.marketId)}</strong><span>LP 注资尚未完成，可继续执行且不会再次收取平台服务费。</span><button class="secondary" type="button" data-perp-pool-resume="${escapeHtml(request.requestId)}">继续链上注资</button></article>`)
+      .map((request) => uiMarkup`<article class="risk-note"><strong>服务费已支付 · Market #${Number(request.payload?.marketId)}</strong><span>LP 注资尚未完成，可继续执行且不会再次收取平台服务费。</span><button class="secondary" type="button" data-perp-pool-resume="${escapeHtml(request.requestId)}">继续链上注资</button></article>`)
       .join("");
     const addPanel = $('[data-panel="perps-add-contract"]');
-    if (addPanel) addPanel.innerHTML = `
-      <div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">PERPS / ONBOARD</div><strong>添加链上 MEME 合约</strong></div><span class="tag lime">钱包直签</span></div>
-      <div class="page-title"><h1>把 MEME 接入永续市场</h1><p>选择网络、填写代币地址并完成安全校验。创建交易由当前钱包直接签名，Owner 私钥不会进入网页。</p></div>
-      <div class="simple-stepper"><span class="active"><b>1</b>选择网络</span><span class="active"><b>2</b>填写合约</span><span><b>3</b>安全校验</span><span><b>4</b>钱包创建</span></div>
-      <div class="chain-choice-grid" aria-label="永续市场网络">
-        <button class="active" type="button" aria-pressed="true"><span class="chain-dot bsc">B</span><strong>BNB Smart Chain</strong><small>已接入 · Chain ID 56</small></button>
-        <button type="button" disabled aria-disabled="true"><span class="chain-dot robinhood">R</span><strong>Robinhood Chain</strong><small>尚未部署 · 不发送交易</small></button>
-      </div>
-      <section class="contract-shell">
-        <div class="form-card-title"><div><h3>01 · MEME 合约</h3><p>输入真实 BSC ERC-20 地址；零地址、报价币本身和未注册安全模板都会被拒绝。</p></div><span class="tag">BSC</span></div>
-        <div class="form-group"><label for="perps-service-token">MEME 合约地址</label><input class="field" id="perps-service-token" value="${escapeHtml(tokenDraft)}" placeholder="0x..." autocomplete="off" spellcheck="false"></div>
-      </section>
-      <section class="contract-shell">
-        <div class="form-card-title"><div><h3>02 · 系统安全参数</h3><p>Oracle、报价币、杠杆和最低流动性来自后端批准清单，用户不能替换为任意地址。</p></div><span class="tag lime">双重校验</span></div>
-        <div class="eligibility-grid"><div><span>报价资产</span><strong>受信任 Quote Token</strong></div><div><span>最高杠杆</span><strong>${Number(config.maxLeverage || 0) || '—'}×</strong></div><div><span>最低流动性</span><strong>${escapeHtml(String(config.minLiquidityUsd || '—'))} USD</strong></div><div><span>开 / 平仓手续费</span><strong>${escapeHtml(config.feePercent || '—')} / ${escapeHtml(config.feePercent || '—')}</strong></div></div>
-        <div class="risk-note">创建市场不等于立即开放交易。市场还必须完成真实 LP 注资、Oracle 与备用 Oracle 就绪以及链上启用。</div>
-      </section>
-      <section class="contract-shell direct-chain-flow">
-        <div class="form-card-title"><div><h3>03 · 当前钱包签名</h3><p>平台服务费为 0 BNB；仅支付钱包实时估算的 BSC Gas。后端只返回经过严格绑定的交易参数。</p></div><span class="tag lime">平台费 0 BNB</span></div>
-        <div class="plain-summary"><span>签名钱包：<b>${escapeHtml(state.account ? short(state.account) : '尚未连接')}</b></span><span>合约目标：<b>${escapeHtml(short(config.contractAddress || ''))}</b></span><span>创建后：<b>进入待注资状态</b></span></div>
-        <button class="primary" type="button" data-perp-service-submit="add_contract" ${state.perpServiceBusy || !config.enabled || !config.permissionlessMarketCreation ? "disabled" : ""}>${state.perpServiceBusy ? "正在校验…" : state.account ? "校验并由钱包创建市场" : "连接钱包后创建"}</button>
-      </section>`;
+    if (addPanel) {
+      const values = [uiCopy("受信任 Oracle（签名前校验）", "Trusted oracle (checked before signing)"), uiCopy("受信任 Quote Token", "Trusted quote token"), String(config.maxLeverage || '—') + '×', String(config.minLiquidityUsd || '—') + ' USD'];
+      addPanel.querySelectorAll('[data-service-setting]').forEach(node => {
+        const value = values[Number(node.dataset.serviceSetting)];
+        if (node.tagName === 'SELECT') node.options[0].textContent = value; else node.value = value;
+      });
+      addPanel.querySelector('[data-service-summary]').textContent = uiCopy("签名钱包：", "Signing wallet: ") + (state.account ? short(state.account) : uiCopy("未连接", "Not connected")) + uiCopy(" · 目标合约：", " · Target contract: ") + (config.contractAddress || uiCopy('等待配置', 'Awaiting configuration')) + uiCopy(" · 创建后需注资及启用", " · Fund and enable after creation");
+      const submit = addPanel.querySelector('[data-perp-service-submit]');
+      submit.disabled = Boolean(state.perpServiceBusy || !config.enabled || !config.permissionlessMarketCreation || !isBscFeatureChain());
+      submit.textContent = state.perpServiceBusy ? uiCopy("正在校验…", "Validating…") : state.account ? uiCopy("校验并由钱包创建市场", "Validate and create with wallet") : uiCopy("连接钱包后创建", "Connect wallet to create");
+    }
     const poolPanel = $('[data-panel="perps-create-pool"]');
-    if (poolPanel) poolPanel.innerHTML = `
-      <div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">PERPS / POOL BUILDER</div><strong>创建 MEME 对手池</strong></div><span class="tag lime">真实 LP</span></div>
-      <div class="page-title"><h1>为永续市场注入对手流动性</h1><p>选择已创建市场并投入报价资产。份额、收益、亏损和退出均由合约记账；池子不是保本产品。</p></div>
-      <div class="simple-stepper"><span class="active"><b>1</b>选择市场</span><span class="active"><b>2</b>填写金额</span><span><b>3</b>支付服务费</span><span><b>4</b>授权并注资</span></div>
-      ${resumablePools}
-      <div class="pool-builder-grid"><section class="pool-form-card">
-        <div class="form-card-title"><div><h3>池子参数</h3><p>当前协议为每个市场维护一个聚合 LP 池，不创建虚假的独立资金池。</p></div><span class="tag">BSC</span></div>
-        <div class="form-group"><label for="perps-pool-market">永续市场</label><select class="field" id="perps-pool-market">${marketOptions}</select></div>
-        <div class="two-column-form"><div class="form-group"><label for="perps-pool-amount">投入金额（报价资产）</label><input class="field" id="perps-pool-amount" value="${escapeHtml(poolAmountDraft)}" inputmode="decimal" placeholder="0.00" autocomplete="off"></div><div class="form-group"><label>池子类型</label><input class="field" value="聚合 LP · 按份额承担盈亏" readonly></div></div>
-        <div class="eligibility-grid"><div><span>最高杠杆</span><strong>${Number(selectedPerpMarket()?.maxLeverage || config.maxLeverage || 0) || '—'}×</strong></div><div><span>未平仓量</span><strong>${selectedPerpMarket() ? escapeHtml(formatUnits(BigInt(selectedPerpMarket().lockedNotionalRaw || '0'), Number(selectedPerpMarket().quoteDecimals || 18))) : '—'}</strong></div><div><span>市场状态</span><strong>${selectedPerpMarket()?.enabled ? (selectedPerpMarket()?.closeOnly ? '只减仓' : '开放') : '未开放'}</strong></div><div><span>退出限制</span><strong>有未平仓量时锁定</strong></div></div>
-        <div class="risk-note">LP 承担交易者盈利、极端单边行情、Oracle 偏差及穿仓风险；市场有未平仓仓位时不能通过存取流动性套利。</div>
-      </section><aside class="pool-summary-card">
-        <div class="form-card-title"><div><h3>链上确认</h3><p>先支付平台服务费，再授权 Quote Token 并完成真实注资；已付费但未完成可恢复，不重复收费。</p></div><span class="tag lime">${escapeHtml(serviceFeeLabel(config.createPoolFeeWei))}</span></div>
-        <div class="quote"><div><span>平台服务费</span><strong>${escapeHtml(serviceFeeLabel(config.createPoolFeeWei))}</strong></div><div><span>统一收款地址</span><strong>${escapeHtml(short(feeRecipient))}</strong></div><div><span>Quote Token 授权</span><strong>仅当前输入金额</strong></div><div><span>网络 Gas</span><strong>钱包实时估算</strong></div></div>
-        <button class="primary" type="button" data-perp-service-submit="create_pool" ${state.perpServiceBusy || !state.perpMarkets.length ? "disabled" : ""}>${state.perpServiceBusy ? "正在提交…" : state.account ? "付费并创建链上池子" : "连接钱包后创建"}</button>
-      </aside></div>`;
+    if (poolPanel) {
+      const select = poolPanel.querySelector('#perps-pool-market');
+      // Preserve form elements and focus; refresh options only if the market list changes.
+      if (select.dataset.optionsHtml !== marketOptions) {
+        select.innerHTML = marketOptions; select.dataset.optionsHtml = marketOptions;
+        if (state.perpMarkets.some(item => String(item.marketId) === poolMarketDraft)) select.value = poolMarketDraft;
+      }
+      const chosen = state.perpMarkets.find(item => String(item.marketId) === select.value);
+      const leverage = Number(chosen?.maxLeverage || config.maxLeverage || 0);
+      poolPanel.querySelector('#pool-leverage').value = String(leverage || 1);
+      poolPanel.querySelectorAll('[data-pool-preset-label]').forEach(node => { node.textContent = uiCopy("使用市场现有规则", "Use current market rules"); });
+      poolPanel.querySelector('[data-pool-real-summary]').textContent = (chosen?.tokenSymbol || '请选择市场') + ' · ' + (poolAmountDraft || '0') + ' ' + (chosen?.quoteTokenSymbol || 'QUOTE') + uiCopy(" · 聚合 LP", " · Pooled LP");
+      poolPanel.querySelector('[data-pool-real-rules]').innerHTML = uiCopy("<div><span>最高杠杆</span><strong>", "<div><span>Maximum leverage</span><strong>") + (leverage || '—') + uiCopy("×</strong></div><div><span>市场状态</span><strong>", "×</strong></div><div><span>Market status</span><strong>") + (chosen?.enabled ? (chosen.closeOnly ? uiCopy("只减仓", "Reduce-only") : uiCopy("开放", "Open")) : uiCopy("未开放", "Not open")) + uiCopy("</strong></div><div><span>退出条件</span><strong>有未平仓量时锁定</strong></div>", "</strong></div><div><span>Withdrawal conditions</span><strong>Locked while positions are open</strong></div>");
+      poolPanel.querySelector('[data-pool-real-fees]').innerHTML = uiCopy("<div><span>平台服务费</span><strong>", "<div><span>Platform service fee</span><strong>") + escapeHtml(serviceFeeLabel(config.createPoolFeeWei)) + uiCopy("</strong></div><div><span>统一收款地址</span><strong>", "</strong></div><div><span>Fee recipient</span><strong>") + escapeHtml(short(feeRecipient)) + uiCopy("</strong></div><div><span>Quote Token 授权</span><strong>仅输入金额</strong></div><div><span>网络 Gas</span><strong>钱包实时估算</strong></div>", "</strong></div><div><span>Quote-token allowance</span><strong>Entered amount only</strong></div><div><span>Network Gas</span><strong>Estimated by wallet</strong></div>");
+      poolPanel.querySelector('[data-perp-pool-resumable]').innerHTML = resumablePools;
+      const submit = poolPanel.querySelector('[data-perp-service-submit]');
+      submit.disabled = Boolean(state.perpServiceBusy || !chosen || !isBscFeatureChain());
+      submit.textContent = state.perpServiceBusy ? uiCopy("正在提交…", "Submitting…") : state.account ? uiCopy("付费并授权注资", "Pay fee and authorize deposit") : uiCopy("连接钱包后创建", "Connect wallet to create");
+    }
     const market = selectedPerpMarket();
     const poolDetail = $('[data-panel="perps-pool"]');
-    if (poolDetail) poolDetail.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">COUNTERPARTY POOL</div><strong>池子详情</strong></div></div><div class="pool-hero"><div class="pool-hero-top"><div class="pool-identity"><img src="${escapeHtml(market?.tokenImage || './assets/tokens/generic.svg')}" alt=""><div><h2>${escapeHtml(market?.tokenSymbol || "—")}-PERP · 聚合池 #${market ? Number(market.marketId) : "—"}</h2><p>BSC · Quote Token 本位 · 链上份额</p></div></div></div></div><div class="pool-metrics"><div><span>总流动性</span><strong>${market ? escapeHtml(formatUnits(BigInt(market.liquidityRaw || "0"), Number(market.quoteDecimals || 18))) : "—"}</strong></div><div><span>锁定名义价值</span><strong>${market ? escapeHtml(formatUnits(BigInt(market.lockedNotionalRaw || "0"), Number(market.quoteDecimals || 18))) : "—"}</strong></div><div><span>最高杠杆</span><strong>${market ? Number(market.maxLeverage || 0) : "—"}×</strong></div><div><span>市场状态</span><strong>${market?.enabled ? (market.closeOnly ? "只减仓" : "开放") : "未开放"}</strong></div></div><div class="perps-risk">池子不是保本产品；LP 按链上份额承担交易者盈亏、预言机及极端行情风险。</div>`;
+    if (poolDetail) {
+      const set = (selector, value) => poolDetail.querySelectorAll(selector).forEach(node => { node.textContent = value; });
+      const unit = market?.quoteToken || 'QUOTE';
+      const amount = raw => market && raw != null ? formatUnits(BigInt(raw), Number(market.quoteDecimals || 18)) : '—';
+      set('.pool-identity h2', uiMarkup`${market?.tokenSymbol || '—'}-PERP · 聚合池 #${market ? Number(market.marketId) : '—'}`);
+      set('.pool-identity p', uiMarkup`${selectedNetwork().shortName} · 链上聚合 LP 池`);
+      const logo = poolDetail.querySelector('.pool-identity img');
+      if (logo) { logo.src = market?.tokenImage || './assets/tokens/generic.svg'; logo.alt = market?.tokenSymbol || ''; }
+      const summaries = [...poolDetail.querySelectorAll('.pool-identity .plain-summary span')];
+      [uiMarkup`${unit} 结算`, uiCopy("LP 按链上份额记账", "LP accounting uses on-chain shares"), uiCopy("资金可能亏损", "Funds are at risk")].forEach((label, i) => { if (summaries[i]) summaries[i].textContent = label; });
+      set('.pool-health > strong', market?.enabled ? (market.closeOnly ? uiCopy("只减仓", "Reduce-only") : uiCopy("市场已启用", "Market enabled")) : uiCopy("市场未开放", "MarketNot open"));
+      set('.pool-health > small', config.statusNote ? literalCopy(config.statusNote) : uiCopy('具体操作仍须通过最新合约校验', 'Each operation must pass current contract validation'));
+      const metricValues = [amount(market?.liquidityRaw), amount(market?.lockedNotionalRaw), '—', '—'];
+      poolDetail.querySelectorAll('.pool-metrics strong').forEach((node, i) => { node.textContent = metricValues[i] || '—'; });
+      set('.depth-head h3', uiCopy("多空当前未平仓量", "Current long and short open interest"));
+      set('.depth-head p', uiCopy("展示真实持仓分布，不把名义持仓伪装为可成交深度。", "Shows actual position distribution. Notional exposure is not executable market depth."));
+      let longPercent = 0, shortPercent = 0;
+      if (market) {
+        const long = BigInt(market.longNotionalRaw || '0'), short = BigInt(market.shortNotionalRaw || '0'), total = long + short;
+        if (total > 0n) { longPercent = Number(long * 10000n / total) / 100; shortPercent = 100 - longPercent; }
+      }
+      const longBar = poolDetail.querySelector('.depth-bar .long'), shortBar = poolDetail.querySelector('.depth-bar .short');
+      if (longBar) longBar.style.width = `${longPercent}%`;
+      if (shortBar) shortBar.style.width = `${shortPercent}%`;
+      set('.depth-labels .up', uiMarkup`多头 ${amount(market?.longNotionalRaw)} ${unit}`);
+      set('.depth-labels .down', uiMarkup`空头 ${amount(market?.shortNotionalRaw)} ${unit}`);
+      const riskValues = [market ? `${Number(market.maxLeverage)}×` : '—', '—', '—', '—', market?.oracleAddress || market?.primaryOracle || '—'];
+      poolDetail.querySelectorAll('.depth-card .review-row strong').forEach((node, i) => { node.textContent = riskValues[i] || '—'; });
+      set('.participant-card .form-card-title p', uiCopy("暂未提供全部 LP 名册，仅显示当前钱包已加载的份额。", "The full LP roster is unavailable. Showing loaded shares for this wallet only."));
+      set('.participant-card .form-card-title .tag', uiCopy("当前钱包", "Current wallet"));
+      const participants = [...poolDetail.querySelectorAll('.participant-row')];
+      participants.slice(1).forEach(node => node.remove());
+      if (participants[0]) participants[0].innerHTML = uiMarkup`<strong>${escapeHtml(state.account ? short(state.account) : uiCopy("未连接", "Not connected"))}</strong><span>原始份额</span><strong>${escapeHtml(state.account && state.perpPosition?.liquiditySharesRaw != null ? String(state.perpPosition.liquiditySharesRaw) : '—')}</strong>`;
+      const deposit = poolDetail.querySelector('.participant-card > .primary');
+      const withdraw = poolDetail.querySelector('.participant-card > .secondary');
+      if (deposit) { deposit.removeAttribute('data-toast'); deposit.dataset.perpShortcut = 'deposit_liquidity'; deposit.textContent = uiMarkup`注入 ${unit} 成为对手方`; }
+      if (withdraw) { withdraw.removeAttribute('data-toast'); withdraw.dataset.perpShortcut = 'withdraw_liquidity'; withdraw.textContent = uiCopy("查看退出规则并申请退出", "View rules and request withdrawal"); }
+      const copy = poolDetail.querySelector('[data-perp-pool-share], [aria-label="分享池子"]');
+      if (copy) { copy.removeAttribute('data-toast'); copy.dataset.perpPoolShare = ''; copy.title = '复制网络、市场编号和代币地址'; copy.disabled = !market; }
+      const settings = poolDetail.querySelector('[data-perp-pool-settings], [aria-label="池子设置"]');
+      if (settings) { settings.removeAttribute('data-toast'); settings.dataset.perpPoolSettings = ''; settings.dataset.open = 'perpetual'; }
+      set('.perps-risk span', uiCopy("池子不是保本产品。LP 承担交易者盈利、穿仓、预言机及极端行情风险；退出与注资须符合链上条件，页面不会修改风控参数。", "Capital is not guaranteed. LPs bear trader profits, insolvency, oracle and extreme-market risks. Deposits and withdrawals must meet on-chain conditions; this page does not override risk settings."));
+    }
     const activityPanel = $('[data-panel="perps-onchain"]');
     if (activityPanel) {
-      const filteredActivity = state.perpActivity.filter((item) => state.perpActivityFilter === "all" || (state.perpActivityFilter === "open" ? item.eventType === 'open' : item.eventType !== 'open'));
-      const rows = filteredActivity.map((item) => {
-        const itemMarket = state.perpMarkets.find((candidate) => Number(candidate.marketId) === Number(item.marketId));
-        const hash = String(item.lastTxHash || "");
-        const label = {open:'开仓',close:'平仓',liquidate:'清算',expire:'到期结算'}[item.eventType] || '未知事件';
-        return `<article class="onchain-row"><div class="record-identity"><img src="${escapeHtml(itemMarket?.tokenImage || './assets/tokens/generic.svg')}" alt=""><div><strong>${escapeHtml(itemMarket?.tokenSymbol || `Market #${Number(item.marketId)}`)}-PERP</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString("en-US")} · 日志 #${Number(item.logIndex)}</small></div></div><div class="record-cell"><strong>${label}</strong><span>${escapeHtml(short(item.traderAddress || ""))}</span></div><div class="record-cell"><span>本笔交易</span><strong>${escapeHtml(short(hash))}</strong></div><a class="secondary" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${hash}`)}" target="_blank" rel="noopener noreferrer">区块浏览器</a></article>`;
-      }).join("");
-      activityPanel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="perps" aria-label="返回">←</button><div><div class="eyebrow">ON-CHAIN HISTORY</div><strong>我的链上交易记录</strong></div><button class="icon-btn" type="button" data-perp-activity-refresh aria-label="刷新">↻</button></div>
-        <div class="page-title"><h1>每笔交易都可以核验</h1><p>仅显示当前钱包。逐笔记录从事件索引启用后开始，升级前历史未回补；区块确认和索引存在延迟。</p></div>
-        <div class="record-overview"><div><span>已加载事件（非当前持仓数）</span><strong>${state.perpActivity.length}</strong></div><div><span>钱包</span><strong>${escapeHtml(short(state.account || '未连接'))}</strong></div><div><span>网络</span><strong>${escapeHtml(state.selectedChain)}</strong></div></div>
-        <div class="ledger-toolbar"><div class="record-filters"><button type="button" data-perp-activity-filter="all" class="${state.perpActivityFilter === 'all' ? 'active' : ''}">全部</button><button type="button" data-perp-activity-filter="open" class="${state.perpActivityFilter === 'open' ? 'active' : ''}">开仓</button><button type="button" data-perp-activity-filter="closed" class="${state.perpActivityFilter === 'closed' ? 'active' : ''}">平仓 / 清算 / 结算</button></div><button class="secondary" type="button" data-perp-activity-export ${filteredActivity.length ? '' : 'disabled'}>导出已加载结果</button></div>
-        <p class="footer-note" role="alert" data-perp-read-error>${escapeHtml(Object.values(state.perpReadErrors).filter(Boolean).join('；'))}</p>
-        <div class="onchain-ledger">${rows || `<p class="footer-note">${!isBscFeatureChain() ? '当前网络尚无永续事件索引。' : !state.account ? '请连接钱包查看自己的交易记录。' : state.perpHistoryBusy ? '正在加载逐笔记录…' : '尚无已索引的事件；这不代表钱包没有历史交易。'}</p>`}</div>
-        ${state.perpHistoryCursor ? `<button class="secondary" type="button" data-perp-history-more ${state.perpHistoryBusy ? 'disabled' : ''}>${state.perpHistoryBusy ? '加载中…' : '加载更多'}</button>` : ''}`;
+      // Keep the delivered page shell. Refresh only API-bound slots: replacing
+      // the whole panel previously erased its original layout and focused DOM.
+      const filteredActivity = filteredPerpetualActivity();
+      const set = (selector, value) => {
+        const node = activityPanel.querySelector(selector);
+        if (node) node.textContent = value;
+      };
+      set('.page-guide span', uiCopy("仅显示当前钱包已索引的真实事件；历史未回补。未提供的价格、杠杆和保证金显示 —，不使用原型数据。", "Shows indexed events for this wallet only; historical data is not backfilled. Missing prices, leverage and collateral show —, never sample data."));
+      const metrics = [...activityPanel.querySelectorAll('.record-overview > div')];
+      const values = [
+        [uiCopy("已加载事件", "Loaded events"), String(state.perpActivity.length)],
+        [uiCopy("开仓事件", "Opening events"), String(state.perpActivity.filter(item => item.eventType === 'open').length)],
+        [uiCopy("平仓 / 清算 / 结算", "Closures / liquidations / settlements"), String(state.perpActivity.filter(item => item.eventType !== 'open').length)],
+        [uiCopy("当前钱包", "Current wallet"), state.account ? short(state.account) : uiCopy("未连接", "Not connected")],
+      ];
+      metrics.forEach((node, index) => {
+        const value = values[index];
+        if (!value) return;
+        node.querySelector('span').textContent = value[0];
+        node.querySelector('strong').textContent = value[1];
+      });
+      const refresh = activityPanel.querySelector('[data-perp-activity-refresh], .appbar button[aria-label="刷新记录"]');
+      if (refresh) { refresh.removeAttribute('data-toast'); refresh.dataset.perpActivityRefresh = ''; }
+      activityPanel.querySelectorAll('[data-record-filter]').forEach(button => {
+        const filter = button.dataset.recordFilter;
+        button.dataset.perpActivityFilter = filter;
+        // Event history does not currently include trade direction. Do not
+        // infer long/short from event type or pretend unsupported data exists.
+        button.disabled = ['long', 'short'].includes(filter);
+        button.title = button.disabled ? '逐笔事件接口尚未提供多空方向，暂不可按方向筛选' : '';
+        button.classList.toggle('active', state.perpActivityFilter === filter);
+      });
+      const exportButton = activityPanel.querySelector('.ledger-toolbar > button');
+      if (exportButton) {
+        exportButton.removeAttribute('data-toast');
+        exportButton.dataset.perpActivityExport = '';
+        exportButton.disabled = !filteredActivity.length;
+        exportButton.title = '导出当前筛选下已加载的事件，不代表全部历史';
+      }
+      const rows = filteredActivity.map(item => {
+        const itemMarket = state.perpMarkets.find(candidate => Number(candidate.marketId) === Number(item.marketId));
+        const hash = String(item.lastTxHash || '');
+        const validHash = /^0x[0-9a-fA-F]{64}$/.test(hash);
+        const label = { open: '开仓', close: '平仓', liquidate: '清算', expire: '到期结算' }[item.eventType] || '未知事件';
+        return uiMarkup`<article class="onchain-row">
+          <div class="record-identity"><img src="${escapeHtml(itemMarket?.tokenImage || './assets/tokens/generic.svg')}" alt=""><div><strong>${escapeHtml(itemMarket?.tokenSymbol || `Market #${Number(item.marketId)}`)}-PERP</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
+          <div class="record-cell"><strong>${label}</strong><span>${escapeHtml(short(item.traderAddress || ''))}</span></div>
+          <div class="record-cell"><span>成交价</span><strong>—</strong></div>
+          <div class="record-cell"><span>保证金 / 仓位</span><strong>—</strong></div>
+          <div><span class="record-status">已索引</span><div class="record-hash"><small>${escapeHtml(short(hash))}</small></div></div>
+          ${validHash ? uiMarkup`<a class="record-open" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${hash}`)}" target="_blank" rel="noopener noreferrer">详情</a>` : '<span class="record-open">哈希不可用</span>'}
+        </article>`;
+      }).join('');
+      const ledger = activityPanel.querySelector('.onchain-ledger');
+      if (ledger) ledger.innerHTML = rows || `<p class="footer-note">${!isBscFeatureChain() ? '当前网络尚无永续事件索引。' : !state.account ? uiCopy("请连接钱包查看自己的交易记录。", "Connect your wallet to view your trades.") : state.perpHistoryBusy ? '正在加载逐笔记录…' : '当前筛选暂无已索引事件；这不代表钱包没有历史交易。'}</p>`;
+      const errors = Object.values(state.perpReadErrors).filter(Boolean).join('；');
+      const footer = activityPanel.querySelector('.ledger-foot > span');
+      if (footer) {
+        footer.dataset.perpReadError = '';
+        footer.setAttribute('role', 'status');
+        footer.textContent = errors || uiCopy('仅展示已加载事件；区块确认与索引存在延迟。缺失字段可在区块浏览器核验。', 'Only loaded events are shown. Confirmations and indexing may lag. Verify missing fields in the explorer.');
+      }
+      const more = activityPanel.querySelector('.ledger-foot > button');
+      if (more) {
+        more.removeAttribute('data-toast');
+        more.dataset.perpHistoryMore = '';
+        more.disabled = state.perpHistoryBusy || !state.perpHistoryCursor;
+        more.textContent = state.perpHistoryBusy ? '加载中…' : state.perpHistoryCursor ? uiCopy("加载更多", "Load more") : uiCopy("已加载完毕", "All loaded");
+      }
     }
   };
   const loadPerpetualServiceData = async () => {
@@ -2893,7 +3189,7 @@
     if (!state.perpConfig?.enabled || !state.perpConfig?.permissionlessMarketCreation) {
       throw new Error("永续合约治理状态未就绪，当前禁止创建市场");
     }
-    const tokenAddress = String($("#perps-service-token")?.value || "").trim().toLowerCase();
+    const tokenAddress = String($("#perps-contract-address")?.value || "").trim().toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(tokenAddress) || /^0x0{40}$/.test(tokenAddress)) throw new Error("请输入有效的 BSC MEME 合约地址");
     state.perpServiceBusy = true;
     renderPerpetualServices();
@@ -2996,7 +3292,7 @@
     if (livePanel) [...livePanel.querySelectorAll(".live-row")].forEach((node) => node.remove());
     const rankPanel = $('[data-panel="rank"]');
     if (rankPanel) [...rankPanel.querySelectorAll(".rank-row")].forEach((node) => node.remove());
-    ["[data-panel='live'] .live-row", "[data-panel='rank'] .rank-row", "[data-panel='activity'] .activity-card", "[data-panel='announcements'] .announcement-card", "[data-panel='announcements'] .announcement-detail", "[data-panel='detail'] [data-detail-panel='trades'] .live-row", "[data-panel='detail'] [data-detail-panel='holders'] .data-table", "[data-panel='success'] .launch-card", "[data-panel='success'] .review-block", "[data-panel='create-review'] .review-block", "[data-panel='my-launches'] .summary-hero", "[data-panel='my-launches'] .launch-card", "[data-panel='profile'] [data-profile-summary]", "[data-panel='watchlist'] .token-card"].forEach((selector) => $$(selector).forEach((node) => node.remove()));
+    ["[data-panel='live'] .live-row", "[data-panel='rank'] .rank-row", "[data-panel='activity'] .activity-card", "[data-panel='announcements'] .announcement-card", "[data-panel='announcements'] .announcement-detail:not([data-live-announcement-detail])", "[data-panel='detail'] [data-detail-panel='trades'] .live-row", "[data-panel='detail'] [data-detail-panel='holders'] .data-table", "[data-panel='success']:not([data-live-launch-result]) .launch-card", "[data-panel='success']:not([data-live-launch-result]) .review-block", "[data-panel='create-review'] .review-block:not(.launch-review-block)", "[data-panel='my-launches'] .summary-hero", "[data-panel='my-launches'] .launch-card", "[data-panel='profile'] [data-profile-summary]", "[data-panel='watchlist'] .token-card"].forEach((selector) => $$(selector).forEach((node) => node.remove()));
     ["[data-active-symbol]", "[data-active-quote]", "[data-active-address]", "[data-active-price]", "[data-active-market]", "[data-active-rank]", "[data-active-change]", "[data-active-curve]", "[data-holding-amount]", "[data-holding-short]", "[data-holding-value]", "[data-holding-cost]", "[data-holding-pnl]", "[data-holding-return]", "[data-holding-share]", "[data-quote-output]", "[data-quote-min]", "[data-quote-route]", "[data-quote-fee]", "[data-token-tax]", "[data-price-impact]", "[data-slippage-value]", "[data-order-unit]", "[data-order-balance]"].forEach((selector) => text(selector, "—"));
     $$("[data-active-curve-bar], [data-holding-bar]").forEach((node) => {
       node.style.width = "0%";
@@ -3035,16 +3331,7 @@
         perpsSubmit.textContent = '正在读取永续市场状态…';
         perpsSubmit.removeAttribute('data-toast');
       }
-      // These prototype-only perpetual subpages are never allowed to leak
-      // sample balances, transaction hashes, pools, or market claims into the
-      // production shell. Real API-backed forms replace this fail-closed body
-      // when the corresponding capability is available.
-      const pendingPanels = ['perps-add-contract', 'perps-create-pool', 'perps-pool', 'perps-onchain'];
-      pendingPanels.forEach((name) => {
-        const panel = root.querySelector(`[data-panel="${name}"]`);
-        if (!panel) return;
-        panel.innerHTML = `<div class="appbar"><button class="icon-btn" type="button" data-open="discover" aria-label="返回发现市场">←</button><div><div class="eyebrow">LIVE INTEGRATION</div><strong>功能接入中</strong></div><span class="tag">不展示样例数据</span></div><div class="page-title"><h1>该模块正在接入真实 API</h1><p>当前候选版不会展示原型金额、模拟持仓或模拟交易，也不会发送链上写交易。</p></div>`;
-      });
+      // Preserve original form shells; initialize safe data slots before reveal.
       renderPerpetualServices();
       $$('.chart').forEach((node) => node.replaceChildren());
       // The supplied design file contains visual-only sample names and amounts
@@ -3201,12 +3488,21 @@
     state.quote = null;
     state.quoteKey = "";
     text("[data-quote-output], [data-quote-min], [data-quote-route]", "—");
-    text("[data-quote-fee], [data-protocol-fee]", "等待报价");
-    text("[data-price-impact]", "等待报价");
+    text("[data-quote-fee], [data-protocol-fee]", uiCopy("等待报价", "Awaiting quote"));
+    text("[data-price-impact]", uiCopy("等待报价", "Awaiting quote"));
+  };
+  const renderLaunchDraftPreview = () => {
+    const name = $("#token-name")?.value?.trim() || "—";
+    const symbol = $("#token-symbol")?.value?.trim().toUpperCase() || "—";
+    text("[data-preview-name]", name);
+    text("[data-preview-ticker]", symbol);
+    text("[data-preview-symbol]", symbol.slice(0, 2));
   };
   const clearLaunchReview = () => {
     text("[data-preview-name], [data-preview-ticker], [data-launch-review-chain], [data-launch-review-name], [data-launch-review-mode], [data-launch-review-quote], [data-launch-review-quote-address], [data-launch-review-curve], [data-launch-review-threshold], [data-launch-review-fee], [data-launch-review-initial-buy], [data-launch-review-recipient], [data-launch-review-factory], [data-launch-review-id], [data-launch-review-salt], [data-launch-review-predicted], [data-launch-review-description]", "—");
-    text("[data-preview-symbol]", "—");
+    // The draft header is not the signed launch snapshot. Keep the user's
+    // entered name visible while invalidating every prepared transaction field.
+    renderLaunchDraftPreview();
     const publishButton = $("[data-launch-publish]");
     if (publishButton) {
       publishButton.disabled = true;
@@ -3250,16 +3546,18 @@
   };
   const renderLaunchReview = (fee, prepared, description) => {
     text("[data-preview-name], [data-launch-review-name]", prepared.launch.token_name);
-    text("[data-preview-ticker], [data-launch-review-quote]", prepared.launch.symbol);
+    text("[data-preview-ticker]", prepared.launch.symbol);
+    text("[data-launch-review-quote]", prepared.launch.quote_token);
     text("[data-preview-symbol]", prepared.launch.symbol.slice(0, 2).toUpperCase());
     text("[data-launch-review-chain]", `${selectedNetwork().name} · ${prepared.launch.quote_token}`);
+    text("[data-launch-review-network]", selectedNetwork().name);
     text("[data-launch-review-description]", description);
-    text("[data-launch-review-mode]", `${state.launchMode === "community" ? "社区收益 · " : ""}${state.curveMode === "custom" ? "自定义线性曲线" : "标准线性曲线"}`);
+    text("[data-launch-review-mode]", `${state.launchMode === "community" ? uiCopy("社区收益 · ", "Community rewards · ") : ""}${state.curveMode === "custom" ? uiCopy("自定义线性曲线", "Custom linear curve") : uiCopy("标准线性曲线", "Standard linear curve")}`);
     text("[data-launch-review-quote-address]", prepared.quote_token_address);
     text("[data-launch-review-curve]", prepared.curve_address);
     text("[data-launch-review-threshold]", `${formatUnits(BigInt(prepared.migration_threshold_wei))} ${prepared.launch.quote_token}`);
     text("[data-launch-review-dex]", state.launchOptions?.dex_profiles?.find((profile) => profile.id === prepared.dex_profile)?.name || prepared.dex_profile || "PancakeSwap V2");
-    text("[data-launch-review-initial-buy]", BigInt(prepared.initial_buy_wei || 0) > 0n ? `${formatUnits(BigInt(prepared.initial_buy_wei))} ${prepared.launch.quote_token} · 原子执行` : "0 · 无初始买入");
+    text("[data-launch-review-initial-buy]", BigInt(prepared.initial_buy_wei || 0) > 0n ? uiMarkup`${formatUnits(BigInt(prepared.initial_buy_wei))} ${prepared.launch.quote_token} · 原子执行` : uiCopy("0 · 无初始买入", "0 · No initial buy"));
     text("[data-launch-review-fee]", `${formatUnits(BigInt(fee.fee_wei))} ${fee.native_symbol || selectedNetwork().native}`);
     text("[data-launch-review-recipient]", prepared.fee_recipient);
     text("[data-launch-review-factory]", prepared.factory_address);
@@ -3270,11 +3568,13 @@
     if (publishButton) {
       publishButton.disabled = false;
       publishButton.removeAttribute("disabled");
-      publishButton.textContent = "确认以上快照并发布代币";
+      publishButton.textContent = uiCopy("确认以上快照并发布代币", "Confirm snapshot and launch token");
     }
   };
-  const renderLaunchTaxReview = (tax) => text("[data-launch-review-tax]", tax ? `买 ${tax.buy_tax_rate}% · 卖 ${tax.sell_tax_rate}% · ${tax.tax_duration_days === "0" ? "永久" : `${tax.tax_duration_days} 天`} · 资金/销毁/分红/流动性 ${tax.funds_recipient_pct}/${tax.burn_pct}/${tax.holders_pct}/${tax.liquidity_pct}%` : "标准代币 · 无转账税");
+  const renderLaunchTaxReview = (tax) => text("[data-launch-review-tax]", tax ? uiMarkup`买 ${tax.buy_tax_rate}% · 卖 ${tax.sell_tax_rate}% · ${tax.tax_duration_days === "0" ? uiCopy("永久", "Permanent") : uiMarkup`${tax.tax_duration_days} 天`} · 资金/销毁/分红/流动性 ${tax.funds_recipient_pct}/${tax.burn_pct}/${tax.holders_pct}/${tax.liquidity_pct}%` : uiCopy("标准代币 · 无转账税", "Standard token · no transfer tax"));
   const resetProviderState = (message = "钱包状态已变化，请重新连接") => {
+    state.lastLaunchResult = null;
+    renderLaunchResult();
     walletSessionEpoch += 1;
     sessionStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_ADDRESS_KEY);
@@ -3323,17 +3623,24 @@
     renderMyPanels();
     renderComments();
     $$("[data-wallet-label], .connect-global, .connect").forEach((node) => {
-      node.textContent = "连接钱包";
+      (node.querySelector('[data-wallet-copy]') || node).textContent = "连接钱包";
+      node.setAttribute('aria-label', '连接钱包');
+      node.removeAttribute('title');
     });
+    applySide(state.side === 'sell');
+    renderPerpetual();
     if (message) toast(message);
   };
   const renderWalletState = () => {
     $$("[data-wallet-label], .connect-global, .connect").forEach((node) => {
-      node.textContent = state.account ? short(state.account) : "连接钱包";
+      (node.querySelector('[data-wallet-copy]') || node).textContent = state.account ? short(state.account) : uiCopy("连接钱包", "Connect Wallet");
+      node.setAttribute('aria-label', state.account ? uiMarkup`当前钱包 ${state.account}` : uiCopy("连接钱包", "Connect Wallet"));
+      if (state.account) node.setAttribute('title', state.account);
+      else node.removeAttribute('title');
     });
     const taxRecipient = $("#tax-recipient-wallet");
     if (state.taxEnabled && state.account && taxRecipient && !taxRecipient.value) taxRecipient.value = state.account;
-    if (state.detail) applySide(state.side === "sell");
+    applySide(state.side === "sell");
   };
   const restoreSessionOnce = async () => {
     const token = sessionStorage.getItem(SESSION_KEY);
@@ -3661,7 +3968,7 @@
     const detailPanel = $('[data-panel="detail"]');
     if (!detailPanel) return;
     $$("[data-panel]").forEach((panel) => panel.classList.toggle("active", panel === detailPanel));
-    detailPanel.classList.add("has-bottom-nav");
+    applyScreenChrome('detail');
     detailPanel.scrollTop = 0;
   };
   const openToken = async (token, { historyMode = "push", fallbackDetail = null, isCurrent = null } = {}) => {
@@ -3720,7 +4027,7 @@
         charts.delete(selector);
         $(selector)?.replaceChildren();
       });
-      setChartEmpty("暂无真实成交，完成首笔交易后生成 K 线。", true);
+      setChartEmpty(uiCopy("暂无真实成交，完成首笔交易后生成 K 线。", "No trades yet. Candles appear after the first trade."), true);
       return;
     }
     const candles = state.candles
@@ -3751,6 +4058,7 @@
         entry?.chart.remove?.();
         host.replaceChildren();
         const chart = window.LightweightCharts.createChart(host, {
+          localization: chartLocalization(),
           width: host.clientWidth || 640,
           height: 260,
           layout: {
@@ -3765,7 +4073,7 @@
             borderColor: "#303334",
             scaleMargins: { top: 0.08, bottom: 0.25 },
           },
-          timeScale: { borderColor: "#303334", timeVisible: true },
+          timeScale: { borderColor: "#303334", timeVisible: true, tickMarkFormatter: chartTick },
         });
         const series = chart.addCandlestickSeries({
           upColor: "#32cf7c",
@@ -3799,7 +4107,7 @@
     description.hidden = !descriptionText;
     links.replaceChildren();
     [
-      ["官网", detail?.website],
+      [uiCopy("官网", "Website"), detail?.website],
       ["X", detail?.twitter],
       ["Telegram", detail?.telegram],
       ["Discord", detail?.discord],
@@ -3815,7 +4123,7 @@
     });
     container.hidden = !descriptionText && !links.childElementCount;
   };
-  const renderSelected = () => {
+  const renderSelected = ({ refreshQuote = true } = {}) => {
     const token = state.selected;
     const detail = state.detail;
     if (!token || !detail) return;
@@ -3829,11 +4137,11 @@
     const volume = Number(recentTrades.reduce((sum, trade) => sum + number(trade.quote_amount || trade.bnb_amount), 0).toFixed(12));
     const selectedStatus = status(detail) || status(token) || "deployed";
     const priceQuote = detail.current_price_quote ?? detail.current_price_bnb ?? token.current_price_quote ?? token.current_price_bnb;
-    const priceDisplay = hasNumber(token.current_price_usd) ? usd(token.current_price_usd, false) : `${decimal(priceQuote)} ${quote}`;
+    const priceDisplay = hasNumber(token.current_price_usd) ? usd(token.current_price_usd, false) : `${displayPrice(priceQuote, decimal(priceQuote))} ${quote}`;
     const marketCapDisplay = hasNumber(token.market_cap_usd) ? usd(token.market_cap_usd) : hasNumber(token.market_cap_quote) ? `${decimal(token.market_cap_quote)} ${quote}` : "—";
     const fdvDisplay = hasNumber(token.fdv_usd) ? usd(token.fdv_usd) : hasNumber(token.fdv_quote) ? `${decimal(token.fdv_quote)} ${quote}` : "—";
     const v3Position = state.migrationProof?.position_token_id;
-    const liquidityDisplay = detail.migrated ? (v3Position ? `V3 Position #${v3Position}` : state.migrationProof?.reserve_verified ? `${decimal(state.migrationProof.estimated_liquidity_quote)} ${quote}` : "待链上验证") : `${decimal(raised)} ${quote}`;
+    const liquidityDisplay = detail.migrated ? (v3Position ? `V3 Position #${v3Position}` : state.migrationProof?.reserve_verified ? `${decimal(state.migrationProof.estimated_liquidity_quote)} ${quote}` : uiCopy("待链上验证", "Pending on-chain verification")) : `${decimal(raised)} ${quote}`;
     const volumeDisplay = hasNumber(token.volume_usd_24h) ? usd(token.volume_usd_24h) : token.volume_quote_24h != null ? `${decimal(token.volume_quote_24h)} ${quote}` : recentTrades.length ? `${decimal(volume)} ${quote}` : "—";
     const netFlowDisplay = hasNumber(token.net_flow_usd_24h) ? usd(token.net_flow_usd_24h) : hasNumber(token.net_flow_quote_24h) ? `${decimal(token.net_flow_quote_24h)} ${quote}` : "—";
     const buyVolumeDisplay = hasNumber(token.buy_volume_usd_24h) ? usd(token.buy_volume_usd_24h) : hasNumber(token.buy_volume_quote_24h) ? `${decimal(token.buy_volume_quote_24h)} ${quote}` : "—";
@@ -3841,7 +4149,7 @@
     const buyRatioDisplay = hasNumber(token.buy_ratio_24h_percent) ? `${number(token.buy_ratio_24h_percent).toFixed(1)}%` : "—";
     const buyTax = number(detail.buy_tax_percent ?? token.buy_tax_percent);
     const sellTax = number(detail.sell_tax_percent ?? token.sell_tax_percent);
-    const taxLabel = detail.tax_enabled || token.tax_enabled ? `买 ${buyTax}% / 卖 ${sellTax}%` : "0% / 0%";
+    const taxLabel = detail.tax_enabled || token.tax_enabled ? uiMarkup`买 ${buyTax}% / 卖 ${sellTax}%` : "0% / 0%";
     renderProjectSummary(detail);
     text("[data-active-symbol]", detail.symbol || token.symbol);
     text("[data-active-quote]", quote);
@@ -3860,19 +4168,19 @@
     text("[data-chain-buy-sell]", `${buyVolumeDisplay} / ${sellVolumeDisplay}`);
     text("[data-active-raised]", `${decimal(raised)} ${quote}`);
     text("[data-active-trade-count]", token.trade_count_24h ?? state.trades.length);
-    text("[data-trade-count-label]", `共 ${state.trades.length} 笔`);
+    text("[data-trade-count-label]", uiMarkup`共 ${state.trades.length} 笔`);
     text("[data-active-sold]", sold == null ? "—" : `${decimal(sold)} ${detail.symbol || token.symbol}`);
-    text("[data-active-reserve]", detail.migrated ? (v3Position ? `PancakeSwap V3 NFT #${v3Position} · 流动性 ${state.migrationProof?.position_liquidity_raw || "—"}` : state.migrationProof?.reserve_verified ? `DEX 流动性 ≈ ${decimal(state.migrationProof.estimated_liquidity_quote)} ${quote}` : "DEX 储备待链上验证") : `曲线储备 ${decimal(raised)} ${quote}`);
-    text("[data-active-remaining]", detail.migrated ? (state.migrationProof?.diagnostic === "verified" ? `${detail.dex_profile || "DEX V2"} 迁移与储备已验证` : `迁移诊断：${state.migrationProof?.diagnostic || "读取中"}`) : "迁移剩余由链上进度决定");
+    text("[data-active-reserve]", detail.migrated ? (v3Position ? uiMarkup`PancakeSwap V3 NFT #${v3Position} · 流动性 ${state.migrationProof?.position_liquidity_raw || "—"}` : state.migrationProof?.reserve_verified ? uiMarkup`DEX 流动性 ≈ ${decimal(state.migrationProof.estimated_liquidity_quote)} ${quote}` : "DEX 储备待链上验证") : uiMarkup`曲线储备 ${decimal(raised)} ${quote}`);
+    text("[data-active-remaining]", detail.migrated ? (state.migrationProof?.diagnostic === "verified" ? uiMarkup`${detail.dex_profile || "DEX V2"} 迁移与储备已验证` : uiMarkup`迁移诊断：${state.migrationProof?.diagnostic || "读取中"}`) : uiCopy("迁移剩余由链上进度决定", "Remaining migration amount follows on-chain progress"));
     text("[data-chain-contract]", address);
     text("[data-chain-curve]", detail.curve_address || "—");
     text("[data-chain-created]", formatDate(detail.submitted_at || token.submitted_at));
     text("[data-chain-creator]", detail.creator || token.creator_address || "—");
     text("[data-chain-status]", selectedStatus);
     text("[data-token-tax-detail], [data-token-tax]", taxLabel);
-    text("[data-migration-router]", state.migrationProof?.router_verified ? `${short(state.migrationProof.router_address)} · 已验证` : state.migrationProof?.router_address ? `${short(state.migrationProof.router_address)} · 未验证` : "尚未读取");
-    text("[data-migration-pair]", v3Position ? `V3 Position #${v3Position} · Fee ${state.migrationProof?.position_fee_tier || "—"}` : state.migrationProof?.pair_address || (detail.migrated ? "迁移证明暂不可用" : "尚未迁移"));
-    text("[data-migration-lp]", state.migrationProof?.lp_assignment_verified ? (v3Position ? `手续费分配器 ${short(state.migrationProof.lp_receiver_address)} · 已验证` : `${formatUnits(BigInt(state.migrationProof.lp_burned_balance_raw || "0"), 18, 6)} LP · ${state.migrationProof.lp_burn_verified ? "已销毁" : `已分配 ${short(state.migrationProof.lp_receiver_address)}`}`) : detail.migrated ? "未验证" : "尚未迁移");
+    text("[data-migration-router]", state.migrationProof?.router_verified ? uiMarkup`${short(state.migrationProof.router_address)} · 已验证` : state.migrationProof?.router_address ? uiMarkup`${short(state.migrationProof.router_address)} · 未验证` : "尚未读取");
+    text("[data-migration-pair]", v3Position ? `V3 Position #${v3Position} · Fee ${state.migrationProof?.position_fee_tier || "—"}` : state.migrationProof?.pair_address || (detail.migrated ? "迁移证明暂不可用" : uiCopy("尚未迁移", "Not migrated")));
+    text("[data-migration-lp]", state.migrationProof?.lp_assignment_verified ? (v3Position ? uiMarkup`手续费分配器 ${short(state.migrationProof.lp_receiver_address)} · 已验证` : `${formatUnits(BigInt(state.migrationProof.lp_burned_balance_raw || "0"), 18, 6)} LP · ${state.migrationProof.lp_burn_verified ? "已销毁" : uiMarkup`已分配 ${short(state.migrationProof.lp_receiver_address)}`}`) : detail.migrated ? uiCopy("未验证", "Not verified") : uiCopy("尚未迁移", "Not migrated"));
     text("[data-holding-amount]", state.balances.token == null ? "—" : formatUnits(state.balances.token));
     text("[data-holding-short]", state.balances.token == null ? "—" : formatUnits(state.balances.token, 18, 4));
     renderWalletPosition();
@@ -3885,19 +4193,22 @@
     });
     $$("[data-copy-token-address]").forEach((node) => {
       node.dataset.tokenAddress = address;
-      node.title = `复制完整地址 ${address}`;
+      node.title = uiMarkup`复制完整地址 ${address}`;
     });
     const favorite = state.favorites.some((item) => String(item.contract_address || "").toLowerCase() === address.toLowerCase());
     $$("[data-favorite-token]").forEach((node) => {
       node.classList.toggle("active", favorite);
-      node.title = favorite ? "取消自选" : "加入自选";
+      node.title = favorite ? uiCopy("取消自选", "Remove from watchlist") : uiCopy("加入自选", "Add to watchlist");
     });
     const holderPayload = state.holders[address.toLowerCase()];
+    text('[data-detail-holder-total]', hasNumber(holderPayload?.holders_count ?? token.holders_count) ? String(holderPayload?.holders_count ?? token.holders_count) : '—');
+    const topTen = holderPayload?.top_holders?.slice(0, 10);
+    text('[data-detail-top-ten]', holderPayload?.available !== false && topTen?.length && topTen.every(holder => hasNumber(holder.percentage)) ? `${topTen.reduce((sum, holder) => sum + Number(holder.percentage), 0).toFixed(2)}%` : '—');
     if (holderPayload) renderHolders(address, holderPayload);
     else {
-      text("[data-holder-count]", "点击持有人页加载");
+      text("[data-holder-count]", uiCopy("点击持有人页加载", "Open Holders to load"));
       const holderList = $("[data-holder-list]");
-      if (holderList) holderList.innerHTML = `<p class="footer-note">打开本页后按需读取真实持有人数据。</p>`;
+      if (holderList) holderList.innerHTML = uiMarkup`<p class="footer-note">打开本页后按需读取真实持有人数据。</p>`;
     }
     const liveRows = state.trades
       .slice(0, 20)
@@ -3906,11 +4217,11 @@
     const tradePanel = $('[data-panel="detail"] [data-detail-panel="trades"]');
     if (tradePanel) {
       [...tradePanel.querySelectorAll(".live-row, .footer-note")].forEach((node) => node.remove());
-      tradePanel.querySelector(".section-title")?.insertAdjacentHTML("afterend", liveRows || `<p class="footer-note">暂无真实成交记录。</p>`);
+      tradePanel.querySelector(".section-title")?.insertAdjacentHTML("afterend", liveRows || uiMarkup`<p class="footer-note">暂无真实成交记录。</p>`);
     }
     renderComments(address.toLowerCase());
     renderAlertButtons();
-    applySide(state.side === "sell");
+    applySide(state.side === "sell", { refreshQuote });
   };
   const quoteBinding = (response, address, amount) => {
     const output = state.side === "buy" ? response?.tokens_out : response?.quote_out_raw || response?.quote_out || response?.bnb_out;
@@ -4013,27 +4324,34 @@
     text("[data-slippage-value], [data-slippage-label]", `${(state.quote.slippageBps / 100).toFixed(0)}% · 固定`);
     text("[data-price-impact]", priceImpactLabel(response.price_impact_percent));
   };
-  const applySideBase = (sell) => {
+  const applySideBase = (sell, { refreshQuote = true } = {}) => {
     state.side = sell ? "sell" : "buy";
     $$("[data-trade-side]").forEach((node) => node.classList.toggle("active", (node.dataset.tradeSide === "sell") === sell));
     const token = state.selected;
     const detail = state.detail;
-    if (!token || !detail) return;
+    const submit = $("#trade-submit");
+    if (!token || !detail) {
+      if (submit) {
+        submit.disabled = true;
+        submit.textContent = state.account ? uiCopy("请先选择代币", "Select a token first") : uiCopy("请先连接钱包并选择代币", "Connect wallet and select a token");
+      }
+      return;
+    }
     const balance = sell ? state.balances.token : state.balances.quote;
     const unit = sell ? detail.symbol : detail.quote_token;
-    text("[data-order-label]", sell ? "卖出数量" : "支付");
+    text("[data-order-label]", sell ? uiCopy("卖出数量", "Sell amount") : uiCopy("支付", "You pay"));
     text("[data-order-unit]", unit);
-    text("[data-order-balance]", balance == null ? "钱包余额 —" : `钱包余额 ${formatUnits(balance)} ${unit}`);
-    if (!sell) text("[data-fixed-buy-balance]", balance == null ? `余额 — ${unit}` : `余额 ${formatUnits(balance)} ${unit}`);
-    const submit = $("#trade-submit");
+    text("[data-order-balance]", balance == null ? uiCopy("钱包余额 —", "Wallet balance —") : uiMarkup`钱包余额 ${formatUnits(balance)} ${unit}`);
+    if (!sell) text("[data-fixed-buy-balance]", balance == null ? uiMarkup`余额 — ${unit}` : uiMarkup`余额 ${formatUnits(balance)} ${unit}`);
     if (submit) {
-      submit.textContent = state.account ? `${sell ? "卖出" : "买入"} ${sell ? detail.symbol : token.symbol || detail.symbol}` : `连接钱包并${sell ? "卖出" : "买入"}`;
+      submit.disabled = state.busy || !state.account;
+      submit.textContent = state.account ? `${sell ? uiCopy("卖出", "Sell") : uiCopy("买入", "Buy")} ${sell ? detail.symbol : token.symbol || detail.symbol}` : uiMarkup`连接钱包并${sell ? uiCopy("卖出", "Sell") : uiCopy("买入", "Buy")}`;
       submit.classList.toggle("red", sell);
     }
-    updateQuote().catch((error) => toastError(error, "报价获取失败，请稍后重试"));
+    if (refreshQuote) updateQuote().catch((error) => toastError(error, "报价获取失败，请稍后重试"));
   };
-  const applySide = (sell) => {
-    applySideBase(sell);
+  const applySide = (sell, options) => {
+    applySideBase(sell, options);
     const rate = sell ? state.detail?.sell_tax_percent : state.detail?.buy_tax_percent;
     text("[data-token-tax]", state.detail?.tax_enabled && Number.isFinite(Number(rate)) ? `${Number(rate)}%` : "0%");
   };
@@ -4596,6 +4914,8 @@
       isCurrent: current,
     });
     if (!current()) return result;
+    state.lastLaunchResult = { token: launchedToken, hash, chain, initial: prepared.initial_buy_wei || '0', account };
+    renderLaunchResult();
     clearLaunchConfirmation();
     state.launchTerminal = true;
     setTokenPath(launchedAddress, "push");
@@ -4874,7 +5194,22 @@
       group.hidden = !state.taxEnabled;
     });
     applyTaxDefaults();
+    renderTaxChoices();
     invalidateLaunchSnapshot();
+  };
+  const renderTaxChoices = () => {
+    const buy = Number($('#buy-tax-rate')?.value), sell = Number($('#sell-tax-rate')?.value);
+    $$('[data-tax-preset]').forEach(button => {
+      const rate = Number(button.dataset.taxPreset);
+      button.classList.toggle('active', state.taxEnabled ? rate > 0 && rate === buy && rate === sell : rate === 0);
+      button.setAttribute('aria-pressed', String(button.classList.contains('active')));
+    });
+    const parts = ['funds-recipient-pct', 'burn-pct', 'holders-pct', 'liquidity-pct'].map(id => Number($('#' + id)?.value));
+    const plan = !state.taxEnabled ? 'standard' : parts.every((value, index) => value === (index === 0 ? 100 : 0)) ? 'creator' : parts.every((value, index) => value === (index === 2 ? 100 : 0)) ? 'holders' : '';
+    $$('[data-tax-plan]').forEach(button => {
+      button.classList.toggle('active', button.dataset.taxPlan === plan);
+      button.setAttribute('aria-pressed', String(button.dataset.taxPlan === plan));
+    });
   };
   const applyLaunchMode = (mode) => {
     state.launchMode = ["custom", "community"].includes(mode) ? mode : "fair";
@@ -4895,12 +5230,41 @@
       if (publishButton) {
         publishButton.disabled = true;
         publishButton.setAttribute("disabled", "");
-        publishButton.textContent = "参数准备失败，请返回修改后重试";
+        publishButton.textContent = uiCopy("参数准备失败，请返回修改后重试", "Parameter preparation failed. Go back, adjust and retry.");
       }
       toastError(error, "发币参数自动准备失败，请返回修改后重试");
     }
   };
+  const renderLaunchResult = () => {
+    const receipt = state.lastLaunchResult;
+    const token = receipt?.token;
+    text('[data-launch-result-heading]', token ? uiMarkup`${token.token_name} 已上线。` : uiCopy("暂无本次发布回执。", "No launch receipt for this session."));
+    text('[data-launch-result-copy]', token ? uiCopy("链上交易与后台确认已完成，可打开代币页面继续交易。", "Confirmed on-chain and by the backend. Open the token page to trade.") : uiCopy("只有链上交易与后台确认完成后，才显示真实发布结果。", "Launch results appear only after on-chain and backend confirmation."));
+    text('[data-launch-result-name]', token ? `${token.token_name} · ${token.symbol}` : '—');
+    text('[data-launch-result-address]', token ? tokenAddress(token) : '—');
+    text('[data-launch-result-status]', token ? uiCopy("已确认", "Confirmed") : uiCopy("待确认", "Pending confirmation"));
+    text('[data-launch-result-network]', receipt ? NETWORKS[receipt.chain]?.name || receipt.chain : '—');
+    text('[data-launch-result-hash]', receipt?.hash || '—');
+    text('[data-launch-result-initial]', receipt ? `${formatUnits(BigInt(receipt.initial))} ${token.quote_token}` : '—');
+    text('[data-launch-result-curve]', token ? `${number(token.progress_percent)}%` : '—');
+    text('[data-launch-result-cap]', token && hasNumber(token.market_cap_usd) ? usd(token.market_cap_usd) : '—');
+    const image = $('[data-launch-result-image]');
+    if (image) image.src = token?.logo_url || './assets/tokens/generic.svg';
+    const progress = $('[data-launch-result-progress]');
+    if (progress) progress.style.width = `${Math.min(100, Math.max(0, number(token?.progress_percent)))}%`;
+    $$('[data-launch-result-share], [data-launch-result-open]').forEach(button => { button.disabled = !token; });
+  };
+  let actionBackScreen = 'profile';
+  const mainScreens = ['discover', 'live', 'rank', 'create-mode', 'profile'];
+  const applyScreenChrome = (name) => {
+    $$('[data-panel]').forEach(panel => panel.classList.toggle('has-bottom-nav', panel.dataset.panel === name && mainScreens.includes(name)));
+    $('.bottom-nav')?.classList.toggle('visible', mainScreens.includes(name));
+  };
   const show = (name) => {
+    name = resolveScreenName(name);
+    if (name === 'action-center') actionBackScreen = $('[data-panel].active')?.dataset.panel || 'profile';
+    if (name === 'success') renderLaunchResult();
+    const routeName = name;
     const target = root.querySelector(`[data-panel="${CSS.escape(name)}"]`);
     if (!target) return;
     navigationEpoch += 1;
@@ -4912,10 +5276,10 @@
       button.setAttribute("aria-pressed", button.dataset.open === name ? "true" : "false"),
     );
     $$('[data-nav]').forEach((button) => button.classList.toggle("active", button.dataset.nav === name));
-    target.classList.add("has-bottom-nav");
+    applyScreenChrome(name);
     target.scrollTop = 0;
     renderWalletState();
-    routeHistory()?.replaceState?.(null, "", `${pumpBasePath()}?screen=${encodeURIComponent(name)}`);
+    routeHistory()?.replaceState?.(null, "", `${pumpBasePath()}?screen=${encodeURIComponent(routeName)}`);
     if (name === "create-review") void autoPrepareLaunch();
     if (name === "announcements") {
       renderAnnouncements();
@@ -4934,6 +5298,23 @@
     }
   };
   const bindNavigation = () => {
+    $$('[data-perps-size]').forEach(button => button.addEventListener('click', () => {
+      const market = selectedPerpMarket();
+      const percent = Number(button.dataset.perpsSize);
+      if (!market || !state.account || state.perpQuoteBalance == null || ![25, 50, 75, 100].includes(percent) || state.perpSubmitting) return;
+      const input = $('#perps-size');
+      if (input) input.value = formatUnits(BigInt(state.perpQuoteBalance) * BigInt(percent) / 100n, Number(market.quoteDecimals || 18), 18);
+      state.preparedPerpAction = null;
+      state.preparedPerpRequest = null;
+      renderPerpetual();
+    }));
+    $('[data-action-back]')?.addEventListener('click', () => show(actionBackScreen === 'action-center' ? 'profile' : actionBackScreen));
+    $('[data-launch-result-open]')?.addEventListener('click', () => {
+      if (state.lastLaunchResult?.token) void openToken(state.lastLaunchResult.token).catch(error => toastError(error, '代币页面打开失败'));
+    });
+    $('[data-launch-result-share]')?.addEventListener('click', () => {
+      if (state.lastLaunchResult?.token) void copyText(`${location.origin}${pumpBasePath()}/${tokenAddress(state.lastLaunchResult.token)}`).then(() => toast('代币链接已复制')).catch(error => toastError(error, '复制失败'));
+    });
     // data-open is delegated from root because the latest UI redraws child pages.
     $$("[data-nav]").forEach((node) => node.addEventListener("click", () => show(node.dataset.nav)));
     $$("[data-detail-tab]").forEach((node) =>
@@ -4951,18 +5332,66 @@
         invalidateQuote();
       }),
     );
-    $$("[data-lang-toggle]").forEach((node) =>
+    $$("[data-lang-toggle], [data-set-language]").forEach((node) =>
       node.addEventListener("click", () => {
-        const target = pumpLocale() === "zh" ? "en" : "zh";
+        const target = node.dataset.setLanguage || (pumpLocale() === "zh" ? "en" : "zh");
         try {
           window.localStorage?.setItem(LOCALE_KEY, target);
         } catch {}
         document.documentElement.lang = target === "zh" ? "zh-CN" : "en";
         text("[data-lang-current]", target === "zh" ? "简体中文" : "English");
-        renderAnnouncements();
+        text("[data-lang-label]", target === "zh" ? "中文 / EN" : "EN / 中文");
+        $$('[data-set-language]').forEach(button => button.classList.toggle('active', button.dataset.setLanguage === target));
+        window.bitbtUiLocale?.apply(target);
+        if (operationDialogCopy && !$('[data-operation-error]')?.hidden) showOperationDialog(operationDialogCopy.message, operationDialogCopy);
+        renderChainMenu();
+        if (state.marketActivityReady) renderMarketSummary();
+        redrawDisplay();
         toast(target === "zh" ? "语言偏好已保存" : "Language preference saved");
       }),
     );
+    const motionButton = $('[data-reduce-motion]');
+    const applyMotion = (reduced) => {
+      document.documentElement.classList.toggle('reduce-motion', reduced);
+      motionButton?.classList.toggle('active', reduced);
+      motionButton?.setAttribute('aria-pressed', String(reduced));
+    };
+    applyMotion(readLocalPreference('bitbt_reduce_motion') === 'true');
+    motionButton?.addEventListener('click', () => {
+      const reduced = motionButton.getAttribute('aria-pressed') !== 'true';
+      writeLocalPreference('bitbt_reduce_motion', String(reduced));
+      applyMotion(reduced);
+    });
+    const redrawDisplay = () => {
+      // Redraw cached data only: changing display preferences must not send RPC,
+      // reset input fields, invalidate signed snapshots or request authentication.
+      renderTokens(); renderRank(); renderLiveRows(); renderMyPanels();
+      if (state.selected && state.detail) renderSelected({ refreshQuote: false });
+      renderPerpetual(); renderAnnouncements();
+      for (const entry of charts.values()) entry.chart.applyOptions({localization: chartLocalization(),timeScale:{tickMarkFormatter:chartTick}});
+    };
+    for (const [selector, key, allowed] of [
+      ['[data-display-timezone]', 'bitbt_time_zone', ['', 'Asia/Shanghai', 'UTC', 'America/New_York']],
+      ['[data-display-precision]', 'bitbt_price_precision', ['', '6', '8']],
+    ]) {
+      const select = $(selector);
+      if (!select) continue;
+      const saved = readLocalPreference(key);
+      select.value = allowed.includes(saved) ? saved : '';
+      select.addEventListener('change', () => {
+        if (!allowed.includes(select.value)) return;
+        writeLocalPreference(key, select.value);
+        redrawDisplay();
+      });
+    }
+    $('[data-save-display]')?.addEventListener('click', () => toast(uiCopy('语言、时区、价格精度与动态效果偏好已保存', 'Language, time zone, price precision and motion preferences saved')));
+    const contacts = ['https://bitbt.com', 'mailto:support@bitbt.com', 'https://t.me/BitBTVentures', 'https://x.com/0xcryptolin'];
+    $$('.profile-support button').forEach((button, index) => {
+      button.removeAttribute('data-action-confirm');
+      button.addEventListener('click', () => {
+        if (contacts[index]) window.open(contacts[index], '_blank', 'noopener,noreferrer');
+      });
+    });
   };
   const bind = () => {
     $("[data-perp-refresh]")?.addEventListener("click", () => loadPerpetual().catch((error) => toastError(error, "永续市场刷新失败")));
@@ -4989,6 +5418,25 @@
       submitPerpetualAction().catch((error) => toastError(error, "永续操作失败"));
     });
     root.addEventListener("click", (event) => {
+      const shortcut = event.target.closest('[data-perp-shortcut]');
+      if (shortcut) {
+        event.preventDefault();
+        const action = shortcut.dataset.perpShortcut;
+        if (!['deposit_liquidity', 'withdraw_liquidity'].includes(action)) return;
+        state.preparedPerpAction = null;
+        state.preparedPerpRequest = null;
+        const field = $('#perp-action');
+        if (field) field.value = action;
+        show('perpetual');
+        renderPerpetual();
+        return;
+      }
+      if (event.target.closest('[data-perp-pool-share]')) {
+        event.preventDefault();
+        const market = selectedPerpMarket();
+        if (market) void copyText(`BitBT Pump · ${selectedNetwork().name}\n永续市场 #${market.marketId}\n代币地址：${market.tokenAddress}\n${location.origin}${pumpBasePath()}?screen=perps`).then(() => toast('池子信息已复制')).catch(error => toastError(error, '复制失败'));
+        return;
+      }
       const openButton = event.target.closest("[data-open]");
       if (openButton && !openButton.dataset.liveToken) {
         event.preventDefault();
@@ -5001,6 +5449,12 @@
           state.preparedPerpRequest = null;
         }
         if (openButton.dataset.launchMode) applyLaunchMode(openButton.dataset.launchMode);
+        if (openButton.dataset.openPerpsSide) {
+          state.perpModernAction = 'open_position';
+          state.preparedPerpAction = null;
+          state.preparedPerpRequest = null;
+          $$('[data-perps-side]').forEach(button => button.classList.toggle('active', button.dataset.perpsSide === openButton.dataset.openPerpsSide));
+        }
         show(openButton.dataset.open);
         if (openButton.dataset.side) applySide(openButton.dataset.side === "sell");
         if (openButton.dataset.perpMarketId != null) {
@@ -5037,6 +5491,7 @@
       const activityFilter = event.target.closest("[data-perp-activity-filter]");
       if (activityFilter) {
         event.preventDefault();
+        if (activityFilter.disabled) return;
         state.perpActivityFilter = activityFilter.dataset.perpActivityFilter || "all";
         renderPerpetualServices();
         return;
@@ -5048,7 +5503,7 @@
       }
       if (event.target.closest("[data-perp-activity-export]")) {
         event.preventDefault();
-        const exportedActivity = state.perpActivity.filter((item) => state.perpActivityFilter === "all" || (state.perpActivityFilter === "open" ? item.eventType === 'open' : item.eventType !== 'open'));
+        const exportedActivity = filteredPerpetualActivity();
         const rows = [["market_id", "trader", "event_type", "tx_hash", "block_number", "log_index", "indexed_at"], ...exportedActivity.map((item) => [item.marketId, item.traderAddress, item.eventType, item.lastTxHash || "", item.blockNumber, item.logIndex, item.updatedAt])];
         const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
         const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
@@ -5216,12 +5671,14 @@
     });
   };
   const applyMarketActivity = (payload) => {
+    state.marketActivityReady = true;
     state.marketActivity = Array.isArray(payload?.activity) ? payload.activity : [];
     state.marketSummary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
     renderMarketSummary();
     renderLiveRows();
   };
   const renderUnavailable = (error) => {
+    state.marketActivityReady = false;
     clearPrototype();
     state.tokens = [];
     state.details = {};
@@ -5234,8 +5691,8 @@
     state.marketActivity = [];
     state.marketSummary = {};
     const banner = $("[data-api-status]");
-    if (banner) banner.textContent = "实时 Pump 数据暂不可用";
-    text("[data-market-stream-status]", `${selectedNetwork().shortName} 数据流暂不可用`);
+    if (banner) banner.textContent = uiCopy("实时 Pump 数据暂不可用", "Live Pump DataUnavailable");
+    text("[data-market-stream-status]", uiMarkup`${selectedNetwork().shortName} 数据流暂不可用`);
     toastError(error, "实时 Pump 数据暂不可用，请稍后重试");
   };
   const applyLaunchOptions = (options) => {
@@ -5255,11 +5712,11 @@
     const select = $("#launch-dex-profile");
     const profiles = (options?.dex_profiles || []).filter((profile) => profile.enabled);
     if (select && profiles.length) {
-      select.innerHTML = profiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)} · ${escapeHtml(profile.lp_policy === "burn" ? "LP 销毁" : "LP 奖励")}</option>`).join("");
+      select.innerHTML = profiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)} · ${escapeHtml(profile.lp_policy === "burn" ? uiCopy("LP 销毁", "LP burn") : uiCopy("LP 奖励", "LP rewards"))}</option>`).join("");
       state.launchDexProfile = profiles.some((profile) => profile.id === state.launchDexProfile) ? state.launchDexProfile : profiles[0].id;
       select.value = state.launchDexProfile;
     } else if (select) {
-      select.innerHTML = `<option value="">${escapeHtml(selectedNetwork().shortName)} 暂无可用 DEX</option>`;
+      select.innerHTML = `<option value="">${escapeHtml(selectedNetwork().shortName)} · ${uiCopy('暂无可用 DEX', 'No available DEX')}</option>`;
       state.launchDexProfile = "";
     }
     setLaunchAvailability(Boolean(state.account && state.chainId === selectedNetwork().chainIdHex && launchEnabledForSelectedChain()));
@@ -5272,6 +5729,7 @@
       applyLaunchOptions(launchOptions);
       if (market) applyMarketActivity(market);
       else {
+        state.marketActivityReady = false;
         renderMarketSummary();
         text("[data-market-stream-status]", "全市场链上动态暂不可用");
         const banner = $("[data-api-status]");
@@ -5424,6 +5882,23 @@
   });
   $$("[data-curve-mode]").forEach((node) => node.addEventListener("click", () => setCurveMode(node.dataset.curveMode)));
   $$("[data-tax-mode]").forEach((node) => node.addEventListener("click", () => setTaxMode(node.dataset.taxMode === "tax")));
+  $$('[data-tax-preset]').forEach(button => button.addEventListener('click', () => {
+    const rate = Number(button.dataset.taxPreset);
+    if (![0, 1, 3, 5].includes(rate)) return;
+    if (rate > 0) for (const id of ['buy-tax-rate', 'sell-tax-rate']) $('#' + id).value = String(rate);
+    setTaxMode(rate > 0);
+  }));
+  $$('[data-tax-plan]').forEach(button => button.addEventListener('click', () => {
+    const plan = button.dataset.taxPlan;
+    if (!['standard', 'creator', 'holders'].includes(plan)) return;
+    setTaxMode(plan !== 'standard');
+    if (plan !== 'standard') {
+      for (const id of ['funds-recipient-pct', 'burn-pct', 'holders-pct', 'liquidity-pct']) $('#' + id).value = id === (plan === 'creator' ? 'funds-recipient-pct' : 'holders-pct') ? '100' : '0';
+    }
+    renderTaxChoices();
+    invalidateLaunchSnapshot();
+  }));
+  $$('[data-panel="create-tax"] input').forEach(input => input.addEventListener('input', renderTaxChoices));
   $$('[data-panel="create-basic"] input, [data-panel="create-basic"] textarea, [data-panel="create-basic"] select, [data-panel="create-economics"] input, [data-panel="create-economics"] textarea, [data-panel="create-economics"] select, [data-panel="create-tax"] input, [data-panel="create-tax"] textarea, [data-panel="create-tax"] select').forEach((node) => {
     node.addEventListener("input", invalidateLaunchSnapshot);
     node.addEventListener("change", invalidateLaunchSnapshot);
@@ -5444,6 +5919,39 @@
   bindMarketSelect("[data-market-quote-filter]", "marketQuoteFilter");
   bindMarketSelect("[data-market-category-filter]", "marketCategoryFilter");
   bindMarketSelect("[data-market-type-filter]", "marketTypeFilter");
+  const selectAccountTab = (panel, name) => {
+    if (!panel) return;
+    panel.querySelectorAll('[data-account-tab]').forEach(node => node.classList.toggle('active', node.dataset.accountTab === name));
+    panel.querySelectorAll('[data-account-panel]').forEach(node => node.classList.toggle('active', node.dataset.accountPanel === name));
+  };
+  $$('[data-account-tab]').forEach(button => button.addEventListener('click', () => selectAccountTab(button.closest('[data-panel]'), button.dataset.accountTab)));
+  $('[data-income-show-vaults]')?.addEventListener('click', event => selectAccountTab(event.currentTarget.closest('[data-panel]'), 'income-split'));
+  $('[data-alert-create]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const address = $('#alert-token-select')?.value;
+    const kind = $('#alert-kind-select')?.value;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address || '') || !['curve_80', 'curve_90', 'migrated'].includes(kind)) {
+      toastError(new Error('请选择有效代币和提醒类型'), '提醒未创建'); return;
+    }
+    if (state.alerts.some(item => item.enabled && item.token_address?.toLowerCase() === address.toLowerCase() && item.alert_type === kind)) {
+      toast('该提醒已开启，无需重复创建'); return;
+    }
+    button.disabled = true;
+    try { await setTokenAlert(kind, address); }
+    catch (error) { toastError(error, '提醒创建失败'); }
+    finally { button.disabled = false; }
+  });
+  $('#alert-kind-select')?.addEventListener('change', event => {
+    const display = $('#alert-threshold-display');
+    if (display) display.value = event.target.value === 'curve_80' ? '80' : event.target.value === 'curve_90' ? '90' : '—';
+  });
+  $$('[data-market-type]').forEach(button => button.addEventListener('click', () => {
+    const view = button.dataset.marketType;
+    if (!['spot', 'perps'].includes(view)) return;
+    $$('[data-market-type]').forEach(node => node.classList.toggle('active', node.dataset.marketType === view));
+    $$('[data-market-panel]').forEach(node => node.classList.toggle('active', node.dataset.marketPanel === view));
+    if (view === 'perps' && !state.perpConfig) void loadPerpetual().catch(error => toastError(error, '永续市场读取失败'));
+  }));
   $$("[data-token-search-toggle]").forEach((node) =>
     node.addEventListener("click", () => {
       show("discover");
@@ -5456,6 +5964,7 @@
   $("[data-token-search]")?.addEventListener("input", (event) => {
     state.tokenSearch = event.target.value || "";
     renderTokens();
+    renderPerpetualMarketCards();
   });
   $$("[data-live-filter]").forEach((node) =>
     node.addEventListener("click", () => {
@@ -5516,6 +6025,7 @@
       state.selected = null;
       state.detail = null;
       state.marketActivity = [];
+      state.marketActivityReady = false;
       state.launchOptions = null;
       state.launchQuote = selectedNetwork().native;
       state.perpConfig = null;
@@ -5543,6 +6053,21 @@
   const renderChainMenu = () => {
     const network = selectedNetwork();
     text("[data-active-network-label]", network.shortName);
+    text('[data-launch-chain-name]', network.shortName);
+    // Update option labels in place: changing language must not reset a
+    // selected migration route or invalidate the user's prepared snapshot.
+    $$('#launch-dex-profile option').forEach(option => {
+      const profile = state.launchOptions?.dex_profiles?.find(item => item.id === option.value);
+      if (profile) option.textContent = `${profile.name} · ${profile.lp_policy === 'burn' ? uiCopy('LP 销毁', 'LP burn') : uiCopy('LP 奖励', 'LP rewards')}`;
+      else if (!option.value) option.textContent = `${network.shortName} · ${uiCopy('暂无可用 DEX', 'No available DEX')}`;
+    });
+    $$('[data-launch-chain]').forEach(node => {
+      const active = (node.dataset.launchChain === 'bnb' ? 'bsc' : node.dataset.launchChain) === state.selectedChain;
+      node.classList.toggle('active', active);
+      node.setAttribute('aria-pressed', String(active));
+      const badge = node.querySelector('.tag');
+      if (badge) { badge.textContent = active ? uiCopy("已选择", 'Selected') : uiCopy('切换网络', 'Switch network'); badge.classList.toggle('lime', active); }
+    });
     const logo = $("[data-global-chain-logo]");
     if (logo) {
       logo.src = state.selectedChain === "bsc" ? "./assets/chains/bnb-chain-brand.png" : "./assets/chains/robinhood-chain-brand.png";
@@ -5557,12 +6082,16 @@
     chainMenu?.classList.toggle("open", open);
     chainMenuToggle.setAttribute("aria-expanded", String(open));
   });
-  $$('[data-global-chain-option]').forEach((node) => node.addEventListener("click", async (event) => {
+  $$('[data-global-chain-option], [data-launch-chain]').forEach((node) => node.addEventListener("click", async (event) => {
     event.stopPropagation();
     chainMenu?.classList.remove("open");
     chainMenuToggle?.setAttribute("aria-expanded", "false");
-    await switchProductChain(String(node.dataset.globalChainOption || "bsc"));
-    renderChainMenu();
+    const targetChain = node.dataset.launchChain === 'bnb' ? 'bsc' : node.dataset.launchChain || node.dataset.globalChainOption || 'bsc';
+    try {
+      await switchProductChain(String(targetChain));
+      renderChainMenu();
+      if (node.dataset.launchChain && state.selectedChain === targetChain) show('create-basic');
+    } catch (error) { toastError(error, '切换发行网络失败'); }
   }));
   document.addEventListener("click", () => {
     chainMenu?.classList.remove("open");
@@ -5582,7 +6111,7 @@
     const discover = $('[data-panel="discover"]');
     if (discover) {
       $$("[data-panel]").forEach((panel) => panel.classList.toggle("active", panel === discover));
-      discover.classList.add("has-bottom-nav");
+      applyScreenChrome('discover');
       discover.scrollTop = 0;
     }
   });
@@ -5611,6 +6140,9 @@
   bindGrowth();
   bindVaults();
   bindDeveloperCenter();
+  window.bitbtUiLocale?.apply(pumpLocale());
+  text('[data-lang-current]', pumpLocale() === 'zh' ? '简体中文' : 'English');
+  $$('[data-set-language]').forEach(button => button.classList.toggle('active', button.dataset.setLanguage === pumpLocale()));
   restoreLaunchConfirmation();
   void loadVaultConfig()
     .then(() => {

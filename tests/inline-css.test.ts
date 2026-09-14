@@ -9,7 +9,8 @@ const styles = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m =
 test("all production inline CSS parses and header rules remain at stylesheet scope", () => {
   const roots = styles.map(css => postcss.parse(css));
   for (const selector of [".network-switch-shell", ".network-switch > img", ".network-menu", "body.runtime-pending #bitbt-launch"]) {
-    const rules = roots.flatMap(root => root.nodes.filter(node => node.type === "rule" && node.selector === selector));
+    const normalize = (value: string) => value.replace(/\s*([>+~])\s*/g, '$1').trim();
+    const rules = roots.flatMap(root => root.nodes.filter(node => node.type === "rule" && normalize(node.selector) === normalize(selector)));
     assert.ok(rules.length, `${selector} must not be trapped inside another rule or mobile media query`);
   }
   assert.throws(() => postcss.parse(":root { font-synthesis: none; .network-menu { display: none; }"));
