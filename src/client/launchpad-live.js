@@ -2883,9 +2883,15 @@
     const preview = add.querySelector('[data-contract-preview]');
     preview.querySelector('img').src = './assets/tokens/generic.svg'; preview.querySelector('img').alt = 'MEME';
     preview.querySelector('strong').textContent = uiCopy("待输入并校验合约", "Enter a contract to validate"); preview.querySelector('small').textContent = uiCopy("校验在创建交易签名前执行", "Validation runs before signing the creation transaction"); preview.querySelector('.tag').textContent = uiCopy("待校验", "Pending validation");
+    address.addEventListener('input', () => {
+      const token = String(address.value || '').trim();
+      preview.querySelector('strong').textContent = /^0x[0-9a-fA-F]{40}$/.test(token) ? short(token) : uiCopy("待输入并校验合约", "Enter a contract to validate");
+      preview.querySelector('small').textContent = uiCopy("将自动套用默认安全模板；创建后保持未开放", "The default safety template is applied automatically; the new market starts disabled");
+      preview.querySelector('.tag').textContent = uiCopy("待链上校验", "Pending on-chain validation");
+    });
     add.querySelector('.eligibility-grid').innerHTML = [uiCopy("禁止零地址及报价币自身", "Zero address and the quote token itself are not allowed"),uiCopy("受信任 Oracle", "Trusted oracle"),uiCopy("已注册安全模板", "Registered safety template"),uiCopy("链上及后端双重校验", "Validated on-chain and by the backend")].map(label => `<div class="eligibility-item">${label}</div>`).join('');
     const settings = add.querySelectorAll('.contract-shell')[1];
-    settings.querySelector('p').textContent = uiCopy("使用已批准的安全模板；用户不可替换任意 Oracle 或修改市场风控。", "Uses an approved safety template. Users cannot substitute arbitrary oracles or override market risk controls."); settings.querySelector('.tag').textContent = uiCopy("安全模板", "Safety template");
+    settings.querySelector('p').textContent = uiCopy("任意 ERC-20 自动使用系统默认安全模板；创建后保持未开放，Oracle、注资和启用条件全部满足后才可交易。", "Any ERC-20 uses the system default safety template. It remains disabled until oracle, funding and activation checks all pass."); settings.querySelector('.tag').textContent = uiCopy("默认安全模板", "Default safety template");
     settings.querySelectorAll('select,input').forEach((node, index) => { node.disabled = true; node.dataset.serviceSetting = String(index); if (node.tagName === 'SELECT') node.innerHTML = '<option>等待安全配置</option>'; else node.value = '等待安全配置'; });
     const direct = add.querySelector('.direct-chain-flow');
     direct.querySelector('p').textContent = uiCopy("平台费 0 BNB；网络 Gas 由钱包实时估算，确认后才发送交易。", "Platform fee 0 BNB; network Gas is estimated by your wallet. The transaction is sent only after confirmation.");
@@ -2920,7 +2926,11 @@
     buttons[0].removeAttribute('data-open'); buttons[0].dataset.perpServiceSubmit = 'create_pool';
     buttons[1].dataset.open = 'perps-pool'; buttons[1].textContent = uiCopy("查看当前池详情", "View current pool");
     const resume = document.createElement('div'); resume.dataset.perpPoolResumable = ''; pool.querySelector('.pool-builder-grid').before(resume);
-    selects[1].addEventListener('change', renderPerpetualServices);
+    selects[1].addEventListener('change', () => {
+      const marketId = Number(selects[1].value);
+      state.selectedPerpMarketId = selects[1].value !== '' && Number.isSafeInteger(marketId) ? marketId : null;
+      renderPerpetualServices();
+    });
     amount.addEventListener('input', renderPerpetualServices);
   };
   const renderPerpetualServices = () => {
@@ -2930,9 +2940,9 @@
     const feeRecipient = config.serviceFeeRecipient || "—";
     // The address input remains mounted so refreshes preserve the user's draft.
     const poolAmountDraft = String($("#perps-pool-amount")?.value || "");
-    const poolMarketDraft = String($("#perps-pool-market")?.value || state.selectedPerpMarketId || "");
+    const poolMarketDraft = String($("#perps-pool-market")?.value || (state.selectedPerpMarketId ?? ""));
     const marketOptions = state.perpMarkets.length
-      ? state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}" ${String(market.marketId) === poolMarketDraft ? "selected" : ""}>${escapeHtml(market.tokenSymbol || market.tokenName || "MEME")}-PERP · #${Number(market.marketId)}</option>`).join("")
+      ? `${uiCopy('<option value="">请选择真实市场</option>', '<option value="">Select a real market</option>')}${state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}" ${String(market.marketId) === poolMarketDraft ? "selected" : ""}>${escapeHtml(market.tokenSymbol || market.tokenName || "MEME")}-PERP · #${Number(market.marketId)}</option>`).join("")}`
       : uiCopy("<option value=\"\">当前没有可用市场</option>", "<option value=\"\">No markets available</option>");
     const resumablePools = state.perpServiceRequests
       .filter((request) => request.requestType === "create_pool" && request.status === "paid")
@@ -2970,7 +2980,7 @@
       submit.disabled = Boolean(state.perpServiceBusy || !chosen || !isBscFeatureChain());
       submit.textContent = state.perpServiceBusy ? uiCopy("正在提交…", "Submitting…") : state.account ? uiCopy("付费并授权注资", "Pay fee and authorize deposit") : uiCopy("连接钱包后创建", "Connect wallet to create");
     }
-    const market = selectedPerpMarket();
+    const market = state.selectedPerpMarketId == null ? null : selectedPerpMarket();
     const poolDetail = $('[data-panel="perps-pool"]');
     if (poolDetail) {
       const set = (selector, value) => poolDetail.querySelectorAll(selector).forEach(node => { node.textContent = value; });
@@ -3326,6 +3336,14 @@
           body: JSON.stringify({ walletAddress: account, tokenAddress }),
         });
         assertCurrent();
+        const preview = $('[data-panel="perps-add-contract"] [data-contract-preview]');
+        if (preview) {
+          preview.querySelector('strong').textContent = short(tokenAddress);
+          preview.querySelector('small').textContent = prepared?.profileSource === 'default'
+            ? uiCopy('系统默认安全模板已通过链上预检；市场创建后保持未开放', 'Default safety template passed preflight; the market starts disabled')
+            : uiCopy('代币专用安全模板已通过链上预检；市场创建后保持未开放', 'Token safety template passed preflight; the market starts disabled');
+          preview.querySelector('.tag').textContent = uiCopy('校验通过', 'Validated');
+        }
         const existingMarketId = prepared?.existingMarketId == null ? null : Number(prepared.existingMarketId);
         if (existingMarketId != null) {
           if (!Number.isSafeInteger(existingMarketId) || existingMarketId < 0
