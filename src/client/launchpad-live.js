@@ -804,13 +804,28 @@
     state.announcements = await api("v1/pump/announcements");
     renderAnnouncements();
   };
+  const parsePerpMarketId = (value) => {
+    if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0 ? value : null;
+    if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
   const selectedPerpMarket = () => {
     if (state.selectedPerpMarketId != null) {
-      const selected = state.perpMarkets.find((market) => Number(market.marketId) === Number(state.selectedPerpMarketId));
-      if (selected) return selected;
+      const selectedId = parsePerpMarketId(state.selectedPerpMarketId);
+      if (selectedId == null) return null;
+      const selected = state.perpMarkets.find((market) => parsePerpMarketId(market.marketId) === selectedId);
+      return selected || null;
     }
-    const selectedId = Number($("#perp-market")?.value ?? -1);
-    return state.perpMarkets.find((market) => Number(market.marketId) === selectedId) || state.perpMarkets[0] || null;
+    const rawSelectedId = String($("#perp-market")?.value ?? "").trim();
+    const selectedId = parsePerpMarketId(rawSelectedId);
+    if (selectedId == null) return null;
+    return state.perpMarkets.find((market) => parsePerpMarketId(market.marketId) === selectedId) || null;
+  };
+  const selectInitialPerpMarket = (markets) => {
+    if (state.selectedPerpMarketId != null) return;
+    const initial = markets.find((market) => parsePerpMarketId(market?.marketId) != null);
+    if (initial) state.selectedPerpMarketId = parsePerpMarketId(initial.marketId);
   };
   const perpMarketActivity = (market = selectedPerpMarket()) => state.perpIndexedPositions
     .filter((item) => market && Number(item.marketId) === Number(market.marketId));
@@ -1199,6 +1214,7 @@
     if (!current() || state.selectedChain !== chain) return;
     state.perpConfig = config;
     state.perpMarkets = markets;
+    selectInitialPerpMarket(markets);
     renderPerpetual();
     setPerpReadError('config');
     await Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualServiceData(), loadPerpetualCandles()]);
@@ -1214,7 +1230,10 @@
       const markets = config?.enabled && (!previousEnabled || !state.perpMarkets.length) ? await api("v1/pump/perpetual/markets") : null;
       if (!current()) return;
       state.perpConfig = config;
-      if (markets) state.perpMarkets = markets;
+      if (markets) {
+        state.perpMarkets = markets;
+        selectInitialPerpMarket(markets);
+      }
       renderPerpetual();
       setPerpReadError('config');
     } catch (error) {
@@ -2883,9 +2902,15 @@
     const preview = add.querySelector('[data-contract-preview]');
     preview.querySelector('img').src = './assets/tokens/generic.svg'; preview.querySelector('img').alt = 'MEME';
     preview.querySelector('strong').textContent = uiCopy("待输入并校验合约", "Enter a contract to validate"); preview.querySelector('small').textContent = uiCopy("校验在创建交易签名前执行", "Validation runs before signing the creation transaction"); preview.querySelector('.tag').textContent = uiCopy("待校验", "Pending validation");
+    address.addEventListener('input', () => {
+      const token = String(address.value || '').trim();
+      preview.querySelector('strong').textContent = /^0x[0-9a-fA-F]{40}$/.test(token) ? short(token) : uiCopy("待输入并校验合约", "Enter a contract to validate");
+      preview.querySelector('small').textContent = uiCopy("将自动套用默认安全模板；创建后保持未开放", "The default safety template is applied automatically; the new market starts disabled");
+      preview.querySelector('.tag').textContent = uiCopy("待链上校验", "Pending on-chain validation");
+    });
     add.querySelector('.eligibility-grid').innerHTML = [uiCopy("禁止零地址及报价币自身", "Zero address and the quote token itself are not allowed"),uiCopy("受信任 Oracle", "Trusted oracle"),uiCopy("已注册安全模板", "Registered safety template"),uiCopy("链上及后端双重校验", "Validated on-chain and by the backend")].map(label => `<div class="eligibility-item">${label}</div>`).join('');
     const settings = add.querySelectorAll('.contract-shell')[1];
-    settings.querySelector('p').textContent = uiCopy("使用已批准的安全模板；用户不可替换任意 Oracle 或修改市场风控。", "Uses an approved safety template. Users cannot substitute arbitrary oracles or override market risk controls."); settings.querySelector('.tag').textContent = uiCopy("安全模板", "Safety template");
+    settings.querySelector('p').textContent = uiCopy("任意 ERC-20 自动使用系统默认安全模板；创建后保持未开放，Oracle、注资和启用条件全部满足后才可交易。", "Any ERC-20 uses the system default safety template. It remains disabled until oracle, funding and activation checks all pass."); settings.querySelector('.tag').textContent = uiCopy("默认安全模板", "Default safety template");
     settings.querySelectorAll('select,input').forEach((node, index) => { node.disabled = true; node.dataset.serviceSetting = String(index); if (node.tagName === 'SELECT') node.innerHTML = '<option>等待安全配置</option>'; else node.value = '等待安全配置'; });
     const direct = add.querySelector('.direct-chain-flow');
     direct.querySelector('p').textContent = uiCopy("平台费 0 BNB；网络 Gas 由钱包实时估算，确认后才发送交易。", "Platform fee 0 BNB; network Gas is estimated by your wallet. The transaction is sent only after confirmation.");
@@ -2920,7 +2945,10 @@
     buttons[0].removeAttribute('data-open'); buttons[0].dataset.perpServiceSubmit = 'create_pool';
     buttons[1].dataset.open = 'perps-pool'; buttons[1].textContent = uiCopy("查看当前池详情", "View current pool");
     const resume = document.createElement('div'); resume.dataset.perpPoolResumable = ''; pool.querySelector('.pool-builder-grid').before(resume);
-    selects[1].addEventListener('change', renderPerpetualServices);
+    selects[1].addEventListener('change', () => {
+      state.selectedPerpMarketId = parsePerpMarketId(String(selects[1].value).trim());
+      renderPerpetualServices();
+    });
     amount.addEventListener('input', renderPerpetualServices);
   };
   const renderPerpetualServices = () => {
@@ -2930,9 +2958,9 @@
     const feeRecipient = config.serviceFeeRecipient || "—";
     // The address input remains mounted so refreshes preserve the user's draft.
     const poolAmountDraft = String($("#perps-pool-amount")?.value || "");
-    const poolMarketDraft = String($("#perps-pool-market")?.value || state.selectedPerpMarketId || "");
+    const poolMarketDraft = String($("#perps-pool-market")?.value || (state.selectedPerpMarketId ?? ""));
     const marketOptions = state.perpMarkets.length
-      ? state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}" ${String(market.marketId) === poolMarketDraft ? "selected" : ""}>${escapeHtml(market.tokenSymbol || market.tokenName || "MEME")}-PERP · #${Number(market.marketId)}</option>`).join("")
+      ? `${uiCopy('<option value="">请选择真实市场</option>', '<option value="">Select a real market</option>')}${state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}" ${String(market.marketId) === poolMarketDraft ? "selected" : ""}>${escapeHtml(market.tokenSymbol || market.tokenName || "MEME")}-PERP · #${Number(market.marketId)}</option>`).join("")}`
       : uiCopy("<option value=\"\">当前没有可用市场</option>", "<option value=\"\">No markets available</option>");
     const resumablePools = state.perpServiceRequests
       .filter((request) => request.requestType === "create_pool" && request.status === "paid")
@@ -2970,7 +2998,7 @@
       submit.disabled = Boolean(state.perpServiceBusy || !chosen || !isBscFeatureChain());
       submit.textContent = state.perpServiceBusy ? uiCopy("正在提交…", "Submitting…") : state.account ? uiCopy("付费并授权注资", "Pay fee and authorize deposit") : uiCopy("连接钱包后创建", "Connect wallet to create");
     }
-    const market = selectedPerpMarket();
+    const market = state.selectedPerpMarketId == null ? null : selectedPerpMarket();
     const poolDetail = $('[data-panel="perps-pool"]');
     if (poolDetail) {
       const set = (selector, value) => poolDetail.querySelectorAll(selector).forEach(node => { node.textContent = value; });
@@ -3264,7 +3292,7 @@
     };
     if (!provider || !account || !/^0x[0-9a-f]{40}$/.test(contractAtStart)) throw new Error("钱包或永续合约配置无效");
     const continueToPool = async (marketId, txHash = "", existing = false) => {
-      if (!Number.isSafeInteger(marketId) || marketId < 0) throw new Error("永续市场编号无效，请勿重复创建并联系客服核验");
+      if (parsePerpMarketId(marketId) == null) throw new Error("永续市场编号无效，请勿重复创建并联系客服核验");
       state.selectedPerpMarketId = marketId;
       try {
         await loadPerpetual();
@@ -3310,14 +3338,22 @@
           writeLocalPreference(recoveryKey, "");
           throw new Error("原市场创建交易已确认回滚，失败记录已清理；请核对参数后重新创建");
         }
+        const recoveredData = String(transaction?.input || transaction?.data || "").toLowerCase();
+        const expectedTokenWord = tokenAddress.slice(2).padStart(64, "0");
         if (!transaction
+          || !receipt
           || String(transaction.hash || "").toLowerCase() !== txHash.toLowerCase()
+          || String(receipt.transactionHash || "").toLowerCase() !== txHash.toLowerCase()
+          || String(receipt.from || "").toLowerCase() !== account
+          || String(receipt.to || "").toLowerCase() !== contractAtStart
           || String(transaction.from || "").toLowerCase() !== account
           || String(transaction.to || "").toLowerCase() !== contractAtStart
           || BigInt(transaction.value || "0") !== 0n
-          || (transaction.chainId != null && normalizeChainId(transaction.chainId) !== "0x38")) {
+          || normalizeChainId(transaction.chainId || "") !== "0x38"
+          || !/^0x723219d3[0-9a-f]{320}$/.test(recoveredData)
+          || recoveredData.slice(10, 74) !== expectedTokenWord) {
           writeLocalPreference(recoveryKey, "");
-          throw new Error("本地市场创建记录与当前钱包或合约不匹配，已清理且不会重复发送");
+          throw new Error("本地市场创建记录与当前钱包、代币或合约不匹配，已清理且不会重复发送");
         }
       } else {
         const prepared = await api("v1/pump/perpetual/prepare-market", {
@@ -3326,24 +3362,46 @@
           body: JSON.stringify({ walletAddress: account, tokenAddress }),
         });
         assertCurrent();
-        const existingMarketId = prepared?.existingMarketId == null ? null : Number(prepared.existingMarketId);
+        const preview = $('[data-panel="perps-add-contract"] [data-contract-preview]');
+        if (preview) {
+          preview.querySelector('strong').textContent = short(tokenAddress);
+          preview.querySelector('small').textContent = prepared?.profileSource === 'default'
+            ? uiCopy('现货流动性与默认安全模板已通过；创建时同步存入最低测试 Quote LP', 'Spot liquidity and the default safety template passed; the minimum test Quote LP is deposited during creation')
+            : uiCopy('现货流动性与专用安全模板已通过；创建时同步存入最低 Quote LP', 'Spot liquidity and the token safety template passed; the minimum Quote LP is deposited during creation');
+          preview.querySelector('.tag').textContent = uiCopy('校验通过', 'Validated');
+        }
+        const existingMarketIdRaw = prepared?.existingMarketId;
+        const existingMarketId = existingMarketIdRaw == null ? null : parsePerpMarketId(existingMarketIdRaw);
+        if (existingMarketIdRaw != null && existingMarketId == null) {
+          throw new Error("已有市场编号无效，请勿签名并联系客服核验");
+        }
         if (existingMarketId != null) {
-          if (!Number.isSafeInteger(existingMarketId) || existingMarketId < 0
-            || String(prepared?.tokenAddress || "").toLowerCase() !== tokenAddress
-            || prepared?.transaction != null) {
+          if (String(prepared?.tokenAddress || "").toLowerCase() !== tokenAddress
+            || !Array.isArray(prepared?.transactions) || prepared.transactions.length !== 0) {
             throw new Error("已有市场确认结果与当前代币不匹配，请勿签名并联系客服核验");
           }
           await continueToPool(existingMarketId, "", true);
           return;
         }
-        const transaction = prepared?.transaction;
+        const transactions = prepared?.transactions;
         const quoteToken = String(prepared?.quoteTokenAddress || "").toLowerCase();
         const oracle = String(prepared?.oracleAddress || "").toLowerCase();
         const encodeAddressWord = (value) => String(value || "").replace(/^0x/, "").toLowerCase().padStart(64, "0");
         const encodeUintWord = (value) => BigInt(value).toString(16).padStart(64, "0");
         if (!/^0x[0-9a-f]{40}$/.test(quoteToken) || !/^0x[0-9a-f]{40}$/.test(oracle)) throw new Error("永续报价资产或 Oracle 地址无效");
         const expectedData = `0x723219d3${encodeAddressWord(tokenAddress)}${encodeAddressWord(quoteToken)}${encodeAddressWord(oracle)}${encodeUintWord(prepared.maxLeverage)}${encodeUintWord(prepared.minLiquidityRaw)}`;
-        if (!transaction
+        if (!Array.isArray(transactions) || transactions.length < 1 || transactions.length > 3) {
+          throw new Error("市场创建交易步骤无效，已阻止签名");
+        }
+        const transaction = transactions.at(-1);
+        const approvalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(prepared.minLiquidityRaw)}`;
+        const resetApprovalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(0)}`;
+        const approvals = transactions.slice(0, -1);
+        const approvalsValid = approvals.every((approval, index) => String(approval?.to || "").toLowerCase() === quoteToken
+          && normalizeChainId(approval.chainId || approval.chain_id || "") === "0x38"
+          && BigInt(approval.value || "0x0") === 0n
+          && String(approval.data || "").toLowerCase() === (approvals.length === 2 && index === 0 ? resetApprovalData : approvalData));
+        if (!approvalsValid
           || String(prepared.tokenAddress || "").toLowerCase() !== tokenAddress
           || String(transaction.to || "").toLowerCase() !== contractAtStart
           || normalizeChainId(transaction.chainId || transaction.chain_id || "") !== "0x38"
@@ -3351,12 +3409,21 @@
           || String(transaction.data || "").toLowerCase() !== expectedData) {
           throw new Error("市场创建交易与链上安全模板不一致，已阻止签名");
         }
-        txHash = await sendVaultTransaction(transaction, "永续市场创建", (hash) => {
-          writeLocalPreference(recoveryKey, hash);
-          if (readLocalPreference(recoveryKey) !== hash) {
-            throw new Error("市场创建交易已广播，但浏览器无法保存恢复记录；请核对钱包交易且不要重复创建");
-          }
-        }, undefined, assertCurrent);
+        for (const approval of approvals) {
+          await sendVaultTransaction(approval, approval.label || "授权永续 Quote LP", undefined, undefined, assertCurrent);
+        }
+        txHash = await sendVaultTransaction(
+          transaction,
+          transaction.label || "创建永续市场并存入最低 Quote LP",
+          (hash) => {
+            writeLocalPreference(recoveryKey, hash);
+            if (readLocalPreference(recoveryKey) !== hash) {
+              throw new Error("市场创建交易已广播，但浏览器无法保存恢复记录；请核对钱包交易且不要重复创建");
+            }
+          },
+          undefined,
+          assertCurrent,
+        );
       }
       assertCurrent();
       const confirmed = await api("v1/pump/perpetual/market-created", {
@@ -3365,8 +3432,8 @@
         body: JSON.stringify({ walletAddress: account, tokenAddress, txHash }),
       });
       assertCurrent();
-      const confirmedMarketId = Number(confirmed?.marketId);
-      if (!Number.isSafeInteger(confirmedMarketId) || confirmedMarketId < 0
+      const confirmedMarketId = parsePerpMarketId(confirmed?.marketId);
+      if (confirmedMarketId == null
         || String(confirmed?.tokenAddress || "").toLowerCase() !== tokenAddress) {
         throw new Error("市场创建确认结果与当前代币不匹配，请勿重复创建并联系客服核验");
       }
@@ -3383,7 +3450,11 @@
     if (!state.account) await connectWallet();
     if (!isBscFeatureChain()) throw new Error("永续服务当前仅在 BNB Smart Chain 开放");
     if (requestType !== "create_pool") throw new Error("不支持的永续服务类型");
-    const marketId = Number($("#perps-pool-market")?.value);
+    const marketIdValue = String($("#perps-pool-market")?.value ?? "").trim();
+    if (!marketIdValue) throw new Error("请选择有效的永续市场");
+    if (!/^(0|[1-9][0-9]*)$/.test(marketIdValue)) throw new Error("请选择有效的永续市场");
+    const marketId = Number(marketIdValue);
+    if (!Number.isSafeInteger(marketId)) throw new Error("请选择有效的永续市场");
     const market = state.perpMarkets.find((item) => Number(item.marketId) === marketId);
     if (!market) throw new Error("请选择有效的永续市场");
     const amount = String($("#perps-pool-amount")?.value || "").trim();

@@ -461,7 +461,7 @@ test('alert composer uses real token and existing server-supported event types',
 
 test('pool detail updates data without replacing the original depth and participant panels', () => {
   const source = fs.readFileSync(path.resolve('src/client/launchpad-live.js'), 'utf8');
-  const start = source.indexOf('    const market = selectedPerpMarket();', source.indexOf('  const renderPerpetualServices'));
+  const start = source.indexOf('    const market = state.selectedPerpMarketId == null ? null : selectedPerpMarket();', source.indexOf('  const renderPerpetualServices'));
   const end = source.indexOf('    const activityPanel =', start);
   assert.ok(start > 0 && end > start);
   const { document } = parseHTML(fs.readFileSync(referencePath, 'utf8'));
@@ -472,7 +472,7 @@ test('pool detail updates data without replacing the original depth and particip
   const context = vm.createContext({ ...renderLocale(),
     $: (selector: string) => document.querySelector(selector),
     selectedPerpMarket: () => market,
-    state: { account: '', perpPosition: null },
+    state: { account: '', perpPosition: null, selectedPerpMarketId: 0 },
     config: {},
     selectedNetwork: () => ({ shortName: 'BSC' }),
     formatUnits: (value: bigint) => String(value),
@@ -492,6 +492,14 @@ test('pool detail updates data without replacing the original depth and particip
   assert.match(panel.textContent || '', /REAL-PERP/);
 });
 
+test('pool selection never substitutes market zero for a stale or blank selection', () => {
+  const source = fs.readFileSync(path.resolve('src/client/launchpad-live.js'), 'utf8');
+  assert.match(source, /if \(state\.selectedPerpMarketId != null\)[\s\S]*?return selected \|\| null;/);
+  assert.match(source, /const marketIdValue = String\(\$\("#perps-pool-market"\)\?\.value \?\? ""\)\.trim\(\);/);
+  assert.match(source, /if \(!marketIdValue\) throw new Error\("请选择有效的永续市场"\);/);
+  assert.doesNotMatch(source, /Number\(\$\("#perps-pool-market"\)\?\.value\);/);
+});
+
 test('perpetual creation refresh keeps delivered shells, inputs, and user drafts mounted', () => {
   const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
@@ -502,7 +510,7 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
   const input = add.querySelector('#perps-contract-address')!;
   const start = source.indexOf('  const initializePerpetualForms =');
   const renderStart = source.indexOf('  const renderPerpetualServices =', start);
-  const end = source.indexOf('    const market = selectedPerpMarket();', renderStart);
+  const end = source.indexOf('    const market = state.selectedPerpMarketId == null ? null : selectedPerpMarket();', renderStart);
   const state = { account: '0x1234', selectedPerpMarketId: 0, perpConfig: { enabled:true, permissionlessMarketCreation:true, maxLeverage:10 }, perpServiceBusy:false, perpServiceRequests:[], perpMarkets:[{ marketId:0, tokenSymbol:'REAL', enabled:true, maxLeverage:10 }] };
   const context = vm.createContext({ ...renderLocale(), document, state, ui20260911:true, $:(selector: string) => document.querySelector(selector), isBscFeatureChain:()=>true, escapeHtml:(v: unknown)=>String(v), short:(v: string)=>v, serviceFeeLabel:()=> '0 BNB' });
   const render = vm.runInContext(source.slice(start,end) + '\n};\nrenderPerpetualServices', context);

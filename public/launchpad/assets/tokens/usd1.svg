@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="USD1">
+  <circle cx="64" cy="64" r="62" fill="#111827"/>
+  <circle cx="64" cy="64" r="52" fill="none" stroke="#D6B45A" stroke-width="4"/>
+  <path fill="#F6E7B0" d="M34 43h13v28c0 9 4 14 12 14s12-5 12-14V43h13v29c0 17-9 26-25 26S34 89 34 72V43z"/>
+  <path fill="#D6B45A" d="M91 48l13-7v45h-12V57l-8 4v-9l7-4z"/>
+</svg>
