@@ -5,6 +5,30 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
 
+type TestMarket = {
+  marketId: number;
+  tokenAddress: string;
+  tokenSymbol?: string;
+};
+
+type TestState = {
+  account: string;
+  selectedChain: string;
+  perpConfig: {
+    enabled: boolean;
+    permissionlessMarketCreation: boolean;
+    contractAddress: string;
+  };
+  perpMarkets: TestMarket[];
+  perpServiceBusy: boolean;
+  selectedPerpMarketId?: number;
+};
+
+const receiptStatus = (receipt: unknown): unknown =>
+  typeof receipt === 'object' && receipt !== null
+    ? (receipt as { status?: unknown }).status
+    : undefined;
+
 test('all BNB/BSC and Robinhood network selectors use their real logos', async () => {
   const { parseHTML } = await import('linkedom');
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
@@ -41,7 +65,7 @@ test('wallet-created perpetual market pins context and continues directly to poo
   const wordAddress = (value: string) => value.slice(2).padStart(64, '0');
   const wordUint = (value: bigint) => value.toString(16).padStart(64, '0');
   const data = `0x723219d3${wordAddress(token)}${wordAddress(quote)}${wordAddress(oracle)}${wordUint(10n)}${wordUint(1000n)}`;
-  const state: any = {
+  const state: TestState = {
     account,
     selectedChain: 'bsc',
     perpConfig: { enabled: true, permissionlessMarketCreation: true, contractAddress: contract },
@@ -104,7 +128,7 @@ test('confirmed market creation recovers bookkeeping without preparing or rebroa
       ? { status: '0x1', transactionHash: txHash }
       : { hash: txHash, from: account, to: contract, value: '0x0', chainId: '0x38' },
   };
-  const state: any = {
+  const state: TestState = {
     account,
     selectedChain: 'bsc',
     perpConfig: { enabled: true, permissionlessMarketCreation: true, contractAddress: contract },
@@ -122,8 +146,8 @@ test('confirmed market creation recovers bookkeeping without preparing or rebroa
     isBscFeatureChain: () => true,
     connectWallet: async () => account,
     assertProviderState: async () => ({ account, chainId: '0x38' }),
-    receiptHasStatus: (receipt: any) => receipt?.status != null,
-    receiptSucceeded: (receipt: any) => receipt?.status === '0x1',
+    receiptHasStatus: (receipt: unknown) => receiptStatus(receipt) != null,
+    receiptSucceeded: (receipt: unknown) => receiptStatus(receipt) === '0x1',
     normalizeChainId: (value: string) => value,
     renderPerpetualServices: () => undefined,
     readLocalPreference: (storageKey: string) => preferences.get(storageKey) || '',
@@ -154,7 +178,7 @@ test('an existing market goes straight to pool funding without another wallet tr
   const contract = '0x2222222222222222222222222222222222222222';
   const token = '0x3333333333333333333333333333333333333333';
   const provider = {};
-  const state: any = {
+  const state: TestState = {
     account,
     selectedChain: 'bsc',
     perpConfig: { enabled: true, permissionlessMarketCreation: true, contractAddress: contract },

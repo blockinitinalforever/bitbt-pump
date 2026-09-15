@@ -590,7 +590,7 @@
     if (/liquidity is locked while positions are open/i.test(message)) return "市场仍有未平仓仓位，当前不能注入或提取流动性";
     if (/insufficient Quote Token balance/i.test(message)) return "报价币余额不足，当前未收取对手池服务费；请补足报价币后重试";
     if (/pool request does not match the selected perpetual market/i.test(message)) return "对手池参数与所选永续市场不一致，当前未收取服务费；请重新选择市场";
-    if (/perpetual keeper is unavailable/i.test(message)) return "永续运维服务当前不可用，尚未收取对手池服务费；请稍后重试";
+    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "永续运维服务正在唤醒，尚未收取对手池服务费；请稍后重试";
     if (/no platform fees are claimable/i.test(message)) return "当前没有可领取的平台手续费";
     if (status === 413 || /payload too large|request entity too large/i.test(message)) return "文件过大，请压缩后重试";
     if (status === 429 || /rate limit|too many requests/i.test(message)) return "操作过于频繁，请稍后重试";

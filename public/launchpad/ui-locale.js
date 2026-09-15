@@ -63,7 +63,7 @@
   "LP 注资尚未完成，可继续执行且不会再次收取平台服务费。": "The LP deposit is incomplete. Resume without paying the platform service fee again.",
   "报价币余额不足，当前未收取对手池服务费；请补足报价币后重试": "Insufficient quote-token balance. No counterparty-pool service fee was charged; add quote tokens and try again.",
   "对手池参数与所选永续市场不一致，当前未收取服务费；请重新选择市场": "The pool parameters do not match the selected perpetual market. No service fee was charged; select the market again.",
-  "永续运维服务当前不可用，尚未收取对手池服务费；请稍后重试": "Perpetual operations are currently unavailable. No counterparty-pool service fee was charged; try again later.",
+  "永续运维服务正在唤醒，尚未收取对手池服务费；请稍后重试": "Perpetual operations are warming up. No counterparty-pool service fee was charged; try again later.",
   "继续链上注资": "Resume on-chain deposit",
   "服务费已支付": "Service fee paid",
   "积分排名": "Points rank",
