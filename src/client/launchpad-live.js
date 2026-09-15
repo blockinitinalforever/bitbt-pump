@@ -3795,6 +3795,11 @@
     const taxRecipient = $("#tax-recipient-wallet");
     if (state.taxEnabled && state.account && taxRecipient && !taxRecipient.value) taxRecipient.value = state.account;
     applySide(state.side === "sell");
+    // Child perpetual screens stay mounted while navigation and SIWE restore
+    // complete independently. Keep their signing summary on the same account
+    // and contract snapshot as the global wallet control instead of leaving
+    // the prototype placeholders visible after a successful restore.
+    renderPerpetualServices();
   };
   const restoreSessionOnce = async () => {
     const token = sessionStorage.getItem(SESSION_KEY);
