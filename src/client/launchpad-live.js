@@ -807,9 +807,11 @@
   const selectedPerpMarket = () => {
     if (state.selectedPerpMarketId != null) {
       const selected = state.perpMarkets.find((market) => Number(market.marketId) === Number(state.selectedPerpMarketId));
-      if (selected) return selected;
+      return selected || null;
     }
-    const selectedId = Number($("#perp-market")?.value ?? -1);
+    const rawSelectedId = String($("#perp-market")?.value ?? "").trim();
+    if (!rawSelectedId) return state.perpMarkets[0] || null;
+    const selectedId = Number(rawSelectedId);
     return state.perpMarkets.find((market) => Number(market.marketId) === selectedId) || state.perpMarkets[0] || null;
   };
   const perpMarketActivity = (market = selectedPerpMarket()) => state.perpIndexedPositions
@@ -3340,28 +3342,39 @@
         if (preview) {
           preview.querySelector('strong').textContent = short(tokenAddress);
           preview.querySelector('small').textContent = prepared?.profileSource === 'default'
-            ? uiCopy('系统默认安全模板已通过链上预检；市场创建后保持未开放', 'Default safety template passed preflight; the market starts disabled')
-            : uiCopy('代币专用安全模板已通过链上预检；市场创建后保持未开放', 'Token safety template passed preflight; the market starts disabled');
+            ? uiCopy('现货流动性与默认安全模板已通过；创建时同步存入最低测试 Quote LP', 'Spot liquidity and the default safety template passed; the minimum test Quote LP is deposited during creation')
+            : uiCopy('现货流动性与专用安全模板已通过；创建时同步存入最低 Quote LP', 'Spot liquidity and the token safety template passed; the minimum Quote LP is deposited during creation');
           preview.querySelector('.tag').textContent = uiCopy('校验通过', 'Validated');
         }
         const existingMarketId = prepared?.existingMarketId == null ? null : Number(prepared.existingMarketId);
         if (existingMarketId != null) {
           if (!Number.isSafeInteger(existingMarketId) || existingMarketId < 0
             || String(prepared?.tokenAddress || "").toLowerCase() !== tokenAddress
-            || prepared?.transaction != null) {
+            || !Array.isArray(prepared?.transactions) || prepared.transactions.length !== 0) {
             throw new Error("已有市场确认结果与当前代币不匹配，请勿签名并联系客服核验");
           }
           await continueToPool(existingMarketId, "", true);
           return;
         }
-        const transaction = prepared?.transaction;
+        const transactions = prepared?.transactions;
         const quoteToken = String(prepared?.quoteTokenAddress || "").toLowerCase();
         const oracle = String(prepared?.oracleAddress || "").toLowerCase();
         const encodeAddressWord = (value) => String(value || "").replace(/^0x/, "").toLowerCase().padStart(64, "0");
         const encodeUintWord = (value) => BigInt(value).toString(16).padStart(64, "0");
         if (!/^0x[0-9a-f]{40}$/.test(quoteToken) || !/^0x[0-9a-f]{40}$/.test(oracle)) throw new Error("永续报价资产或 Oracle 地址无效");
         const expectedData = `0x723219d3${encodeAddressWord(tokenAddress)}${encodeAddressWord(quoteToken)}${encodeAddressWord(oracle)}${encodeUintWord(prepared.maxLeverage)}${encodeUintWord(prepared.minLiquidityRaw)}`;
-        if (!transaction
+        if (!Array.isArray(transactions) || transactions.length < 1 || transactions.length > 3) {
+          throw new Error("市场创建交易步骤无效，已阻止签名");
+        }
+        const transaction = transactions.at(-1);
+        const approvalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(prepared.minLiquidityRaw)}`;
+        const resetApprovalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(0)}`;
+        const approvals = transactions.slice(0, -1);
+        const approvalsValid = approvals.every((approval, index) => String(approval?.to || "").toLowerCase() === quoteToken
+          && normalizeChainId(approval.chainId || approval.chain_id || "") === "0x38"
+          && BigInt(approval.value || "0x0") === 0n
+          && String(approval.data || "").toLowerCase() === (approvals.length === 2 && index === 0 ? resetApprovalData : approvalData));
+        if (!approvalsValid
           || String(prepared.tokenAddress || "").toLowerCase() !== tokenAddress
           || String(transaction.to || "").toLowerCase() !== contractAtStart
           || normalizeChainId(transaction.chainId || transaction.chain_id || "") !== "0x38"
@@ -3369,12 +3382,21 @@
           || String(transaction.data || "").toLowerCase() !== expectedData) {
           throw new Error("市场创建交易与链上安全模板不一致，已阻止签名");
         }
-        txHash = await sendVaultTransaction(transaction, "永续市场创建", (hash) => {
-          writeLocalPreference(recoveryKey, hash);
-          if (readLocalPreference(recoveryKey) !== hash) {
-            throw new Error("市场创建交易已广播，但浏览器无法保存恢复记录；请核对钱包交易且不要重复创建");
-          }
-        }, undefined, assertCurrent);
+        for (const approval of approvals) {
+          await sendVaultTransaction(approval, approval.label || "授权永续 Quote LP", undefined, undefined, assertCurrent);
+        }
+        txHash = await sendVaultTransaction(
+          transaction,
+          transaction.label || "创建永续市场并存入最低 Quote LP",
+          (hash) => {
+            writeLocalPreference(recoveryKey, hash);
+            if (readLocalPreference(recoveryKey) !== hash) {
+              throw new Error("市场创建交易已广播，但浏览器无法保存恢复记录；请核对钱包交易且不要重复创建");
+            }
+          },
+          undefined,
+          assertCurrent,
+        );
       }
       assertCurrent();
       const confirmed = await api("v1/pump/perpetual/market-created", {
@@ -3401,7 +3423,9 @@
     if (!state.account) await connectWallet();
     if (!isBscFeatureChain()) throw new Error("永续服务当前仅在 BNB Smart Chain 开放");
     if (requestType !== "create_pool") throw new Error("不支持的永续服务类型");
-    const marketId = Number($("#perps-pool-market")?.value);
+    const marketIdValue = String($("#perps-pool-market")?.value ?? "").trim();
+    if (!marketIdValue) throw new Error("请选择有效的永续市场");
+    const marketId = Number(marketIdValue);
     const market = state.perpMarkets.find((item) => Number(item.marketId) === marketId);
     if (!market) throw new Error("请选择有效的永续市场");
     const amount = String($("#perps-pool-amount")?.value || "").trim();

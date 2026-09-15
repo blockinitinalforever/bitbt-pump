@@ -75,6 +75,7 @@ test('wallet-created perpetual market pins context and continues directly to poo
   const wordAddress = (value: string) => value.slice(2).padStart(64, '0');
   const wordUint = (value: bigint) => value.toString(16).padStart(64, '0');
   const data = `0x723219d3${wordAddress(token)}${wordAddress(quote)}${wordAddress(oracle)}${wordUint(10n)}${wordUint(1000n)}`;
+  const approval = `0x095ea7b3${wordAddress(contract)}${wordUint(1000n)}`;
   const state: TestState = {
     account,
     selectedChain: 'bsc',
@@ -84,7 +85,7 @@ test('wallet-created perpetual market pins context and continues directly to poo
   };
   const shown: string[] = [];
   const preferences = new Map<string, string>();
-  let transactionSent = false;
+  let transactionsSent = 0;
   const context = vm.createContext({
     state,
     walletSessionEpoch: 7,
@@ -104,12 +105,15 @@ test('wallet-created perpetual market pins context and continues directly to poo
         oracleAddress: oracle,
         maxLeverage: 10,
         minLiquidityRaw: '1000',
-        transaction: { to: contract, chainId: '0x38', value: '0x0', data },
+        transactions: [
+          { to: quote, chainId: '0x38', value: '0x0', data: approval, label: 'Approve tBTUSD' },
+          { to: contract, chainId: '0x38', value: '0x0', data, label: 'Create and fund' },
+        ],
       },
     normalizeChainId: (value: string) => value,
     sendVaultTransaction: async (_tx: unknown, _label: string, _broadcast: unknown, _submitting: unknown, assertContext: () => void) => {
       assertContext();
-      transactionSent = true;
+      transactionsSent += 1;
       return `0x${'6'.repeat(64)}`;
     },
     loadPerpetual: async () => {
@@ -120,7 +124,7 @@ test('wallet-created perpetual market pins context and continues directly to poo
   });
   vm.runInContext(`${source.slice(start, end)}\nglobalThis.run = createPermissionlessPerpetualMarket;`, context);
   await context.run();
-  assert.equal(transactionSent, true);
+  assert.equal(transactionsSent, 2);
   assert.equal(state.selectedPerpMarketId, 9);
   assert.equal(shown.at(-1), 'perps-create-pool');
   assert.equal(state.perpServiceBusy, false);
@@ -210,7 +214,7 @@ test('an existing market goes straight to pool funding without another wallet tr
     $: (selector: string) => selector === '#perps-contract-address' ? { value: token } : null,
     api: async (path: string) => {
       if (path.endsWith('/market-created')) confirmations += 1;
-      return { tokenAddress: token, existingMarketId: 9, transaction: null };
+      return { tokenAddress: token, existingMarketId: 9, transactions: [] };
     },
     sendVaultTransaction: async () => { sends += 1; return `0x${'6'.repeat(64)}`; },
     loadPerpetual: async () => { state.perpMarkets = [{ marketId: 9, tokenAddress: token }]; },
