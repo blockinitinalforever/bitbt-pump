@@ -1485,7 +1485,7 @@ test("Pump proxy hides wallet RPC credentials and protects every write endpoint"
 });
 
 test("perpetual market creation is SIWE-bound, user-signed, template-bound, and pool funding is resumable", () => {
-  for (const endpoint of ["v1/pump/perpetual/prepare-market", "v1/pump/perpetual/service-requests", "v1/pump/perpetual/service-requests/confirm", "v1/pump/perpetual/service-requests/complete"]) {
+  for (const endpoint of ["v1/pump/perpetual/prepare-market", "v1/pump/perpetual/market-created", "v1/pump/perpetual/service-requests", "v1/pump/perpetual/service-requests/confirm", "v1/pump/perpetual/service-requests/complete"]) {
     assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   }
   assert.match(bridge, /dataset\.perpServiceSubmit = 'add_contract'/);

@@ -27,6 +27,7 @@ const SIWE_REQUIRED_ENDPOINTS = new Set([
   "v1/pump/perpetual/service-requests/confirm",
   "v1/pump/perpetual/service-requests/complete",
   "v1/pump/perpetual/prepare-market",
+  "v1/pump/perpetual/market-created",
 ]);
 const SIWE_REQUIRED_READ_ENDPOINTS = new Set([
   "v1/pump/wallet-activity",
@@ -90,6 +91,7 @@ const ALLOWED = new Set([
   "v1/pump/perpetual/service-requests/confirm",
   "v1/pump/perpetual/service-requests/complete",
   "v1/pump/perpetual/prepare-market",
+  "v1/pump/perpetual/market-created",
   "v1/pump/comments",
   "v1/pump/alerts",
   "v1/pump/name-check",

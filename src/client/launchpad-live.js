@@ -588,6 +588,9 @@
     if (/perpetual market is disabled/i.test(message)) return "该永续市场当前已暂停开仓";
     if (/invalid leverage/i.test(message)) return "杠杆倍数超出该市场允许范围，请重新选择";
     if (/liquidity is locked while positions are open/i.test(message)) return "市场仍有未平仓仓位，当前不能注入或提取流动性";
+    if (/insufficient Quote Token balance/i.test(message)) return "报价币余额不足，当前未收取对手池服务费；请补足报价币后重试";
+    if (/pool request does not match the selected perpetual market/i.test(message)) return "对手池参数与所选永续市场不一致，当前未收取服务费；请重新选择市场";
+    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "永续运维服务正在唤醒，尚未收取对手池服务费；请稍后重试";
     if (/no platform fees are claimable/i.test(message)) return "当前没有可领取的平台手续费";
     if (status === 413 || /payload too large|request entity too large/i.test(message)) return "文件过大，请压缩后重试";
     if (status === 429 || /rate limit|too many requests/i.test(message)) return "操作过于频繁，请稍后重试";
@@ -3248,33 +3251,127 @@
     }
     const tokenAddress = String($("#perps-contract-address")?.value || "").trim().toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(tokenAddress) || /^0x0{40}$/.test(tokenAddress)) throw new Error("请输入有效的 BSC MEME 合约地址");
+    const account = state.account;
+    const provider = selectedProvider();
+    const epoch = walletSessionEpoch;
+    const contractAtStart = String(state.perpConfig?.contractAddress || "").toLowerCase();
+    const recoveryKey = `bitbt_perp_market_creation:bsc:${contractAtStart}:${account}:${tokenAddress}`;
+    const assertCurrent = () => {
+      if (walletSessionEpoch !== epoch || state.account !== account || selectedProvider() !== provider
+        || state.selectedChain !== "bsc" || String(state.perpConfig?.contractAddress || "").toLowerCase() !== contractAtStart) {
+        throw new Error("钱包、网络或永续合约配置已变化，请重新核对后创建");
+      }
+    };
+    if (!provider || !account || !/^0x[0-9a-f]{40}$/.test(contractAtStart)) throw new Error("钱包或永续合约配置无效");
+    const continueToPool = async (marketId, txHash = "", existing = false) => {
+      if (!Number.isSafeInteger(marketId) || marketId < 0) throw new Error("永续市场编号无效，请勿重复创建并联系客服核验");
+      state.selectedPerpMarketId = marketId;
+      try {
+        await loadPerpetual();
+      } catch {
+        assertCurrent();
+        show("perps");
+        showOperationDialog(`${existing ? "该代币已有永续市场" : "市场创建交易已确认"}。${txHash ? `\n交易哈希：${txHash}` : ""}\n市场 #${marketId} 正在同步，请稍后刷新后进入“创建对手池”；请勿重复创建。`, { title: "市场正在同步", tag: "无需重复创建", success: true });
+        return;
+      }
+      assertCurrent();
+      const created = state.perpMarkets.find((market) => Number(market.marketId) === marketId
+        && String(market.tokenAddress || "").toLowerCase() === tokenAddress);
+      if (!created) {
+        show("perps");
+        showOperationDialog(`${existing ? "该代币已有永续市场" : "市场创建交易已确认"}。${txHash ? `\n交易哈希：${txHash}` : ""}\n市场 #${marketId} 尚未进入列表，请稍后刷新后进入“创建对手池”；请勿重复创建。`, { title: "市场正在同步", tag: "无需重复创建", success: true });
+        return;
+      }
+      renderPerpetualServices();
+      show("perps-create-pool");
+      showOperationDialog(existing
+        ? `该代币已存在市场 #${marketId}，无需重复创建。\n下一步请选择该市场并完成 Quote Token 注资。`
+        : `市场已由当前钱包创建。\n交易哈希：${txHash}\n下一步请选择该市场并完成 Quote Token 注资；市场初始保持未开放。`,
+      { title: existing ? "市场已存在" : "市场创建成功", tag: "继续创建对手池", success: true });
+    };
+    await assertProviderState();
+    assertCurrent();
     state.perpServiceBusy = true;
     renderPerpetualServices();
     try {
-      const prepared = await api("v1/pump/perpetual/prepare-market", {
+      let txHash = readLocalPreference(recoveryKey);
+      if (txHash) {
+        if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+          writeLocalPreference(recoveryKey, "");
+          throw new Error("本地保存的市场创建交易无效，已清理；请重新创建");
+        }
+        const [receipt, transaction] = await Promise.all([
+          provider.request({ method: "eth_getTransactionReceipt", params: [txHash] }),
+          provider.request({ method: "eth_getTransactionByHash", params: [txHash] }),
+        ]);
+        assertCurrent();
+        if (!receiptHasStatus(receipt)) throw new Error("市场创建交易仍在确认中，请稍后重试；本次不会重新签名");
+        if (!receiptSucceeded(receipt)) {
+          writeLocalPreference(recoveryKey, "");
+          throw new Error("原市场创建交易已确认回滚，失败记录已清理；请核对参数后重新创建");
+        }
+        if (!transaction
+          || String(transaction.hash || "").toLowerCase() !== txHash.toLowerCase()
+          || String(transaction.from || "").toLowerCase() !== account
+          || String(transaction.to || "").toLowerCase() !== contractAtStart
+          || BigInt(transaction.value || "0") !== 0n
+          || (transaction.chainId != null && normalizeChainId(transaction.chainId) !== "0x38")) {
+          writeLocalPreference(recoveryKey, "");
+          throw new Error("本地市场创建记录与当前钱包或合约不匹配，已清理且不会重复发送");
+        }
+      } else {
+        const prepared = await api("v1/pump/perpetual/prepare-market", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ walletAddress: account, tokenAddress }),
+        });
+        assertCurrent();
+        const existingMarketId = prepared?.existingMarketId == null ? null : Number(prepared.existingMarketId);
+        if (existingMarketId != null) {
+          if (!Number.isSafeInteger(existingMarketId) || existingMarketId < 0
+            || String(prepared?.tokenAddress || "").toLowerCase() !== tokenAddress
+            || prepared?.transaction != null) {
+            throw new Error("已有市场确认结果与当前代币不匹配，请勿签名并联系客服核验");
+          }
+          await continueToPool(existingMarketId, "", true);
+          return;
+        }
+        const transaction = prepared?.transaction;
+        const quoteToken = String(prepared?.quoteTokenAddress || "").toLowerCase();
+        const oracle = String(prepared?.oracleAddress || "").toLowerCase();
+        const encodeAddressWord = (value) => String(value || "").replace(/^0x/, "").toLowerCase().padStart(64, "0");
+        const encodeUintWord = (value) => BigInt(value).toString(16).padStart(64, "0");
+        if (!/^0x[0-9a-f]{40}$/.test(quoteToken) || !/^0x[0-9a-f]{40}$/.test(oracle)) throw new Error("永续报价资产或 Oracle 地址无效");
+        const expectedData = `0x723219d3${encodeAddressWord(tokenAddress)}${encodeAddressWord(quoteToken)}${encodeAddressWord(oracle)}${encodeUintWord(prepared.maxLeverage)}${encodeUintWord(prepared.minLiquidityRaw)}`;
+        if (!transaction
+          || String(prepared.tokenAddress || "").toLowerCase() !== tokenAddress
+          || String(transaction.to || "").toLowerCase() !== contractAtStart
+          || normalizeChainId(transaction.chainId || transaction.chain_id || "") !== "0x38"
+          || BigInt(transaction.value || "0") !== 0n
+          || String(transaction.data || "").toLowerCase() !== expectedData) {
+          throw new Error("市场创建交易与链上安全模板不一致，已阻止签名");
+        }
+        txHash = await sendVaultTransaction(transaction, "永续市场创建", (hash) => {
+          writeLocalPreference(recoveryKey, hash);
+          if (readLocalPreference(recoveryKey) !== hash) {
+            throw new Error("市场创建交易已广播，但浏览器无法保存恢复记录；请核对钱包交易且不要重复创建");
+          }
+        }, undefined, assertCurrent);
+      }
+      assertCurrent();
+      const confirmed = await api("v1/pump/perpetual/market-created", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ walletAddress: state.account, tokenAddress }),
+        body: JSON.stringify({ walletAddress: account, tokenAddress, txHash }),
       });
-      const transaction = prepared?.transaction;
-      const contract = String(state.perpConfig?.contractAddress || "").toLowerCase();
-      const quoteToken = String(prepared?.quoteTokenAddress || "").toLowerCase();
-      const oracle = String(prepared?.oracleAddress || "").toLowerCase();
-      const encodeAddressWord = (value) => String(value || "").replace(/^0x/, "").toLowerCase().padStart(64, "0");
-      const encodeUintWord = (value) => BigInt(value).toString(16).padStart(64, "0");
-      if (!/^0x[0-9a-f]{40}$/.test(quoteToken) || !/^0x[0-9a-f]{40}$/.test(oracle)) throw new Error("永续报价资产或 Oracle 地址无效");
-      const expectedData = `0x723219d3${encodeAddressWord(tokenAddress)}${encodeAddressWord(quoteToken)}${encodeAddressWord(oracle)}${encodeUintWord(prepared.maxLeverage)}${encodeUintWord(prepared.minLiquidityRaw)}`;
-      if (!transaction
-        || String(transaction.to || "").toLowerCase() !== contract
-        || normalizeChainId(transaction.chainId || transaction.chain_id || "") !== "0x38"
-        || BigInt(transaction.value || "0") !== 0n
-        || String(transaction.data || "").toLowerCase() !== expectedData) {
-        throw new Error("市场创建交易与链上安全模板不一致，已阻止签名");
+      assertCurrent();
+      const confirmedMarketId = Number(confirmed?.marketId);
+      if (!Number.isSafeInteger(confirmedMarketId) || confirmedMarketId < 0
+        || String(confirmed?.tokenAddress || "").toLowerCase() !== tokenAddress) {
+        throw new Error("市场创建确认结果与当前代币不匹配，请勿重复创建并联系客服核验");
       }
-      const txHash = await sendVaultTransaction(transaction, "永续市场创建");
-      showOperationDialog(`市场已由当前钱包创建。\n交易哈希：${txHash}\n市场初始为未开放状态，仍需完成 LP 注资、备用 Oracle 和启用流程。`, { title: "市场创建成功", tag: "链上已确认", success: true });
-      await loadPerpetual();
-      show("perps");
+      writeLocalPreference(recoveryKey, "");
+      await continueToPool(confirmedMarketId, txHash);
     } finally {
       state.perpServiceBusy = false;
       renderPerpetualServices();
@@ -6125,11 +6222,10 @@
       const badge = node.querySelector('.tag');
       if (badge) { badge.textContent = active ? uiCopy("已选择", 'Selected') : uiCopy('切换网络', 'Switch network'); badge.classList.toggle('lime', active); }
     });
-    const logo = $("[data-global-chain-logo]");
-    if (logo) {
+    $$('[data-global-chain-logo], [data-active-network-logo]').forEach((logo) => {
       logo.src = state.selectedChain === "bsc" ? "./assets/chains/bnb-chain-brand.png" : "./assets/chains/robinhood-chain-brand.png";
       logo.alt = network.name;
-    }
+    });
     $$('[data-global-chain-option]').forEach((node) => node.classList.toggle("active", node.dataset.globalChainOption === state.selectedChain));
   };
   renderChainMenu();
