@@ -308,6 +308,7 @@
     @media(max-width:440px){.creator-reward-card{grid-template-columns:auto 1fr}.creator-reward-card>.tag{grid-column:2}.profile-menu-group .menu-row>.tag,.profile-menu-group .menu-row>.menu-meta,.profile-menu-group .menu-row>.status-good{display:none}.split-recipient{grid-template-columns:auto 1fr 52px auto}.choice-pills{display:grid;grid-template-columns:repeat(3,1fr)}.creator-tool-grid{grid-template-columns:1fr}.tool-card.featured{min-height:160px}.tool-card.compact{min-height:68px}.profile-section-head>span{max-width:120px;text-align:right}.invite-hero-copy h1{font-size:23px}.invite-share-row{display:grid;grid-template-columns:1fr 1fr}.invite-share-row .primary{grid-column:1/-1;width:100%}.invite-share-row .secondary{width:100%;justify-content:center}.invite-code-line{align-items:flex-end}.invite-metric-grid{grid-template-columns:1fr 1fr}.invite-metric-grid article{min-height:98px;padding:12px}.referral-list>div{grid-template-columns:auto minmax(0,1fr)}.referral-list>div>span:last-child{grid-column:2;text-align:left}.kol-data-grid{grid-template-columns:1fr 1fr}}
   </style>
 <style id="bitbt-live-extensions">
+  .chain-logo{width:28px;height:28px;display:block;border:1px solid #3b3e3f;border-radius:9px;background:#17191a;object-fit:contain}.chain-logo.compact{width:18px;height:18px;border-radius:5px;display:inline-block;vertical-align:middle}.network-filter{display:inline-flex!important;align-items:center;gap:6px}.network-filter img{width:15px;height:15px;border-radius:4px;object-fit:contain}.network-field{position:relative}.network-field>img{position:absolute;z-index:1;left:11px;top:50%;width:22px;height:22px;border-radius:6px;object-fit:contain;transform:translateY(-50%);pointer-events:none}.network-field>.field{padding-left:42px}.asset-choice-copy{display:flex;align-items:center;gap:10px}.asset-choice-copy>img{width:30px;height:30px;border-radius:9px;object-fit:contain}.home-network-pill>.chain-logo{box-shadow:none}
       /* Reference flex/grid rules must not expose unavailable or unprepared controls. */
       #bitbt-launch [hidden] { display: none !important; }
       .token-preview > div:last-child { min-width: 0; overflow-wrap: anywhere; }
@@ -857,7 +858,7 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
           </div>
           <div class="screen-viewport">
 <section class="screen active has-bottom-nav" data-panel="discover" data-screen-group="market" data-screen-title="发现市场">
-          <div class="appbar home-appbar"><div class="wordmark"><span class="mini-mark"></span><span>PUMP<em>MULTICHAIN MEME TERMINAL</em></span></div><span class="home-network-pill"><i></i><b data-active-network-label="">BNB Chain</b>当前主网</span></div>
+          <div class="appbar home-appbar"><div class="wordmark"><span class="mini-mark"></span><span>PUMP<em>MULTICHAIN MEME TERMINAL</em></span></div><span class="home-network-pill"><img class="chain-logo compact" data-active-network-logo src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain"><b data-active-network-label="">BNB Chain</b>当前主网</span></div>
           <div class="home-search-panel">
             <div class="home-search-box"><i class="ico" style="--icon:url('./assets/icons/lucide/search.svg')"></i><input type="search" data-token-search="" id="home-market-search" placeholder="搜索代币名称、Ticker 或合约地址" aria-label="搜索代币名称、Ticker 或合约地址"><kbd>⌘ K</kbd><button data-token-search-toggle="" data-home-search-submit="">搜索</button></div>
             <div class="home-search-context"><span><i></i>当前搜索范围：<b data-active-network-label="">BNB Chain</b></span><span>支持现货、MEME 永续与链上合约</span></div>
@@ -894,7 +895,7 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
           <div data-live-token-grid="" class="token-grid"><p class="footer-note">正在读取真实市场数据…</p></div>
           </div>
           <div class="market-panel" data-market-panel="perps">
-            <div class="filter-row"><button title="" class="active">当前主网</button><button title="暂按当前主网展示，其他排序尚未接入" disabled>BSC</button><button title="暂按当前主网展示，其他排序尚未接入" disabled>Robinhood Chain</button><button title="暂按当前主网展示，其他排序尚未接入" disabled>资金费率</button></div>
+            <div class="filter-row"><button title="" class="active network-filter"><img data-active-network-logo src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain">当前主网</button><button class="network-filter" title="暂按当前主网展示，其他排序尚未接入" disabled><img src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain">BSC</button><button class="network-filter" title="暂按当前主网展示，其他排序尚未接入" disabled><img src="./assets/chains/robinhood-chain-brand.png" alt="Robinhood Chain">Robinhood Chain</button><button title="暂按当前主网展示，其他排序尚未接入" disabled>资金费率</button></div>
             <div class="token-grid"><p class="footer-note">正在读取真实市场数据…</p></div>
           </div>
         </section>
@@ -1646,13 +1647,13 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
               </div>
               <div class="chain-choice-grid">
                 <button class="chain-choice active" data-contract-chain="bsc">
-                  <span class="chain-dot bsc">B</span
+                  <img class="chain-logo" src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain"
                   ><span
                     ><strong>BSC 主网</strong
                     ><small>BNB Chain · BEP-20 合约</small></span
                   ><span class="tag lime">已选择</span></button
                 ><button class="chain-choice" data-contract-chain="robinhood">
-                  <span class="chain-dot robinhood">R</span
+                  <img class="chain-logo" src="./assets/chains/robinhood-chain-brand.png" alt="Robinhood Chain"
                   ><span
                     ><strong>Robinhood Chain</strong
                     ><small>Robinhood 主网 · EVM 合约</small></span
@@ -1988,10 +1989,10 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                     <div class="two-column-form">
                       <div class="form-group">
                         <label>主网 <span>仅限双链</span></label
-                        ><select class="field">
+                        ><div class="network-field"><img data-active-network-logo src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain"><select class="field">
                           <option>BSC 主网</option>
                           <option>Robinhood Chain 主网</option>
-                        </select>
+                        </select></div>
                       </div>
                       <div class="form-group">
                         <label>MEME 合约 <span>已链上添加</span></label
@@ -2163,18 +2164,7 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                     <div>
                       <h2>CASHCAT-PERP · Pool #0084</h2>
                       <p>
-                        <span
-                          class="chain-dot bsc"
-                          style="
-                            display: inline-grid;
-                            width: 18px;
-                            height: 18px;
-                            border-radius: 5px;
-                            font-size: 8px;
-                            vertical-align: middle;
-                          "
-                          >B</span
-                        >
+                        <img class="chain-logo compact" src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain">
                         BSC · 散户联合池 · 创建者 0x71A4…89F2
                       </p>
                       <div class="plain-summary">
@@ -2362,8 +2352,8 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                 <div class="record-filters" aria-label="链上记录筛选">
                   <button class="active" data-record-filter="all">
                     全部主网</button
-                  ><button data-record-filter="bsc">BSC</button
-                  ><button data-record-filter="robinhood">
+                  ><button class="network-filter" data-record-filter="bsc"><img src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain">BSC</button
+                  ><button class="network-filter" data-record-filter="robinhood"><img src="./assets/chains/robinhood-chain-brand.png" alt="Robinhood Chain">
                     Robinhood Chain</button
                   ><button data-record-filter="long">只看开多</button
                   ><button data-record-filter="short">只看开空</button>
@@ -3086,7 +3076,7 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                 <h1>先填写代币资料。</h1>
                 <p>共 4 步，约 2 分钟。名称、符号和头像部署后不可修改。</p>
               </div>
-              <div class="form-group launch-chain-picker"><label>发行网络 <span>部署后不可更改</span></label><div class="chain-choice-grid"><button class="chain-choice active" data-launch-chain="bnb"><span class="chain-dot bsc">B</span><span><strong>BNB Chain</strong><small>BEP-20 · 迁移 PancakeSwap</small></span><span class="tag lime">已选择</span></button><button class="chain-choice" data-launch-chain="robinhood"><span class="chain-dot robinhood">R</span><span><strong>Robinhood Chain</strong><small>EVM · Robinhood 生态市场</small></span><span class="tag">可用</span></button></div><div class="chain-note"><i class="ico sm" style="--icon:url('./assets/icons/lucide/info.svg')"></i>本次代币将发布到 <b data-launch-chain-name="">BNB Chain</b>，后续交易和流动性也在该链完成。</div></div><div class="upload">
+              <div class="form-group launch-chain-picker"><label>发行网络 <span>部署后不可更改</span></label><div class="chain-choice-grid"><button class="chain-choice active" data-launch-chain="bnb"><img class="chain-logo" src="./assets/chains/bnb-chain-brand.png" alt="BNB Chain"><span><strong>BNB Chain</strong><small>BEP-20 · 迁移 PancakeSwap</small></span><span class="tag lime">已选择</span></button><button class="chain-choice" data-launch-chain="robinhood"><img class="chain-logo" src="./assets/chains/robinhood-chain-brand.png" alt="Robinhood Chain"><span><strong>Robinhood Chain</strong><small>EVM · Robinhood 生态市场</small></span><span class="tag">可用</span></button></div><div class="chain-note"><i class="ico sm" style="--icon:url('./assets/icons/lucide/info.svg')"></i>本次代币将发布到 <b data-launch-chain-name="">BNB Chain</b>，后续交易和流动性也在该链完成。</div></div><div class="upload">
                 <div class="upload-art" id="create-art">MB</div>
                 <div>
                   <strong>上传代币头像</strong>
@@ -3175,10 +3165,10 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                 </label>
                 <div class="choice-list">
                   <button class="choice active" data-launch-quote="BNB">
-                    <div>
+                    <div class="asset-choice-copy"><img src="./assets/tokens/bnb.png" alt="BNB"><span>
                       <strong>BNB</strong>
                       <small>流动性最深 · 迁移所选 DEX</small>
-                    </div>
+                    </span></div>
                     <span class="tag lime">推荐</span>
                   </button>
                   <button class="choice" data-launch-quote="ETH" hidden>

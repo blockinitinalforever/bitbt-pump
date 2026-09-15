@@ -3248,16 +3248,30 @@
     }
     const tokenAddress = String($("#perps-contract-address")?.value || "").trim().toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(tokenAddress) || /^0x0{40}$/.test(tokenAddress)) throw new Error("请输入有效的 BSC MEME 合约地址");
+    const account = state.account;
+    const provider = selectedProvider();
+    const epoch = walletSessionEpoch;
+    const contractAtStart = String(state.perpConfig?.contractAddress || "").toLowerCase();
+    const assertCurrent = () => {
+      if (walletSessionEpoch !== epoch || state.account !== account || selectedProvider() !== provider
+        || state.selectedChain !== "bsc" || String(state.perpConfig?.contractAddress || "").toLowerCase() !== contractAtStart) {
+        throw new Error("钱包、网络或永续合约配置已变化，请重新核对后创建");
+      }
+    };
+    if (!provider || !account || !/^0x[0-9a-f]{40}$/.test(contractAtStart)) throw new Error("钱包或永续合约配置无效");
+    await assertProviderState();
+    assertCurrent();
     state.perpServiceBusy = true;
     renderPerpetualServices();
     try {
       const prepared = await api("v1/pump/perpetual/prepare-market", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ walletAddress: state.account, tokenAddress }),
+        body: JSON.stringify({ walletAddress: account, tokenAddress }),
       });
+      assertCurrent();
       const transaction = prepared?.transaction;
-      const contract = String(state.perpConfig?.contractAddress || "").toLowerCase();
+      const contract = contractAtStart;
       const quoteToken = String(prepared?.quoteTokenAddress || "").toLowerCase();
       const oracle = String(prepared?.oracleAddress || "").toLowerCase();
       const encodeAddressWord = (value) => String(value || "").replace(/^0x/, "").toLowerCase().padStart(64, "0");
@@ -3271,10 +3285,27 @@
         || String(transaction.data || "").toLowerCase() !== expectedData) {
         throw new Error("市场创建交易与链上安全模板不一致，已阻止签名");
       }
-      const txHash = await sendVaultTransaction(transaction, "永续市场创建");
-      showOperationDialog(`市场已由当前钱包创建。\n交易哈希：${txHash}\n市场初始为未开放状态，仍需完成 LP 注资、备用 Oracle 和启用流程。`, { title: "市场创建成功", tag: "链上已确认", success: true });
+      const txHash = await sendVaultTransaction(transaction, "永续市场创建", undefined, undefined, assertCurrent);
+      assertCurrent();
+      const confirmed = await api("v1/pump/perpetual/market-created", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ walletAddress: account, tokenAddress, txHash }),
+      });
+      assertCurrent();
       await loadPerpetual();
-      show("perps");
+      assertCurrent();
+      const created = state.perpMarkets.find((market) => Number(market.marketId) === Number(confirmed?.marketId)
+        && String(market.tokenAddress || "").toLowerCase() === tokenAddress);
+      if (created) {
+        state.selectedPerpMarketId = Number(created.marketId);
+        renderPerpetualServices();
+        show("perps-create-pool");
+        showOperationDialog(`市场已由当前钱包创建。\n交易哈希：${txHash}\n下一步请选择该市场并完成 Quote Token 注资；市场初始保持未开放。`, { title: "市场创建成功", tag: "继续创建对手池", success: true });
+      } else {
+        show("perps");
+        showOperationDialog(`市场创建交易已确认。\n交易哈希：${txHash}\n链上市场正在同步，请稍后刷新市场列表，再进入“创建对手池”继续注资；请勿重复创建。`, { title: "市场正在同步", tag: "链上已确认", success: true });
+      }
     } finally {
       state.perpServiceBusy = false;
       renderPerpetualServices();
@@ -6125,11 +6156,10 @@
       const badge = node.querySelector('.tag');
       if (badge) { badge.textContent = active ? uiCopy("已选择", 'Selected') : uiCopy('切换网络', 'Switch network'); badge.classList.toggle('lime', active); }
     });
-    const logo = $("[data-global-chain-logo]");
-    if (logo) {
+    $$('[data-global-chain-logo], [data-active-network-logo]').forEach((logo) => {
       logo.src = state.selectedChain === "bsc" ? "./assets/chains/bnb-chain-brand.png" : "./assets/chains/robinhood-chain-brand.png";
       logo.alt = network.name;
-    }
+    });
     $$('[data-global-chain-option]').forEach((node) => node.classList.toggle("active", node.dataset.globalChainOption === state.selectedChain));
   };
   renderChainMenu();
