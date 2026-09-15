@@ -52,6 +52,16 @@ test('all BNB/BSC and Robinhood network selectors use their real logos', async (
   assert.match(source, /\$\$\('\[data-global-chain-logo\], \[data-active-network-logo\]'\)/);
 });
 
+test('wallet rendering also refreshes the mounted perpetual creation summary', () => {
+  const start = source.indexOf('  const renderWalletState =');
+  const end = source.indexOf('  const restoreSessionOnce =', start);
+  assert.ok(start >= 0 && end > start);
+  const renderWalletState = source.slice(start, end);
+  assert.match(renderWalletState, /renderPerpetualServices\(\);/);
+  assert.match(source, /\[data-service-summary\][\s\S]*state\.account \? short\(state\.account\)/);
+  assert.match(source, /config\.contractAddress \|\| uiCopy\('等待配置', 'Awaiting configuration'\)/);
+});
+
 test('wallet-created perpetual market pins context and continues directly to pool funding', async () => {
   const start = source.indexOf('  const createPermissionlessPerpetualMarket =');
   const end = source.indexOf('  const submitPerpetualService =', start);
