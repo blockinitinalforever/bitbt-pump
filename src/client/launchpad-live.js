@@ -804,15 +804,23 @@
     state.announcements = await api("v1/pump/announcements");
     renderAnnouncements();
   };
+  const parsePerpMarketId = (value) => {
+    if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0 ? value : null;
+    if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
   const selectedPerpMarket = () => {
     if (state.selectedPerpMarketId != null) {
-      const selected = state.perpMarkets.find((market) => Number(market.marketId) === Number(state.selectedPerpMarketId));
+      const selectedId = parsePerpMarketId(state.selectedPerpMarketId);
+      if (selectedId == null) return null;
+      const selected = state.perpMarkets.find((market) => parsePerpMarketId(market.marketId) === selectedId);
       return selected || null;
     }
     const rawSelectedId = String($("#perp-market")?.value ?? "").trim();
-    if (!rawSelectedId) return state.perpMarkets[0] || null;
-    const selectedId = Number(rawSelectedId);
-    return state.perpMarkets.find((market) => Number(market.marketId) === selectedId) || state.perpMarkets[0] || null;
+    const selectedId = parsePerpMarketId(rawSelectedId);
+    if (selectedId == null) return null;
+    return state.perpMarkets.find((market) => parsePerpMarketId(market.marketId) === selectedId) || null;
   };
   const perpMarketActivity = (market = selectedPerpMarket()) => state.perpIndexedPositions
     .filter((item) => market && Number(item.marketId) === Number(market.marketId));
@@ -2929,8 +2937,7 @@
     buttons[1].dataset.open = 'perps-pool'; buttons[1].textContent = uiCopy("查看当前池详情", "View current pool");
     const resume = document.createElement('div'); resume.dataset.perpPoolResumable = ''; pool.querySelector('.pool-builder-grid').before(resume);
     selects[1].addEventListener('change', () => {
-      const marketId = Number(selects[1].value);
-      state.selectedPerpMarketId = selects[1].value !== '' && Number.isSafeInteger(marketId) ? marketId : null;
+      state.selectedPerpMarketId = parsePerpMarketId(String(selects[1].value).trim());
       renderPerpetualServices();
     });
     amount.addEventListener('input', renderPerpetualServices);
@@ -3276,7 +3283,7 @@
     };
     if (!provider || !account || !/^0x[0-9a-f]{40}$/.test(contractAtStart)) throw new Error("钱包或永续合约配置无效");
     const continueToPool = async (marketId, txHash = "", existing = false) => {
-      if (!Number.isSafeInteger(marketId) || marketId < 0) throw new Error("永续市场编号无效，请勿重复创建并联系客服核验");
+      if (parsePerpMarketId(marketId) == null) throw new Error("永续市场编号无效，请勿重复创建并联系客服核验");
       state.selectedPerpMarketId = marketId;
       try {
         await loadPerpetual();
@@ -3322,14 +3329,22 @@
           writeLocalPreference(recoveryKey, "");
           throw new Error("原市场创建交易已确认回滚，失败记录已清理；请核对参数后重新创建");
         }
+        const recoveredData = String(transaction?.input || transaction?.data || "").toLowerCase();
+        const expectedTokenWord = tokenAddress.slice(2).padStart(64, "0");
         if (!transaction
+          || !receipt
           || String(transaction.hash || "").toLowerCase() !== txHash.toLowerCase()
+          || String(receipt.transactionHash || "").toLowerCase() !== txHash.toLowerCase()
+          || String(receipt.from || "").toLowerCase() !== account
+          || String(receipt.to || "").toLowerCase() !== contractAtStart
           || String(transaction.from || "").toLowerCase() !== account
           || String(transaction.to || "").toLowerCase() !== contractAtStart
           || BigInt(transaction.value || "0") !== 0n
-          || (transaction.chainId != null && normalizeChainId(transaction.chainId) !== "0x38")) {
+          || normalizeChainId(transaction.chainId || "") !== "0x38"
+          || !/^0x723219d3[0-9a-f]{320}$/.test(recoveredData)
+          || recoveredData.slice(10, 74) !== expectedTokenWord) {
           writeLocalPreference(recoveryKey, "");
-          throw new Error("本地市场创建记录与当前钱包或合约不匹配，已清理且不会重复发送");
+          throw new Error("本地市场创建记录与当前钱包、代币或合约不匹配，已清理且不会重复发送");
         }
       } else {
         const prepared = await api("v1/pump/perpetual/prepare-market", {
@@ -3346,10 +3361,13 @@
             : uiCopy('现货流动性与专用安全模板已通过；创建时同步存入最低 Quote LP', 'Spot liquidity and the token safety template passed; the minimum Quote LP is deposited during creation');
           preview.querySelector('.tag').textContent = uiCopy('校验通过', 'Validated');
         }
-        const existingMarketId = prepared?.existingMarketId == null ? null : Number(prepared.existingMarketId);
+        const existingMarketIdRaw = prepared?.existingMarketId;
+        const existingMarketId = existingMarketIdRaw == null ? null : parsePerpMarketId(existingMarketIdRaw);
+        if (existingMarketIdRaw != null && existingMarketId == null) {
+          throw new Error("已有市场编号无效，请勿签名并联系客服核验");
+        }
         if (existingMarketId != null) {
-          if (!Number.isSafeInteger(existingMarketId) || existingMarketId < 0
-            || String(prepared?.tokenAddress || "").toLowerCase() !== tokenAddress
+          if (String(prepared?.tokenAddress || "").toLowerCase() !== tokenAddress
             || !Array.isArray(prepared?.transactions) || prepared.transactions.length !== 0) {
             throw new Error("已有市场确认结果与当前代币不匹配，请勿签名并联系客服核验");
           }
@@ -3405,8 +3423,8 @@
         body: JSON.stringify({ walletAddress: account, tokenAddress, txHash }),
       });
       assertCurrent();
-      const confirmedMarketId = Number(confirmed?.marketId);
-      if (!Number.isSafeInteger(confirmedMarketId) || confirmedMarketId < 0
+      const confirmedMarketId = parsePerpMarketId(confirmed?.marketId);
+      if (confirmedMarketId == null
         || String(confirmed?.tokenAddress || "").toLowerCase() !== tokenAddress) {
         throw new Error("市场创建确认结果与当前代币不匹配，请勿重复创建并联系客服核验");
       }
@@ -3425,7 +3443,9 @@
     if (requestType !== "create_pool") throw new Error("不支持的永续服务类型");
     const marketIdValue = String($("#perps-pool-market")?.value ?? "").trim();
     if (!marketIdValue) throw new Error("请选择有效的永续市场");
+    if (!/^(0|[1-9][0-9]*)$/.test(marketIdValue)) throw new Error("请选择有效的永续市场");
     const marketId = Number(marketIdValue);
+    if (!Number.isSafeInteger(marketId)) throw new Error("请选择有效的永续市场");
     const market = state.perpMarkets.find((item) => Number(item.marketId) === marketId);
     if (!market) throw new Error("请选择有效的永续市场");
     const amount = String($("#perps-pool-amount")?.value || "").trim();
