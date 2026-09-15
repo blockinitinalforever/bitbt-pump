@@ -822,6 +822,11 @@
     if (selectedId == null) return null;
     return state.perpMarkets.find((market) => parsePerpMarketId(market.marketId) === selectedId) || null;
   };
+  const selectInitialPerpMarket = (markets) => {
+    if (state.selectedPerpMarketId != null) return;
+    const initial = markets.find((market) => parsePerpMarketId(market?.marketId) != null);
+    if (initial) state.selectedPerpMarketId = parsePerpMarketId(initial.marketId);
+  };
   const perpMarketActivity = (market = selectedPerpMarket()) => state.perpIndexedPositions
     .filter((item) => market && Number(item.marketId) === Number(market.marketId));
   const formatPerpPrice = (value) => {
@@ -1209,6 +1214,7 @@
     if (!current() || state.selectedChain !== chain) return;
     state.perpConfig = config;
     state.perpMarkets = markets;
+    selectInitialPerpMarket(markets);
     renderPerpetual();
     setPerpReadError('config');
     await Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualServiceData(), loadPerpetualCandles()]);
@@ -1224,7 +1230,10 @@
       const markets = config?.enabled && (!previousEnabled || !state.perpMarkets.length) ? await api("v1/pump/perpetual/markets") : null;
       if (!current()) return;
       state.perpConfig = config;
-      if (markets) state.perpMarkets = markets;
+      if (markets) {
+        state.perpMarkets = markets;
+        selectInitialPerpMarket(markets);
+      }
       renderPerpetual();
       setPerpReadError('config');
     } catch (error) {
