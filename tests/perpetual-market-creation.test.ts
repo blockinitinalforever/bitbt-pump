@@ -49,6 +49,7 @@ test('wallet-created perpetual market pins context and continues directly to poo
     perpServiceBusy: false,
   };
   const shown: string[] = [];
+  const preferences = new Map<string, string>();
   let transactionSent = false;
   const context = vm.createContext({
     state,
@@ -58,6 +59,8 @@ test('wallet-created perpetual market pins context and continues directly to poo
     connectWallet: async () => account,
     assertProviderState: async () => ({ account, chainId: '0x38' }),
     renderPerpetualServices: () => undefined,
+    readLocalPreference: (key: string) => preferences.get(key) || '',
+    writeLocalPreference: (key: string, value: string) => value ? preferences.set(key, value) : preferences.delete(key),
     $: (selector: string) => selector === '#perps-contract-address' ? { value: token } : null,
     api: async (path: string) => path.endsWith('/market-created')
       ? { marketId: 9, tokenAddress: token }
@@ -89,9 +92,109 @@ test('wallet-created perpetual market pins context and continues directly to poo
   assert.equal(state.perpServiceBusy, false);
 });
 
+test('confirmed market creation recovers bookkeeping without preparing or rebroadcasting', async () => {
+  const start = source.indexOf('  const createPermissionlessPerpetualMarket =');
+  const end = source.indexOf('  const submitPerpetualService =', start);
+  const account = '0x1111111111111111111111111111111111111111';
+  const contract = '0x2222222222222222222222222222222222222222';
+  const token = '0x3333333333333333333333333333333333333333';
+  const txHash = `0x${'6'.repeat(64)}`;
+  const provider = {
+    request: async ({ method }: { method: string }) => method === 'eth_getTransactionReceipt'
+      ? { status: '0x1', transactionHash: txHash }
+      : { hash: txHash, from: account, to: contract, value: '0x0', chainId: '0x38' },
+  };
+  const state: any = {
+    account,
+    selectedChain: 'bsc',
+    perpConfig: { enabled: true, permissionlessMarketCreation: true, contractAddress: contract },
+    perpMarkets: [],
+    perpServiceBusy: false,
+  };
+  const key = `bitbt_perp_market_creation:bsc:${contract}:${account}:${token}`;
+  const preferences = new Map([[key, txHash]]);
+  const apiCalls: string[] = [];
+  let sends = 0;
+  const context = vm.createContext({
+    state,
+    walletSessionEpoch: 3,
+    selectedProvider: () => provider,
+    isBscFeatureChain: () => true,
+    connectWallet: async () => account,
+    assertProviderState: async () => ({ account, chainId: '0x38' }),
+    receiptHasStatus: (receipt: any) => receipt?.status != null,
+    receiptSucceeded: (receipt: any) => receipt?.status === '0x1',
+    normalizeChainId: (value: string) => value,
+    renderPerpetualServices: () => undefined,
+    readLocalPreference: (storageKey: string) => preferences.get(storageKey) || '',
+    writeLocalPreference: (storageKey: string, value: string) => value ? preferences.set(storageKey, value) : preferences.delete(storageKey),
+    $: (selector: string) => selector === '#perps-contract-address' ? { value: token } : null,
+    api: async (path: string) => {
+      apiCalls.push(path);
+      if (path.endsWith('/prepare-market')) throw new Error('must not prepare again');
+      return { marketId: 9, tokenAddress: token };
+    },
+    sendVaultTransaction: async () => { sends += 1; return txHash; },
+    loadPerpetual: async () => { state.perpMarkets = [{ marketId: 9, tokenAddress: token }]; },
+    show: () => undefined,
+    showOperationDialog: () => undefined,
+  });
+  vm.runInContext(`${source.slice(start, end)}\nglobalThis.run = createPermissionlessPerpetualMarket;`, context);
+  await context.run();
+  assert.equal(sends, 0);
+  assert.deepEqual(apiCalls, ['v1/pump/perpetual/market-created']);
+  assert.equal(preferences.has(key), false);
+  assert.equal(state.selectedPerpMarketId, 9);
+});
+
+test('an existing market goes straight to pool funding without another wallet transaction', async () => {
+  const start = source.indexOf('  const createPermissionlessPerpetualMarket =');
+  const end = source.indexOf('  const submitPerpetualService =', start);
+  const account = '0x1111111111111111111111111111111111111111';
+  const contract = '0x2222222222222222222222222222222222222222';
+  const token = '0x3333333333333333333333333333333333333333';
+  const provider = {};
+  const state: any = {
+    account,
+    selectedChain: 'bsc',
+    perpConfig: { enabled: true, permissionlessMarketCreation: true, contractAddress: contract },
+    perpMarkets: [],
+    perpServiceBusy: false,
+  };
+  const shown: string[] = [];
+  let sends = 0;
+  let confirmations = 0;
+  const context = vm.createContext({
+    state,
+    walletSessionEpoch: 4,
+    selectedProvider: () => provider,
+    isBscFeatureChain: () => true,
+    assertProviderState: async () => ({ account, chainId: '0x38' }),
+    renderPerpetualServices: () => undefined,
+    readLocalPreference: () => '',
+    writeLocalPreference: () => undefined,
+    $: (selector: string) => selector === '#perps-contract-address' ? { value: token } : null,
+    api: async (path: string) => {
+      if (path.endsWith('/market-created')) confirmations += 1;
+      return { tokenAddress: token, existingMarketId: 9, transaction: null };
+    },
+    sendVaultTransaction: async () => { sends += 1; return `0x${'6'.repeat(64)}`; },
+    loadPerpetual: async () => { state.perpMarkets = [{ marketId: 9, tokenAddress: token }]; },
+    show: (panel: string) => shown.push(panel),
+    showOperationDialog: () => undefined,
+  });
+  vm.runInContext(`${source.slice(start, end)}\nglobalThis.run = createPermissionlessPerpetualMarket;`, context);
+  await context.run();
+  assert.equal(sends, 0);
+  assert.equal(confirmations, 0);
+  assert.equal(state.selectedPerpMarketId, 9);
+  assert.equal(shown.at(-1), 'perps-create-pool');
+});
+
 test('perpetual market creation refuses to sign after wallet context changes', async () => {
   assert.match(source, /钱包、网络或永续合约配置已变化，请重新核对后创建/);
-  assert.match(source, /sendVaultTransaction\(transaction, "永续市场创建", undefined, undefined, assertCurrent\)/);
-  assert.match(source, /state\.selectedPerpMarketId = Number\(created\.marketId\)/);
+  assert.match(source, /bitbt_perp_market_creation:bsc:/);
+  assert.match(source, /本次不会重新签名/);
+  assert.match(source, /await continueToPool\(confirmedMarketId, txHash\)/);
   assert.match(source, /show\("perps-create-pool"\)/);
 });
