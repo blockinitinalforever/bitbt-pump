@@ -308,6 +308,7 @@
     @media(max-width:440px){.creator-reward-card{grid-template-columns:auto 1fr}.creator-reward-card>.tag{grid-column:2}.profile-menu-group .menu-row>.tag,.profile-menu-group .menu-row>.menu-meta,.profile-menu-group .menu-row>.status-good{display:none}.split-recipient{grid-template-columns:auto 1fr 52px auto}.choice-pills{display:grid;grid-template-columns:repeat(3,1fr)}.creator-tool-grid{grid-template-columns:1fr}.tool-card.featured{min-height:160px}.tool-card.compact{min-height:68px}.profile-section-head>span{max-width:120px;text-align:right}.invite-hero-copy h1{font-size:23px}.invite-share-row{display:grid;grid-template-columns:1fr 1fr}.invite-share-row .primary{grid-column:1/-1;width:100%}.invite-share-row .secondary{width:100%;justify-content:center}.invite-code-line{align-items:flex-end}.invite-metric-grid{grid-template-columns:1fr 1fr}.invite-metric-grid article{min-height:98px;padding:12px}.referral-list>div{grid-template-columns:auto minmax(0,1fr)}.referral-list>div>span:last-child{grid-column:2;text-align:left}.kol-data-grid{grid-template-columns:1fr 1fr}}
   </style>
 <style id="bitbt-live-extensions">
+    .perps-keeper-hint{margin:10px 0 0;padding:10px 12px;border:1px solid #74621b;border-radius:9px;background:#211d0e;color:#f2d778;font-size:11px;line-height:1.5}.perps-keeper-hint[hidden]{display:none}
   .chain-logo{width:28px;height:28px;display:block;border:1px solid #3b3e3f;border-radius:9px;background:#17191a;object-fit:contain}.chain-logo.compact{width:18px;height:18px;border-radius:5px;display:inline-block;vertical-align:middle}.network-filter{display:inline-flex!important;align-items:center;gap:6px}.network-filter img{width:15px;height:15px;border-radius:4px;object-fit:contain}.network-field{position:relative}.network-field>img{position:absolute;z-index:1;left:11px;top:50%;width:22px;height:22px;border-radius:6px;object-fit:contain;transform:translateY(-50%);pointer-events:none}.network-field>.field{padding-left:42px}.asset-choice-copy{display:flex;align-items:center;gap:10px}.asset-choice-copy>img{width:30px;height:30px;border-radius:9px;object-fit:contain}.home-network-pill>.chain-logo{box-shadow:none}
       /* Reference flex/grid rules must not expose unavailable or unprepared controls. */
       #bitbt-launch [hidden] { display: none !important; }
@@ -1575,6 +1576,7 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                     >
                       连接钱包并开多
                     </button>
+                    <p class="perps-keeper-hint" data-perps-keeper-hint role="status" aria-live="polite" hidden></p>
                   </div>
                   <div class="perps-risk">
                     <i

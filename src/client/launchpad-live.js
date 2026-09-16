@@ -61,6 +61,7 @@
     preparedPerpAction: null,
     preparedPerpRequest: null,
     perpSubmitting: false,
+    perpKeeperWaking: false,
     perpModernAction: "open_position",
     perpCandles: [],
     perpChartInterval: 300,
@@ -591,7 +592,7 @@
     if (/liquidity is locked while positions are open/i.test(message)) return "市场仍有未平仓仓位，当前不能注入或提取流动性";
     if (/insufficient Quote Token balance/i.test(message)) return "报价币余额不足，当前未收取对手池服务费；请补足报价币后重试";
     if (/pool request does not match the selected perpetual market/i.test(message)) return "对手池参数与所选永续市场不一致，当前未收取服务费；请重新选择市场";
-    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "永续运维服务正在唤醒，尚未收取对手池服务费；请稍后重试";
+    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "永续运维服务暂未就绪，本次操作尚未发送链上交易；请稍后重试";
     if (/no platform fees are claimable/i.test(message)) return "当前没有可领取的平台手续费";
     if (status === 413 || /payload too large|request entity too large/i.test(message)) return "文件过大，请压缩后重试";
     if (status === 429 || /rate limit|too many requests/i.test(message)) return "操作过于频繁，请稍后重试";
@@ -999,7 +1000,19 @@
     const keeperSyncing = enabled && (config?.operationsState === "preparing" || (!config?.operationsState && !config?.operationsReady && Date.now() - perpUnreadySince < 60_000));
     text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')}${uiCopy(' 个', '')}`);
     text("[data-perp-menu-status]", enabled ? (keeperStandby ? uiCopy("按需待命", "Standby") : keeperSyncing ? uiCopy("准备中", "Preparing") : config?.openingsPaused ? uiCopy("只减仓", "Reduce only") : uiCopy("已开放", "Available")) : uiCopy("未开放", "Unavailable"));
-    text("[data-perp-status]", keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
+    text("[data-perp-status]", state.perpKeeperWaking ? uiCopy("永续运维服务正在启动，系统会自动继续准备；请勿重复点击，本次永续交易尚未发送。", "Perpetual operations are starting. Preparation will continue automatically; do not click again. This perpetual trade has not been sent.") : keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
+    const keeperHint = $('[data-perps-keeper-hint]');
+    if (keeperHint) {
+      const hint = state.perpKeeperWaking
+        ? uiCopy("运维服务正在启动，系统会自动继续；本次开仓交易尚未发送，请勿重复点击。", "Operations are starting. We will continue automatically; this opening trade has not been sent. Please do not click again.")
+        : keeperStandby
+          ? uiCopy("运维服务目前待命。点击开仓后可能需要短暂启动，期间不会请求签名或发送交易。", "Operations are on standby. Starting a trade may take a moment; no signature or transaction is sent while waiting.")
+          : keeperSyncing
+            ? uiCopy("运维服务正在准备；系统会在就绪后继续，暂未发送开仓交易。", "Operations are preparing. We will continue when ready; no opening trade has been sent.")
+            : '';
+      keeperHint.hidden = !enabled || state.perpModernAction !== 'open_position' || !hint;
+      keeperHint.textContent = hint;
+    }
     text("[data-perp-fee]", config?.feePercent ? uiMarkup`默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     renderPerpetualCreationLeverage(config);
@@ -1104,7 +1117,7 @@
         const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
         const needsWallet = !state.account;
         submit.disabled = state.perpSubmitting || (!needsWallet && (!enabled || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly))));
-        submit.textContent = state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy('确认市价平仓', 'Confirm market close') : uiCopy(`确认开${isShort ? uiCopy("空", "Short") : uiCopy("多", "Long")}`, `Confirm ${isShort ? 'short' : 'long'}`);
+        submit.textContent = state.perpKeeperWaking ? uiCopy('运维服务启动中，请稍候…', 'Starting operations, please wait…') : state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy('确认市价平仓', 'Confirm market close') : uiCopy(`确认开${isShort ? uiCopy("空", "Short") : uiCopy("多", "Long")}`, `Confirm ${isShort ? 'short' : 'long'}`);
         submit.removeAttribute('data-toast');
       }
       renderPerpetualChart();
@@ -1347,27 +1360,35 @@
     if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
   };
   const preparePerpetualWhenReady = async (request, assertContext = () => {}) => {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      assertContext();
-      try {
-        const prepared = await api("v1/pump/perpetual/prepare", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(request),
-        });
+    try {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
         assertContext();
-        return prepared;
-      } catch (error) {
-        if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
-        text("[data-perp-status]", "正在按需唤醒永续风控与预言机，请稍候，无需重复点击…");
-        if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；当前不会发起新的钱包签名");
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        assertContext();
-        state.perpConfig = await api("v1/pump/perpetual/config");
-        assertContext();
+        try {
+          const prepared = await api("v1/pump/perpetual/prepare", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(request),
+          });
+          assertContext();
+          return prepared;
+        } catch (error) {
+          if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
+          state.perpKeeperWaking = true;
+          renderPerpetual();
+          if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；本次未发送开仓交易");
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          assertContext();
+          state.perpConfig = await api("v1/pump/perpetual/config");
+          assertContext();
+        }
+      }
+      throw new Error("永续交易参数暂未准备完成");
+    } finally {
+      if (state.perpKeeperWaking) {
+        state.perpKeeperWaking = false;
+        renderPerpetual();
       }
     }
-    throw new Error("永续交易参数暂未准备完成");
   };
   const preparePerpetualAction = async () => {
     if (!state.account) await connectWallet();
