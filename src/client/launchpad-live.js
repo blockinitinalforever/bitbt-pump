@@ -1030,7 +1030,7 @@
       }
       const pairRow = $('[data-panel="perps"] .perps-pairs');
       if (pairRow) {
-        pairRow.innerHTML = state.perpMarkets.map((item) => `<button type="button" class="${market && Number(item.marketId) === Number(market.marketId) ? 'active' : ''}" data-real-perp-market="${Number(item.marketId)}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="">${escapeHtml(perpetualPairLabel(item))} <span>${item.enabled ? 'LIVE' : '暂停'}</span></button>`).join('');
+        pairRow.innerHTML = state.perpMarkets.map((item) => `<button type="button" class="${market && Number(item.marketId) === Number(market.marketId) ? 'active' : ''}" aria-pressed="${market && Number(item.marketId) === Number(market.marketId)}" data-real-perp-market="${Number(item.marketId)}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="">${escapeHtml(perpetualPairLabel(item))} <span>${item.enabled ? 'LIVE' : '暂停'}</span></button>`).join('');
       }
       const searchResults = $('[data-panel="perps"] .perps-search-results');
       if (searchResults) {
@@ -5853,6 +5853,7 @@
       }
       const marketButton = event.target.closest("[data-real-perp-market]");
       if (marketButton) {
+        event.preventDefault();
         state.selectedPerpMarketId = Number(marketButton.dataset.realPerpMarket);
         const legacySelect = $("#perp-market");
         if (legacySelect) legacySelect.value = String(state.selectedPerpMarketId);
@@ -5864,6 +5865,12 @@
         void loadPerpetualPosition().catch((error) => toastError(error, "永续仓位读取失败"));
         void loadPerpetualWalletBalance().catch((error) => toastError(error, "保证金余额读取失败"));
         void loadPerpetualCandles().catch((error) => toastError(error, "永续 K 线读取失败"));
+        // Market cards are above the chart on mobile. Make the selected card
+        // lead to the actual order form, including when it was already active.
+        window.requestAnimationFrame(() => {
+          $('[data-panel="perps"] .perps-order-column')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        return;
       }
       const perpInterval = event.target.closest("[data-perps-chart-interval]");
       if (perpInterval) {
