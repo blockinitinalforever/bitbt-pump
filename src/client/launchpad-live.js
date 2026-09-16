@@ -1153,6 +1153,14 @@
         onchain.innerHTML = rows || '<p class="footer-note">该市场当前没有已索引的真实链上仓位记录。</p>';
       }
       const submit = $('#perps-submit');
+      const pendingRecord = $('[data-perps-pending-record]');
+      if (pendingRecord) {
+        const pendingKey = state.account && state.perpConfig?.contractAddress
+          ? `bitbt_perp_pending:bsc:${state.perpConfig.contractAddress}:${state.account.toLowerCase()}` : '';
+        const pendingHash = pendingKey ? readLocalPreference(pendingKey) : '';
+        pendingRecord.hidden = !/^0x[a-fA-F0-9]{64}$/.test(pendingHash);
+        text('[data-perps-pending-hash]', pendingHash);
+      }
       if (submit) {
         const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
         const needsWallet = !state.account;
@@ -6011,6 +6019,26 @@
         state.preparedPerpAction = null;
         state.preparedPerpRequest = null;
         renderPerpetual();
+      }
+      if (event.target.closest('[data-perps-clear-missing-pending]')) {
+        event.preventDefault();
+        void (async () => {
+          if (!state.account || !state.perpConfig?.contractAddress) throw new Error('请先连接原钱包并加载永续市场');
+          const pendingKey = `bitbt_perp_pending:bsc:${state.perpConfig.contractAddress}:${state.account.toLowerCase()}`;
+          const hash = readLocalPreference(pendingKey);
+          if (!/^0x[a-fA-F0-9]{64}$/.test(hash)) throw new Error('没有可核对的待确认交易哈希');
+          const provider = selectedProvider();
+          const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [hash] });
+          const transaction = await provider.request({ method: 'eth_getTransactionByHash', params: [hash] });
+          if (receipt || transaction) throw new Error('钱包节点仍能查到该交易，不能清除；请等待链上确认');
+          if (!window.confirm(`钱包节点查不到交易 ${hash}。请确认你已在区块浏览器核对该哈希不存在；清除旧记录后可重新尝试开仓。`)) return;
+          if (readLocalPreference(pendingKey) !== hash) throw new Error('待确认记录已变化，请重新核对');
+          writeLocalPreference(pendingKey, '');
+          if (readLocalPreference(pendingKey)) throw new Error('浏览器未能清除旧记录，请检查存储权限');
+          renderPerpetual();
+          toast('旧交易记录已清除，请重新确认价格后开仓', 6000);
+        })().catch((error) => toastError(error, '核对旧交易失败'));
+        return;
       }
       const viewButton = event.target.closest("[data-perps-view]");
       if (viewButton) {
