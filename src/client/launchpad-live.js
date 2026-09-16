@@ -833,12 +833,27 @@
     const marketId = parsePerpMarketId(market?.marketId);
     return marketId == null ? "—" : `Market #${marketId}`;
   };
-  const perpetualBaseLogo = (market) => state.selectedChain === 'bsc'
-    && String(market?.tokenAddress || '').toLowerCase() === '0xe0ab66985c8d18fba4cbc080024341750e997777'
-    ? './assets/tokens/titan.png' : market?.tokenImage || './assets/tokens/generic.svg';
-  const perpetualQuoteLogo = (market) => state.selectedChain === 'bsc'
-    && String(market?.quoteTokenAddress || '').toLowerCase() === '0xfad7b3af22f087ef75652a6466b09c4c3a86c4d3'
-    ? './assets/tokens/tbtusd.svg' : './assets/tokens/generic.svg';
+  const perpetualBaseLogo = (market) => market?.tokenLogoUrl || null;
+  const perpetualQuoteLogo = (market) => market?.quoteTokenLogoUrl || null;
+  const perpetualLogoLetter = (symbol) => String(symbol || '?').trim().charAt(0).toUpperCase() || '?';
+  const perpetualLogoMarkup = (url, symbol, extraClass = '') => url
+    ? `<img class="${extraClass}" src="${escapeHtml(url)}" alt="${escapeHtml(symbol || '')}">`
+    : symbol ? `<span class="perps-letter-logo ${extraClass}" aria-label="${escapeHtml(symbol)}">${escapeHtml(perpetualLogoLetter(symbol))}</span>` : '';
+  const setPerpetualLogo = (image, url, symbol) => {
+    if (!image) return;
+    image.hidden = !url;
+    if (url) { image.src = url; image.alt = symbol || ''; }
+    let letter = image.nextElementSibling;
+    if (!letter?.classList.contains('perps-letter-logo')) {
+      letter = document.createElement('span');
+      letter.className = 'perps-letter-logo';
+      if ('perpsQuoteImage' in image.dataset || 'perpsOrderQuoteImage' in image.dataset) letter.classList.add('perps-quote-logo');
+      image.after(letter);
+    }
+    letter.hidden = Boolean(url) || !symbol;
+    letter.textContent = perpetualLogoLetter(symbol);
+    letter.setAttribute('aria-label', symbol || '');
+  };
   const selectInitialPerpMarket = (markets) => {
     if (state.selectedPerpMarketId != null) return;
     const initial = markets.find((market) => parsePerpMarketId(market?.marketId) != null);
@@ -875,7 +890,7 @@
       if (fallback) {
         fallback.hidden = false;
         fallback.textContent = selectedPerpMarket()
-          ? uiCopy("本站暂未索引到可绘制 K 线的现货成交；上方仍显示独立的 Oracle 标记价。", "No indexed spot trades are available for this chart yet; the independent Oracle mark price remains available above.")
+          ? uiCopy("本站暂未索引到可绘制 K 线的现货成交。", "No indexed spot trades are available for this chart yet.")
           : uiCopy("选择已开放市场后显示真实成交 K 线。", "Select an open market to view real trade candles.");
       }
       return;
@@ -967,7 +982,7 @@
     const marketGrid = $('[data-market-panel="perps"] .token-grid');
     if (marketGrid) {
       marketGrid.innerHTML = markets.length
-        ? markets.map((item) => uiMarkup`<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><span class="perps-pair-logos"><img class="token-logo" src="${escapeHtml(perpetualBaseLogo(item))}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><img class="perps-quote-logo" src="${escapeHtml(perpetualQuoteLogo(item))}" alt="${escapeHtml(item.quoteTokenSymbol || 'Quote Token')}"></span><div class="token-name"><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(state.selectedChain === 'robinhood' ? 'Robinhood' : 'BNB Chain')} · ${escapeHtml(item.quoteTokenSymbol || short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? uiCopy("已开放", "Available") : uiCopy("已暂停", "Paused")}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
+        ? markets.map((item) => uiMarkup`<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><span class="perps-pair-logos">${perpetualLogoMarkup(perpetualBaseLogo(item), item.tokenSymbol, 'token-logo')}${perpetualLogoMarkup(perpetualQuoteLogo(item), item.quoteTokenSymbol, 'perps-quote-logo')}</span><div class="token-name"><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(state.selectedChain === 'robinhood' ? 'Robinhood' : 'BNB Chain')} · ${escapeHtml(item.quoteTokenSymbol || short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? uiCopy("已开放", "Available") : uiCopy("已暂停", "Paused")}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
         : `<p class="footer-note">${escapeHtml(query ? '没有匹配的永续市场，请修改名称或地址搜索。' : config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
     }
   };
@@ -1029,24 +1044,17 @@
       }
       text('[data-perps-leverage-range]', marketLeverageCap(market) ? `1–${marketLeverageCap(market)}×` : '—');
       text('[data-perps-settlement-note]', market ? `${market.quoteTokenSymbol || 'Quote Token'} ${uiCopy('本位', 'settled')} · ${selectedNetwork().name} · ${uiCopy('资金费按链上规则随时间累计', 'Funding accrues under on-chain rules')}` : uiCopy('选择市场后显示结算资产与资金费规则', 'Select a market to view settlement and funding rules'));
-      const marketImage = $('[data-perps-image]');
-      if (marketImage) {
-        marketImage.src = perpetualBaseLogo(market);
-        marketImage.alt = market?.tokenSymbol || '永续市场';
-      }
-      const quoteImage = $('[data-perps-quote-image]');
-      if (quoteImage) { quoteImage.src = perpetualQuoteLogo(market); quoteImage.alt = market?.quoteTokenSymbol || '结算资产'; }
-      const orderBaseImage = $('[data-perps-order-base-image]');
-      if (orderBaseImage) { orderBaseImage.src = perpetualBaseLogo(market); orderBaseImage.alt = market?.tokenSymbol || '永续标的'; }
-      const orderQuoteImage = $('[data-perps-order-quote-image]');
-      if (orderQuoteImage) { orderQuoteImage.src = perpetualQuoteLogo(market); orderQuoteImage.alt = market?.quoteTokenSymbol || '结算资产'; }
+      setPerpetualLogo($('[data-perps-image]'), perpetualBaseLogo(market), market?.tokenSymbol);
+      setPerpetualLogo($('[data-perps-quote-image]'), perpetualQuoteLogo(market), market?.quoteTokenSymbol);
+      setPerpetualLogo($('[data-perps-order-base-image]'), perpetualBaseLogo(market), market?.tokenSymbol);
+      setPerpetualLogo($('[data-perps-order-quote-image]'), perpetualQuoteLogo(market), market?.quoteTokenSymbol);
       const pairRow = $('[data-panel="perps"] .perps-pairs');
       if (pairRow) {
-        pairRow.innerHTML = state.perpMarkets.map((item) => `<button type="button" class="${market && Number(item.marketId) === Number(market.marketId) ? 'active' : ''}" aria-pressed="${market && Number(item.marketId) === Number(market.marketId)}" data-real-perp-market="${Number(item.marketId)}"><img src="${escapeHtml(perpetualBaseLogo(item))}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><img class="perps-quote-logo" src="${escapeHtml(perpetualQuoteLogo(item))}" alt="${escapeHtml(item.quoteTokenSymbol || 'Quote Token')}">${escapeHtml(perpetualPairLabel(item))} <span>${item.enabled ? 'LIVE' : '暂停'}</span></button>`).join('');
+        pairRow.innerHTML = state.perpMarkets.map((item) => `<button type="button" class="${market && Number(item.marketId) === Number(market.marketId) ? 'active' : ''}" aria-pressed="${market && Number(item.marketId) === Number(market.marketId)}" data-real-perp-market="${Number(item.marketId)}">${perpetualLogoMarkup(perpetualBaseLogo(item), item.tokenSymbol)}${perpetualLogoMarkup(perpetualQuoteLogo(item), item.quoteTokenSymbol, 'perps-quote-logo')}${escapeHtml(perpetualPairLabel(item))} <span>${item.enabled ? 'LIVE' : '暂停'}</span></button>`).join('');
       }
       const searchResults = $('[data-panel="perps"] .perps-search-results');
       if (searchResults) {
-        searchResults.innerHTML = uiMarkup`<div class="perps-search-head"><span>搜索结果</span><span>市场状态</span></div>${state.perpMarkets.map((item) => uiMarkup`<div class="perps-search-item ready" data-real-perp-search data-search="${escapeHtml(`${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase())}"><span class="perps-pair-logos"><img src="${escapeHtml(perpetualBaseLogo(item))}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><img class="perps-quote-logo" src="${escapeHtml(perpetualQuoteLogo(item))}" alt="${escapeHtml(item.quoteTokenSymbol || 'Quote Token')}"></span><div><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(short(item.tokenAddress || ''))} · BSC · <span class="pool-state">${item.enabled ? uiCopy("可交易", "Tradable") : uiCopy("已暂停", "Paused")}</span></small></div><button type="button" data-real-perp-market="${Number(item.marketId)}">选择交易</button></div>`).join('')}<div class="perps-search-empty" data-perps-search-empty>未找到已接入的真实 MEME 永续市场。</div>`;
+        searchResults.innerHTML = uiMarkup`<div class="perps-search-head"><span>搜索结果</span><span>市场状态</span></div>${state.perpMarkets.map((item) => uiMarkup`<div class="perps-search-item ready" data-real-perp-search data-search="${escapeHtml(`${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase())}"><span class="perps-pair-logos">${perpetualLogoMarkup(perpetualBaseLogo(item), item.tokenSymbol)}${perpetualLogoMarkup(perpetualQuoteLogo(item), item.quoteTokenSymbol, 'perps-quote-logo')}</span><div><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(short(item.tokenAddress || ''))} · BSC · <span class="pool-state">${item.enabled ? uiCopy("可交易", "Tradable") : uiCopy("已暂停", "Paused")}</span></small></div><button type="button" data-real-perp-market="${Number(item.marketId)}">选择交易</button></div>`).join('')}<div class="perps-search-empty" data-perps-search-empty>未找到已接入的真实 MEME 永续市场。</div>`;
       }
       const latestCandle = state.perpCandles.at(-1);
       const latestPrice = Number(latestCandle?.close || 0);
@@ -1104,7 +1112,7 @@
           ? uiMarkup`<p class="footer-note">连接钱包后读取当前真实仓位。</p>`
           : !state.perpPosition?.open
             ? uiMarkup`<p class="footer-note">当前钱包在该市场没有未平仓仓位。</p>`
-            : uiMarkup`<div class="perps-position-head"><div class="perps-position-name"><img src="${escapeHtml(perpetualBaseLogo(market))}" alt="${escapeHtml(market?.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(perpetualPairLabel(market))} <span class="tag lime">${state.perpPosition.isLong ? uiCopy("多", "Long") : uiCopy("空", "Short")}</span></strong><small>逐仓 · ${escapeHtml(market?.quoteTokenSymbol || 'Quote Token')} 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
+            : uiMarkup`<div class="perps-position-head"><div class="perps-position-name">${perpetualLogoMarkup(perpetualBaseLogo(market), market?.tokenSymbol)}<div><strong>${escapeHtml(perpetualPairLabel(market))} <span class="tag lime">${state.perpPosition.isLong ? uiCopy("多", "Long") : uiCopy("空", "Short")}</span></strong><small>逐仓 · ${escapeHtml(market?.quoteTokenSymbol || 'Quote Token')} 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
       }
       const orders = $('[data-panel="perps"] [data-perps-panel="orders"]');
       if (orders) orders.innerHTML = '<p class="footer-note">当前合约仅支持钱包签名后立即上链的市价操作，没有待成交挂单。</p>';
@@ -3080,7 +3088,7 @@
       set('.pool-identity h2', uiMarkup`${market ? perpetualPairLabel(market) : '—'} · 聚合池 #${market ? Number(market.marketId) : '—'}`);
       set('.pool-identity p', uiMarkup`${selectedNetwork().shortName} · 链上聚合 LP 池`);
       const logo = poolDetail.querySelector('.pool-identity img');
-      if (logo) { logo.src = perpetualBaseLogo(market); logo.alt = market?.tokenSymbol || ''; }
+      setPerpetualLogo(logo, perpetualBaseLogo(market), market?.tokenSymbol);
       const summaries = [...poolDetail.querySelectorAll('.pool-identity .plain-summary span')];
       [uiMarkup`${unit} 结算`, uiCopy("LP 按链上份额记账", "LP accounting uses on-chain shares"), uiCopy("资金可能亏损", "Funds are at risk")].forEach((label, i) => { if (summaries[i]) summaries[i].textContent = label; });
       set('.pool-health > strong', market?.enabled ? (market.closeOnly ? uiCopy("只减仓", "Reduce-only") : uiCopy("市场已启用", "Market enabled")) : uiCopy("市场未开放", "MarketNot open"));
@@ -3164,7 +3172,7 @@
         const currentPosition = item.currentPosition === true;
         const label = currentPosition ? '当前未平仓位' : ({ open: '开仓', close: '平仓', liquidate: '清算', expire: '到期结算' }[item.eventType] || '未知事件');
         return uiMarkup`<article class="onchain-row">
-          <div class="record-identity"><img src="${escapeHtml(perpetualBaseLogo(itemMarket))}" alt=""><div><strong>${escapeHtml(itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`)}</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
+          <div class="record-identity">${perpetualLogoMarkup(perpetualBaseLogo(itemMarket), itemMarket?.tokenSymbol)}<div><strong>${escapeHtml(itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`)}</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
           <div class="record-cell"><strong>${label}</strong><span>${escapeHtml(short(item.traderAddress || ''))}</span></div>
           <div class="record-cell"><span>成交价</span><strong>—</strong></div>
           <div class="record-cell"><span>保证金 / 仓位</span><strong>—</strong></div>
@@ -5749,6 +5757,9 @@
       event.preventDefault();
       handlePerpetualSubmit().catch((error) => toastError(error, "永续操作失败"));
     });
+    const scrollToPerpetualOrderForm = () => window.requestAnimationFrame(() => {
+      $('[data-panel="perps"] .perps-order-column')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     root.addEventListener("click", (event) => {
       const shortcut = event.target.closest('[data-perp-shortcut]');
       if (shortcut) {
@@ -5791,6 +5802,7 @@
         if (openButton.dataset.side) applySide(openButton.dataset.side === "sell");
         if (openButton.dataset.perpMarketId != null) {
           void Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualCandles()]).catch((error) => toastError(error, "永续市场读取失败"));
+          scrollToPerpetualOrderForm();
         }
         return;
       }
@@ -5883,9 +5895,7 @@
         void loadPerpetualCandles().catch((error) => toastError(error, "永续 K 线读取失败"));
         // Market cards are above the chart on mobile. Make the selected card
         // lead to the actual order form, including when it was already active.
-        window.requestAnimationFrame(() => {
-          $('[data-panel="perps"] .perps-order-column')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
+        scrollToPerpetualOrderForm();
         return;
       }
       const perpInterval = event.target.closest("[data-perps-chart-interval]");
