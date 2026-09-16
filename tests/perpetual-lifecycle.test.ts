@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+const addressGuard = source.slice(source.indexOf('  const isNonZeroPerpTokenAddress ='), source.indexOf('  const selectedPerpMarket ='));
 const runner = source.slice(source.indexOf('  const executePreparedPerpetual ='), source.indexOf('  const executePerpetualAction ='));
 const wallet = '0x' + '11'.repeat(20);
 const token = '0x' + '55'.repeat(20);
@@ -136,7 +137,7 @@ test('VM: LP completion API failure retries bookkeeping without another deposit'
       return {requestId:'request1',status:'completed'};
     },
   };
-  vm.createContext(ctx);vm.runInContext(code+'\nglobalThis.complete=completePaidPoolRequest;',ctx);
+  vm.createContext(ctx);vm.runInContext(addressGuard+code+'\nglobalThis.complete=completePaidPoolRequest;',ctx);
   const request={requestId:'request1',status:'paid',payload:{marketId:0,tokenAddress:token,amountRaw:'10'}};
   await assert.rejects(ctx.complete(request),/temporary/);
   await ctx.complete(request);

@@ -811,6 +811,10 @@
     const parsed = Number(value);
     return Number.isSafeInteger(parsed) ? parsed : null;
   };
+  const isNonZeroPerpTokenAddress = (value) => {
+    const address = String(value || "").toLowerCase();
+    return /^0x[0-9a-f]{40}$/.test(address) && !/^0x0{40}$/.test(address);
+  };
   const selectedPerpMarket = () => {
     if (state.selectedPerpMarketId != null) {
       const selectedId = parsePerpMarketId(state.selectedPerpMarketId);
@@ -3222,7 +3226,8 @@
     const market = state.perpMarkets.find((item) => Number(item.marketId) === Number(payload.marketId));
     const payloadTokenAddress = String(payload.tokenAddress || "").toLowerCase();
     const marketTokenAddress = String(market?.tokenAddress || "").toLowerCase();
-    if (!market || !/^0x[0-9a-f]{40}$/.test(payloadTokenAddress) || marketTokenAddress !== payloadTokenAddress
+    if (!market || !isNonZeroPerpTokenAddress(payloadTokenAddress) || !isNonZeroPerpTokenAddress(marketTokenAddress)
+      || marketTokenAddress !== payloadTokenAddress
       || !request?.requestId || request.status !== "paid") throw new Error("找不到与代币及市场完全匹配的已付费对手池申请");
     state.selectedPerpMarketId = Number(payload.marketId);
     const body = { wallet_address: account, market_id: Number(payload.marketId), action: "deposit_liquidity", amount_raw: String(payload.amountRaw || "") };
@@ -3478,7 +3483,10 @@
     if (!Number.isSafeInteger(marketId)) throw new Error("请选择有效的永续市场");
     const market = state.perpMarkets.find((item) => Number(item.marketId) === marketId);
     if (!market) throw new Error("请选择有效的永续市场");
-    if (boundTarget && String(market.tokenAddress || "").toLowerCase() !== String(boundTarget.tokenAddress || "").toLowerCase()) {
+    const marketTokenAddress = String(market.tokenAddress || "").toLowerCase();
+    const boundTokenAddress = String(boundTarget?.tokenAddress || "").toLowerCase();
+    if (!isNonZeroPerpTokenAddress(marketTokenAddress)
+      || (boundTarget && (!isNonZeroPerpTokenAddress(boundTokenAddress) || marketTokenAddress !== boundTokenAddress))) {
       throw new Error("创建流程绑定的代币与永续市场不一致，已停止提交，请重新进入创建流程");
     }
     const amount = String($("#perps-pool-amount")?.value || "").trim();

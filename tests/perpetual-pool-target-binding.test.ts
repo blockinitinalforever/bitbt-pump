@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+const addressGuard = source.slice(source.indexOf('  const isNonZeroPerpTokenAddress ='), source.indexOf('  const selectedPerpMarket ='));
 const code = source.slice(source.indexOf('  const submitPerpetualService ='), source.indexOf('  const toggleFavorite ='));
 const wallet = `0x${'11'.repeat(20)}`;
 const feeRecipient = `0x${'22'.repeat(20)}`;
@@ -53,7 +54,7 @@ function fixture(targetToken = newToken, targetMarketId: number | null = 1, domM
     },
   };
   vm.createContext(context);
-  vm.runInContext(`${code}\nglobalThis.run = submitPerpetualService;`, context);
+  vm.runInContext(`${addressGuard}${code}\nglobalThis.run = submitPerpetualService;`, context);
   return { context, state, serviceBodies, walletSends: () => walletSends, completed: () => completedRequest };
 }
 
@@ -78,6 +79,21 @@ test('VM: mismatched bound token fails before service preparation or wallet send
   assert.equal(f.serviceBodies.length, 0);
   assert.equal(f.walletSends(), 0);
   assert.equal(f.completed(), null);
+});
+
+test('VM: zero bound token fails before service preparation or wallet send', async () => {
+  const f = fixture(`0x${'00'.repeat(20)}`);
+  await assert.rejects(f.context.run('create_pool'), /代币与永续市场不一致/);
+  assert.equal(f.serviceBodies.length, 0);
+  assert.equal(f.walletSends(), 0);
+});
+
+test('VM: zero resolved market token fails before service preparation or wallet send', async () => {
+  const f = fixture();
+  f.state.perpMarkets[1].tokenAddress = `0x${'00'.repeat(20)}`;
+  await assert.rejects(f.context.run('create_pool'), /代币与永续市场不一致/);
+  assert.equal(f.serviceBodies.length, 0);
+  assert.equal(f.walletSends(), 0);
 });
 
 test('VM: blank unbound market fails closed without defaulting to market zero', async () => {

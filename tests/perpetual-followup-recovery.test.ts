@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
 const part = (start: string, end: string) => source.slice(source.indexOf(`  const ${start}`), source.indexOf(`  const ${end}`));
+const addressGuard = source.slice(source.indexOf('  const isNonZeroPerpTokenAddress ='), source.indexOf('  const selectedPerpMarket ='));
 const wallet = '0x'+'11'.repeat(20), contract = '0x'+'22'.repeat(20), quote = '0x'+'33'.repeat(20), token = '0x'+'44'.repeat(20);
 const hash = '0x'+'aa'.repeat(32), word = (n: bigint) => n.toString(16).padStart(64,'0');
 const data = '0x34a860e4'+word(0n)+word(10n);
@@ -74,20 +75,26 @@ function poolFixture() {
     sendVaultTransaction:async(_tx:any,_label:any,cb:any,start:any,check:any)=>{check();start();sends++;cb(hash);throw Error('receipt timeout');},
   };
   vm.createContext(c);
-  vm.runInContext(part('receiptHasStatus','waitReceipt')+part('perpetualWord','preparePerpetualAction')
+  vm.runInContext(addressGuard+part('receiptHasStatus','waitReceipt')+part('perpetualWord','preparePerpetualAction')
     +part('executePreparedPerpetual','executePerpetualAction')+part('completePaidPoolRequest','createPermissionlessPerpetualMarket')+';globalThis.run=completePaidPoolRequest;',c);
   const request={requestId:'r',walletAddress:wallet,status:'paid',payload:{marketId:0,tokenAddress:token,amountRaw:'10'}};
   return {c,stored,completionKey,pendingKey,calls,receipt,tx,provider,request,sends:()=>sends,completions:()=>completions};
 }
 
-test('VM: paid pool recovery requires an explicit valid token address on both request and market',async()=>{
-  const missingRequestToken=poolFixture();delete missingRequestToken.request.payload.tokenAddress;
-  await assert.rejects(missingRequestToken.c.run(missingRequestToken.request),/代币及市场完全匹配/);
-  assert.equal(missingRequestToken.sends(),0);assert.equal(missingRequestToken.completions(),0);
-  const missingMarketToken=poolFixture();delete missingMarketToken.c.state.perpMarkets[0].tokenAddress;
-  await assert.rejects(missingMarketToken.c.run(missingMarketToken.request),/代币及市场完全匹配/);
-  assert.equal(missingMarketToken.sends(),0);assert.equal(missingMarketToken.completions(),0);
-});
+for(const [scenario,mutate] of [
+  ['missing-request-token',(f:any)=>{delete f.request.payload.tokenAddress;}],
+  ['missing-market-token',(f:any)=>{delete f.c.state.perpMarkets[0].tokenAddress;}],
+  ['zero-request-token',(f:any)=>{f.request.payload.tokenAddress='0x'+'00'.repeat(20);}],
+  ['zero-market-token',(f:any)=>{f.c.state.perpMarkets[0].tokenAddress='0x'+'00'.repeat(20);}],
+  ['mismatched-valid-token',(f:any)=>{f.request.payload.tokenAddress='0x'+'66'.repeat(20);}],
+] as const){
+  test(`VM: paid pool recovery rejects ${scenario} before prepare, send or completion`,async()=>{
+    const f=poolFixture();mutate(f);
+    await assert.rejects(f.c.run(f.request),/代币及市场完全匹配/);
+    assert.equal(f.calls.filter((call:string)=>call.includes('/prepare')).length,0);
+    assert.equal(f.sends(),0);assert.equal(f.completions(),0);
+  });
+}
 
 test('VM: LP broadcast timeout then confirmed revert clears only its hashes and stops this click',async()=>{
   const f=poolFixture();await assert.rejects(f.c.run(f.request),/timeout/);
