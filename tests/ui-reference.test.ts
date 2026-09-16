@@ -293,12 +293,24 @@ test('mobile bottom navigation exactly matches the delivered five tabs and icons
   assert.ok(current.querySelector('.screen-switcher [data-open="perps"]'), 'perpetual entry must stay reachable');
 });
 
-test('mobile tabs remain below the persistent official contact footer', () => {
+test('mobile bottom stack keeps tabs last and removes the contact footer from the detail CTA state', () => {
   const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  const {document} = parseHTML(html);
+  const start = source.indexOf('  const mainScreens =');
+  const end = source.indexOf('  const show =', start);
+  const apply = vm.runInNewContext(source.slice(start, end) + ';applyScreenChrome', {$:(s:string)=>document.querySelector(s),$$:(s:string)=>[...document.querySelectorAll(s)]});
   assert.match(html, /\.bottom-nav \{ position:fixed; left:0; right:0; bottom:0; z-index:31;/);
   assert.match(html, /\.official-contact-footer \{ position:fixed; left:0; right:0; bottom:0; z-index:30;/);
   assert.match(html, /body:has\(\.bottom-nav\.visible\) \.official-contact-footer \{ bottom:calc\(72px \+ env\(safe-area-inset-bottom\)\); \}/);
   assert.match(html, /\.screen\.has-bottom-nav \{ padding-bottom:calc\(136px \+ env\(safe-area-inset-bottom\)\); \}/);
+  apply('detail');
+  assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), false);
+  assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), true);
+  assert.ok(document.querySelector('[data-panel="detail"] .fixed-trade'));
+  apply('discover');
+  assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), true);
+  assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), false);
 });
 
 test('bottom navigation visibility follows the original five main screens, not transaction subpages', () => {
@@ -316,6 +328,7 @@ test('bottom navigation visibility follows the original five main screens, not t
     apply(name);
     assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), false);
     assert.equal(document.querySelectorAll('.has-bottom-nav').length, 0);
+    assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), name === 'detail');
   }
 });
 

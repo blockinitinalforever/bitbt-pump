@@ -5545,6 +5545,9 @@
   const applyScreenChrome = (name) => {
     $$('[data-panel]').forEach(panel => panel.classList.toggle('has-bottom-nav', panel.dataset.panel === name && mainScreens.includes(name)));
     $('.bottom-nav')?.classList.toggle('visible', mainScreens.includes(name));
+    // The persistent contact footer must never sit above the token-detail
+    // Buy/Sell CTA or receive taps intended for that transaction control.
+    $('.official-contact-footer')?.toggleAttribute('hidden', name === 'detail');
   };
   const show = (name) => {
     name = resolveScreenName(name);
