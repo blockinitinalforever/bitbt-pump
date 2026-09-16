@@ -283,19 +283,19 @@ test('discover search filters perpetual cards locally without overwriting spot c
   const spot = document.querySelector('[data-live-token-grid]')!;
   const previous = spot.innerHTML;
   const state = { tokenSearch: 'alpha', selectedChain: 'robinhood', perpConfig: {}, perpMarkets: [
-    { marketId: 0, tokenSymbol: 'ALPHA', enabled: true },
-    { marketId: 1, tokenSymbol: 'BETA', enabled: true },
+    { marketId: 0, tokenSymbol: 'ALPHA', quoteTokenSymbol: 'tBTUSD', enabled: true },
+    { marketId: 1, tokenSymbol: 'BETA', quoteTokenSymbol: 'tBTUSD', enabled: true },
   ] };
   const start = source.indexOf('  const renderPerpetualMarketCards =');
   const end = source.indexOf('  let perpUnreadySince', start);
-  const context = vm.createContext({ ...renderLocale(), state, $: (selector: string) => document.querySelector(selector), escapeHtml: (v: unknown) => String(v), short: (v: string) => v, formatUnits: (v: bigint) => String(v) });
+  const context = vm.createContext({ ...renderLocale(), state, $: (selector: string) => document.querySelector(selector), escapeHtml: (v: unknown) => String(v), short: (v: string) => v, formatUnits: (v: bigint) => String(v), perpetualPairLabel: (market: {tokenSymbol: string; quoteTokenSymbol: string}) => `${market.tokenSymbol}/${market.quoteTokenSymbol}` });
   const render = vm.runInContext(source.slice(start, end) + '\nrenderPerpetualMarketCards', context);
   render();
   const grid = document.querySelector('[data-market-panel="perps"] .token-grid')!;
   assert.equal(grid.querySelectorAll('[data-perp-market-id]').length, 1);
-  assert.match(grid.textContent || '', /ALPHA-PERP/);
+  assert.match(grid.textContent || '', /ALPHA\/tBTUSD/);
   assert.match(grid.textContent || '', /Robinhood/);
-  assert.doesNotMatch(grid.textContent || '', /BETA-PERP|BNB Chain/);
+  assert.doesNotMatch(grid.textContent || '', /BETA\/tBTUSD|BNB Chain/);
   state.tokenSearch = 'missing'; render();
   assert.match(grid.textContent || '', /没有匹配/);
   assert.equal(spot.innerHTML, previous);
@@ -370,6 +370,7 @@ test('real on-chain rows keep the reference image-copy-badge order and native bu
     decimal: (value: unknown) => String(value),
     age: () => '刚刚',
     short: (value: string) => value,
+    perpetualPairLabel: (value: { tokenSymbol: string; quoteTokenSymbol?: string }) => `${value.tokenSymbol}/${value.quoteTokenSymbol || 'QUOTE'}`,
     bindLiveTokenSelection: () => undefined,
   });
   const render = vm.runInContext(source.slice(start, end) + ';renderLiveRows', scope) as () => void;
@@ -468,7 +469,7 @@ test('pool detail updates data without replacing the original depth and particip
   const panel = document.querySelector('[data-panel="perps-pool"]')!;
   const depth = panel.querySelector('.depth-card');
   const participants = panel.querySelector('.participant-card');
-  let market: { marketId: number; tokenSymbol: string; quoteDecimals: number; liquidityRaw: string; lockedNotionalRaw: string; longNotionalRaw: string; shortNotionalRaw: string; maxLeverage: number; enabled: boolean } | null = null;
+  let market: { marketId: number; tokenSymbol: string; quoteTokenSymbol: string; quoteDecimals: number; liquidityRaw: string; lockedNotionalRaw: string; longNotionalRaw: string; shortNotionalRaw: string; maxLeverage: number; enabled: boolean } | null = null;
   const context = vm.createContext({ ...renderLocale(),
     $: (selector: string) => document.querySelector(selector),
     selectedPerpMarket: () => market,
@@ -481,7 +482,7 @@ test('pool detail updates data without replacing the original depth and particip
   });
   const render = vm.runInContext(`() => {${source.slice(start, end)}}`, context);
   render();
-  market = { marketId: 0, tokenSymbol: 'REAL', quoteDecimals: 18, liquidityRaw: '100', lockedNotionalRaw: '30', longNotionalRaw: '20', shortNotionalRaw: '10', maxLeverage: 10, enabled: true };
+  market = { marketId: 0, tokenSymbol: 'REAL', quoteTokenSymbol: 'tBTUSD', quoteDecimals: 18, liquidityRaw: '100', lockedNotionalRaw: '30', longNotionalRaw: '20', shortNotionalRaw: '10', maxLeverage: 10, enabled: true };
   render();
   assert.equal(panel.querySelector('.depth-card'), depth);
   assert.equal(panel.querySelector('.participant-card'), participants);
@@ -489,7 +490,7 @@ test('pool detail updates data without replacing the original depth and particip
   assert.ok(panel.querySelector('[data-perp-shortcut="deposit_liquidity"]'));
   assert.ok(panel.querySelector('[data-perp-shortcut="withdraw_liquidity"]'));
   assert.doesNotMatch(panel.textContent || '', /CASHCAT|500,000|1.84M|12,842|128 LP|92 \/ 100|100×/);
-  assert.match(panel.textContent || '', /REAL-PERP/);
+  assert.match(panel.textContent || '', /REAL\/tBTUSD/);
 });
 
 test('pool selection never substitutes market zero for a stale or blank selection', () => {

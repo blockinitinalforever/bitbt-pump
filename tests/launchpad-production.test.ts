@@ -181,7 +181,7 @@ test("perpetual terminal renders spot candles, oracle mark price, and indexed ac
   for (let attempt = 0; attempt < 20 && window.document.querySelector("[data-perps-price]")?.textContent === "—"; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  assert.equal(window.document.querySelector("[data-perps-symbol]")?.textContent, "CODET");
+  assert.equal(window.document.querySelector("[data-perps-symbol]")?.textContent, "CODET/tBTUSD");
   assert.match(window.document.querySelector("[data-perps-price]")?.textContent || "", /1\.25/, requests.join("\n"));
   assert.match(window.document.querySelector("[data-perps-mark]")?.textContent || "", /2\.5/);
   assert.match(window.document.querySelector("[data-perps-oi]")?.textContent || "", /40 tBTUSD/);
