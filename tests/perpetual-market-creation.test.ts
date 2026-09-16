@@ -36,6 +36,29 @@ const parsePerpMarketId = (value: unknown): number | null => {
   return Number.isSafeInteger(parsed) ? parsed : null;
 };
 
+test('pilot dashboard and creation card show the same 4x cap; non-pilot keeps its configured cap', async () => {
+  const { parseHTML } = await import('linkedom');
+  const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
+  const card = document.querySelector('[data-panel="perps-add-contract"]');
+  assert.ok(card);
+  const leverage = card.querySelectorAll('.contract-shell')[1]?.querySelectorAll('select,input')[2];
+  assert.ok(leverage);
+  leverage.setAttribute('data-service-setting', '2');
+  const start = source.indexOf('  const renderPerpetualCreationLeverage =');
+  const end = source.indexOf('  const renderPerpetual =', start);
+  assert.ok(start >= 0 && end > start);
+  const render = vm.runInNewContext(
+    `${source.slice(start, end)}\nrenderPerpetualCreationLeverage`,
+    { text: (selector: string, value: string) => { const node = document.querySelector(selector); if (node) node.textContent = value; } },
+  ) as (config: { internalPilot: boolean; maxLeverage: number }, card: typeof card) => void;
+  render({ internalPilot: true, maxLeverage: 100 }, card);
+  assert.equal(document.querySelector('[data-perp-max-leverage]')?.textContent, '4×');
+  assert.equal(leverage.querySelector('option')?.textContent, '4×');
+  render({ internalPilot: false, maxLeverage: 20 }, card);
+  assert.equal(document.querySelector('[data-perp-max-leverage]')?.textContent, '20×');
+  assert.equal(leverage.querySelector('option')?.textContent, '20×');
+});
+
 test('all BNB/BSC and Robinhood network selectors use their real logos', async () => {
   const { parseHTML } = await import('linkedom');
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));

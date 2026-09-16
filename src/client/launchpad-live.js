@@ -967,6 +967,17 @@
   };
   let perpUnreadySince = 0;
   let perpStatusRefreshInFlight = false;
+  const renderPerpetualCreationLeverage = (config, addPanel) => {
+    const protocolCap = Number(config?.maxLeverage || 0);
+    const creationCap = config?.internalPilot ? Math.min(protocolCap || 4, 4) : protocolCap;
+    const label = creationCap > 0 ? `${creationCap}×` : '—';
+    text('[data-perp-max-leverage]', label);
+    const field = addPanel?.querySelector('[data-service-setting="2"]');
+    if (field) {
+      if (field.tagName === 'SELECT') field.options[0].textContent = label;
+      else field.value = label;
+    }
+  };
   const renderPerpetual = () => {
     const config = state.perpConfig;
     const enabled = Boolean(config?.enabled);
@@ -979,7 +990,7 @@
     text("[data-perp-status]", keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
     text("[data-perp-fee]", config?.feePercent ? uiMarkup`默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
-    text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
+    renderPerpetualCreationLeverage(config);
     text("[data-perp-version]", config?.contractVersion ? `V${config.contractVersion}` : "—");
     const select = $("#perp-market");
     if (select) {
@@ -2993,15 +3004,12 @@
       .join("");
     const addPanel = $('[data-panel="perps-add-contract"]');
     if (addPanel) {
-      // The internal pilot Oracle declares 10% max deviation. The on-chain
-      // margin rule therefore caps market creation at 4x, not the protocol's
-      // unrelated global 100x ceiling returned as config.maxLeverage.
-      const creationLeverage = config.internalPilot ? 4 : Number(config.maxLeverage || 0);
-      const values = [uiCopy("受信任 Oracle（签名前校验）", "Trusted oracle (checked before signing)"), uiCopy("受信任 Quote Token", "Trusted quote token"), creationLeverage ? `${creationLeverage}×` : '—', String(config.minLiquidityUsd || '—') + ' USD'];
+      const values = [uiCopy("受信任 Oracle（签名前校验）", "Trusted oracle (checked before signing)"), uiCopy("受信任 Quote Token", "Trusted quote token"), '—', String(config.minLiquidityUsd || '—') + ' USD'];
       addPanel.querySelectorAll('[data-service-setting]').forEach(node => {
         const value = values[Number(node.dataset.serviceSetting)];
         if (node.tagName === 'SELECT') node.options[0].textContent = value; else node.value = value;
       });
+      renderPerpetualCreationLeverage(config, addPanel);
       addPanel.querySelector('[data-service-summary]').textContent = uiCopy("签名钱包：", "Signing wallet: ") + (state.account ? short(state.account) : uiCopy("未连接", "Not connected")) + uiCopy(" · 目标合约：", " · Target contract: ") + (config.contractAddress || uiCopy('等待配置', 'Awaiting configuration')) + uiCopy(" · 创建时同步存入最低 LP", " · Minimum LP deposited during creation");
       const submit = addPanel.querySelector('[data-perp-service-submit]');
       submit.disabled = Boolean(state.perpServiceBusy || !config.enabled || !config.permissionlessMarketCreation || !isBscFeatureChain());
