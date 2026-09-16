@@ -828,13 +828,10 @@
     return state.perpMarkets.find((market) => parsePerpMarketId(market.marketId) === selectedId) || null;
   };
   const perpetualPairLabel = (market) => {
-    const compactSymbol = (value, fallback) => {
-      const characters = Array.from(String(value || fallback).trim() || fallback);
-      return characters.length > 10 ? `${characters.slice(0, 10).join("")}…` : characters.join("");
-    };
-    const base = compactSymbol(market?.tokenSymbol || market?.tokenName, "MEME");
-    const quote = compactSymbol(market?.quoteTokenSymbol, "QUOTE");
-    return `${base}/${quote}`;
+    const displayName = String(market?.displayName || "").trim();
+    if (displayName) return displayName;
+    const marketId = parsePerpMarketId(market?.marketId);
+    return marketId == null ? "—" : `Market #${marketId}`;
   };
   const selectInitialPerpMarket = (markets) => {
     if (state.selectedPerpMarketId != null) return;
