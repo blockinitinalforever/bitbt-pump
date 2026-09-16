@@ -3071,11 +3071,11 @@
         const node = activityPanel.querySelector(selector);
         if (node) node.textContent = value;
       };
-      set('.page-guide span', uiCopy("仅显示当前钱包已索引的真实事件；历史未回补。未提供的价格、杠杆和保证金显示 —，不使用原型数据。", "Shows indexed events for this wallet only; historical data is not backfilled. Missing prices, leverage and collateral show —, never sample data."));
+      set('.page-guide span', uiCopy("显示当前钱包已索引的真实事件和实时未平仓位；历史未回补。未提供的价格、杠杆和保证金显示 —，不使用原型数据。", "Shows indexed events and live open positions for this wallet; historical data is not backfilled. Missing prices, leverage and collateral show —, never sample data."));
       const metrics = [...activityPanel.querySelectorAll('.record-overview > div')];
       const values = [
-        [uiCopy("已加载事件", "Loaded events"), String(state.perpActivity.length)],
-        [uiCopy("开仓事件", "Opening events"), String(state.perpActivity.filter(item => item.eventType === 'open').length)],
+        [uiCopy("已加载记录", "Loaded records"), String(state.perpActivity.length)],
+        [uiCopy("开仓 / 当前仓位", "Opens / current positions"), String(state.perpActivity.filter(item => item.eventType === 'open').length)],
         [uiCopy("平仓 / 清算 / 结算", "Closures / liquidations / settlements"), String(state.perpActivity.filter(item => item.eventType !== 'open').length)],
         [uiCopy("当前钱包", "Current wallet"), state.account ? short(state.account) : uiCopy("未连接", "Not connected")],
       ];
@@ -3107,14 +3107,15 @@
         const itemMarket = state.perpMarkets.find(candidate => Number(candidate.marketId) === Number(item.marketId));
         const hash = String(item.lastTxHash || '');
         const validHash = /^0x[0-9a-fA-F]{64}$/.test(hash);
-        const label = { open: '开仓', close: '平仓', liquidate: '清算', expire: '到期结算' }[item.eventType] || '未知事件';
+        const currentPosition = item.currentPosition === true;
+        const label = currentPosition ? '当前未平仓位' : ({ open: '开仓', close: '平仓', liquidate: '清算', expire: '到期结算' }[item.eventType] || '未知事件');
         return uiMarkup`<article class="onchain-row">
           <div class="record-identity"><img src="${escapeHtml(itemMarket?.tokenImage || './assets/tokens/generic.svg')}" alt=""><div><strong>${escapeHtml(itemMarket?.tokenSymbol || `Market #${Number(item.marketId)}`)}-PERP</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
           <div class="record-cell"><strong>${label}</strong><span>${escapeHtml(short(item.traderAddress || ''))}</span></div>
           <div class="record-cell"><span>成交价</span><strong>—</strong></div>
           <div class="record-cell"><span>保证金 / 仓位</span><strong>—</strong></div>
-          <div><span class="record-status">已索引</span><div class="record-hash"><small>${escapeHtml(short(hash))}</small></div></div>
-          ${validHash ? uiMarkup`<a class="record-open" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${hash}`)}" target="_blank" rel="noopener noreferrer">详情</a>` : '<span class="record-open">哈希不可用</span>'}
+          <div><span class="record-status">${currentPosition ? '持仓中' : '已索引'}</span><div class="record-hash"><small>${escapeHtml(short(hash))}</small></div></div>
+          ${currentPosition ? uiMarkup`<button class="record-open" type="button" data-perp-close-market="${Number(item.marketId)}">去平仓</button>` : validHash ? uiMarkup`<a class="record-open" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${hash}`)}" target="_blank" rel="noopener noreferrer">详情</a>` : '<span class="record-open">哈希不可用</span>'}
         </article>`;
       }).join('');
       const ledger = activityPanel.querySelector('.onchain-ledger');
@@ -3178,17 +3179,29 @@
     const cursor = state.perpHistoryCursor;
     const page = append ? `&before_block=${cursor.blockNumber}&before_log_index=${cursor.logIndex}` : '';
     try {
-      const [markets, rows] = await Promise.all([
+      const [markets, rows, positions] = await Promise.all([
         api("v1/pump/perpetual/markets"),
         api(`v1/pump/perpetual/activity?history=true&limit=200&wallet_address=${encodeURIComponent(state.account)}${page}`),
+        append ? Promise.resolve([]) : api(`v1/pump/perpetual/activity?limit=200&wallet_address=${encodeURIComponent(state.account)}`),
       ]);
       if (!current()) return;
       if (!Array.isArray(rows) || rows.some((r) => !['open','close','liquidate','expire'].includes(r.eventType) || String(r.traderAddress).toLowerCase() !== state.account.toLowerCase())) {
         throw new Error('逐笔交易接口尚未更新或返回了不匹配的钱包记录');
       }
       state.perpMarkets = Array.isArray(markets) ? markets : [];
-      const combined = append ? [...state.perpActivity, ...rows] : rows;
-      state.perpActivity = [...new Map(combined.map((r) => [`${r.lastTxHash}:${r.logIndex}`, r])).values()];
+      if (!Array.isArray(positions) || positions.some((r) => String(r.traderAddress).toLowerCase() !== state.account.toLowerCase())) {
+        throw new Error('当前持仓索引返回了不匹配的钱包记录');
+      }
+      const livePositions = (append ? state.perpActivity.filter((r) => r.currentPosition === true) : positions.filter((r) => r.isOpen === true).map((r) => ({
+        ...r,
+        eventType: 'open',
+        currentPosition: true,
+        lastTxHash: r.openedTxHash || r.lastTxHash,
+      })));
+      const liveHashes = new Set(livePositions.map((r) => String(r.lastTxHash || '').toLowerCase()).filter(Boolean));
+      const priorHistory = append ? state.perpActivity.filter((r) => r.currentPosition !== true) : [];
+      const combined = [...livePositions, ...priorHistory, ...rows.filter((r) => !liveHashes.has(String(r.lastTxHash || '').toLowerCase()))];
+      state.perpActivity = [...new Map(combined.map((r) => [`${r.lastTxHash}:${r.currentPosition ? 'current' : r.logIndex}`, r])).values()];
       state.perpHistoryCursor = rows.length === 200 ? rows.at(-1) : null;
       setPerpReadError('history');
     } catch (error) {
@@ -5743,6 +5756,27 @@
             state.perpServiceBusy = false;
             renderPerpetualServices();
           });
+        return;
+      }
+      const closePositionButton = event.target.closest("[data-perp-close-market]");
+      if (closePositionButton) {
+        event.preventDefault();
+        const marketId = parsePerpMarketId(closePositionButton.dataset.perpCloseMarket);
+        if (marketId == null || !state.perpMarkets.some((market) => Number(market.marketId) === marketId)) {
+          toastError(new Error("找不到该持仓对应的真实市场"), "无法进入平仓");
+          return;
+        }
+        state.selectedPerpMarketId = marketId;
+        state.perpModernAction = "close_position";
+        state.perpPosition = null;
+        state.perpQuoteBalance = null;
+        state.perpCandles = [];
+        state.preparedPerpAction = null;
+        state.preparedPerpRequest = null;
+        show("perps");
+        renderPerpetual();
+        void Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualCandles()])
+          .catch((error) => toastError(error, "平仓页数据读取失败"));
         return;
       }
       if (event.target.closest("[data-perp-activity-refresh]")) {
