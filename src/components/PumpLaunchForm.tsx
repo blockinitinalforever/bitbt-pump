@@ -22,7 +22,7 @@ async function waitForReceipt(
   provider: EvmProvider,
   hash: string,
 ): Promise<{ status?: string }> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 24; attempt += 1) {
     const receipt = await provider.request({
       method: "eth_getTransactionReceipt",
       params: [hash],
@@ -31,7 +31,7 @@ async function waitForReceipt(
       const typed = receipt as { status?: string };
       if (typed.status !== undefined) return typed;
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    if (attempt < 23) await new Promise((resolve) => window.setTimeout(resolve, 5000));
   }
   throw new Error("Launch receipt timed out; check BscScan");
 }

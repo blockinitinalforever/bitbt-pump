@@ -157,6 +157,9 @@
   let marketSocketRetry = 0;
   let marketSocketTimer = null;
   let marketRefreshTimer = null;
+  let pendingSelectedMarketChange = false;
+  let lastMarketEventRefreshAt = 0;
+  let lastAlertRefreshAt = 0;
   let walletConnectProviderPromise = null;
   let walletConfigPromise = null;
   let walletConnectBridgePromise = null;
@@ -3935,7 +3938,7 @@
   const receiptHasStatus = (receipt) => receipt != null && receipt.status !== undefined && receipt.status !== null;
   const receiptSucceeded = (receipt) => receiptHasStatus(receipt) && [true, 1, "1", "0x1", "0x01"].includes(receipt.status);
   const waitReceipt = async (hash, provider = selectedProvider()) => {
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 24; i += 1) {
       try {
         const receipt = await provider.request({
           method: "eth_getTransactionReceipt",
@@ -3943,7 +3946,7 @@
         });
         if (receiptHasStatus(receipt)) return receipt;
       } catch {}
-      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+      if (i < 23) await new Promise((resolve) => window.setTimeout(resolve, 5000));
     }
     const error = new Error("交易已广播，但链上确认较慢，请稍后在交易记录或 BscScan 查看");
     error.code = "TX_CONFIRMATION_PENDING";
@@ -5260,14 +5263,14 @@
       .join("|");
   const waitForLaunchFinality = async (launchId, initial, chain, current = () => true) => {
     let result = initial;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       if (!current()) return result;
       if (["deployed", "migrated"].includes(result?.status)) return result;
       if (result?.status === "rejected") throw new Error(result.rejection_reason || "发币已被拒绝");
       if (!["prepared", "pending_review", "approved", "deploying", "deploy_failed"].includes(result?.status)) throw new Error(result?.rejection_reason || `发币状态为 ${result?.status || "未知"}`);
       result = await api(`v1/token/status?id=${encodeURIComponent(launchId)}&chain_id=${encodeURIComponent(chain)}`);
       if (["deployed", "migrated"].includes(result?.status)) return result;
-      if (attempt < 19) await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      if (attempt < 9) await new Promise((resolve) => window.setTimeout(resolve, 3000));
     }
     throw new Error(result?.rejection_reason || "发币状态确认超时，请稍后在我的代币中查看");
   };
@@ -6350,15 +6353,24 @@
     });
   };
   const scheduleMarketRefresh = (selectedChanged) => {
-    window.clearTimeout(marketRefreshTimer);
+    pendingSelectedMarketChange ||= selectedChanged;
+    if (marketRefreshTimer) return;
+    const delay = Math.max(350, 5000 - (Date.now() - lastMarketEventRefreshAt));
     marketRefreshTimer = window.setTimeout(() => {
-      void refreshLive({ refreshSelected: !selectedChanged });
-      if (selectedChanged) void refreshSelectedTrades();
-      if (state.account)
+      marketRefreshTimer = null;
+      if (document.visibilityState === "hidden") return;
+      lastMarketEventRefreshAt = Date.now();
+      const refreshSelectedTradesNow = pendingSelectedMarketChange;
+      pendingSelectedMarketChange = false;
+      void refreshLive({ refreshSelected: !refreshSelectedTradesNow });
+      if (refreshSelectedTradesNow) void refreshSelectedTrades();
+      if (state.account && Date.now() - lastAlertRefreshAt >= 30000) {
+        lastAlertRefreshAt = Date.now();
         window.setTimeout(() => {
           void refreshTriggeredAlerts().catch(() => {});
         }, 500);
-    }, 350);
+      }
+    }, delay);
   };
   const handlePumpSocketMessage = (event) => {
     let payload;
@@ -6406,7 +6418,7 @@
     socket.addEventListener("close", () => {
       if (marketSocket !== socket) return;
       marketSocket = null;
-      const delay = Math.min(30000, 1000 * 2 ** Math.min(marketSocketRetry++, 5));
+      const delay = Math.min(120000, 1000 * 2 ** Math.min(marketSocketRetry++, 7));
       text("[data-market-stream-status]", `实时连接已断开，${Math.ceil(delay / 1000)} 秒后重连`);
       marketSocketTimer = window.setTimeout(connectMarketSocket, delay);
     });
@@ -6716,11 +6728,11 @@
     if (document.visibilityState === "hidden") return;
     refreshCycle += 1;
     const socketHealthy = typeof WebSocket !== "undefined" && marketSocket?.readyState === WebSocket.OPEN;
-    const refreshMarket = !socketHealthy || refreshCycle % 4 === 0;
-    const refreshTrades = !socketHealthy || refreshCycle % 2 === 0;
+    const refreshMarket = refreshCycle % (socketHealthy ? 4 : 2) === 0;
+    const refreshTrades = refreshCycle % 2 === 0;
     if (refreshMarket) void refreshLive({ refreshSelected: !refreshTrades });
     if (refreshTrades) void refreshSelectedTrades();
     const perpetualStatusInterval = state.perpConfig?.operationsState === 'degraded' ? 8 : 4;
     if (ui20260911 && perpetualPanelActive() && refreshCycle % perpetualStatusInterval === 0) void refreshPerpetualStatus().catch(() => {});
-  }, 15000);
+  }, 30000);
 })();
