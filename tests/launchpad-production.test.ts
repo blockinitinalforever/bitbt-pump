@@ -1005,8 +1005,12 @@ test("perpetual order shows the oracle market price in an editable price protect
   await new Promise(resolve=>setTimeout(resolve,60));
   const input = window.document.querySelector('#perps-price-limit') as HTMLInputElement;
   assert.ok(input);
-  assert.equal(input.value,"0.012910484093825212");
+  assert.equal(input.value,"0.013039588934763465");
   assert.match(window.document.querySelector('[data-perps-use-market-price]')?.textContent || '',/0\.012910484093825212/);
+  window.document.querySelector('[data-perps-side="short"]')?.dispatchEvent(new window.Event('click',{bubbles:true}));
+  assert.equal(input.value,'0.012781379252886959');
+  window.document.querySelector('[data-perps-use-market-price]')?.dispatchEvent(new window.Event('click',{bubbles:true}));
+  assert.equal(input.value,'0.012910484093825212');
   input.value = '0.013';
   input.dispatchEvent(new window.Event('input',{bubbles:true}));
   assert.equal(input.value,'0.013');
