@@ -41,9 +41,9 @@ test('VM: obsolete history finally cannot release a newer request, session ABA i
     api:()=>{const d=deferred();pending.push(d);return d.promise;}};
   vm.createContext(c);vm.runInContext(part('perpReadVersions','setPerpReadError')+part('loadPerpetualActivity','completePaidPoolRequest')+';globalThis.run=loadPerpetualActivity;',c);
   const a=c.run();c.walletSessionEpoch++;const b=c.run();
-  pending[0].resolve([]);pending[1].resolve([]);await a;assert.equal(c.state.perpHistoryBusy,true);
+  pending[0].resolve([]);pending[1].resolve([]);pending[2].resolve([]);await a;assert.equal(c.state.perpHistoryBusy,true);
   c.walletSessionEpoch++;
-  pending[2].resolve([]);pending[3].resolve([{eventType:'open',traderAddress:wallet}]);await b;
+  pending[3].resolve([]);pending[4].resolve([{eventType:'open',traderAddress:wallet}]);pending[5].resolve([]);await b;
   assert.equal(c.state.perpHistoryBusy,false);assert.equal(c.state.perpActivity.length,0);
 });
 
