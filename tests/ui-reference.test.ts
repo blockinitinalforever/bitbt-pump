@@ -532,6 +532,17 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
   assert.ok(pool.querySelector('[data-perp-service-submit="create_pool"]')!.hasAttribute('disabled'));
   assert.doesNotMatch(add.textContent || '', /CASHCAT|\$483K|25,000|已验证/);
   assert.doesNotMatch(pool.querySelector('.pool-summary-card')!.textContent || '', /CASHCAT|50,000|10,000|0\.006 BNB/);
+
+  // Market creation selects the new market in state while the mounted form can
+  // still contain the previous market. The explicit selection must win.
+  state.perpMarkets = [
+    { marketId:0, tokenSymbol:'OLD', enabled:true, maxLeverage:10 },
+    { marketId:1, tokenSymbol:'NEW', enabled:false, maxLeverage:10 },
+  ];
+  assert.equal((pool.querySelector('#perps-pool-market') as unknown as { value: string }).value, '0');
+  state.selectedPerpMarketId = 1;
+  render();
+  assert.equal((pool.querySelector('#perps-pool-market') as unknown as { value: string }).value, '1');
 });
 
 test('live history refresh preserves delivered shell and removes sample records', () => {
