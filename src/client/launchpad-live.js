@@ -55,6 +55,7 @@
     perpConfig: null,
     perpMarkets: [],
     selectedPerpMarketId: null,
+    perpPoolTarget: null,
     perpPosition: null,
     perpQuoteBalance: null,
     preparedPerpAction: null,
@@ -2946,7 +2947,10 @@
     buttons[1].dataset.open = 'perps-pool'; buttons[1].textContent = uiCopy("查看当前池详情", "View current pool");
     const resume = document.createElement('div'); resume.dataset.perpPoolResumable = ''; pool.querySelector('.pool-builder-grid').before(resume);
     selects[1].addEventListener('change', () => {
-      state.selectedPerpMarketId = parsePerpMarketId(String(selects[1].value).trim());
+      const marketId = parsePerpMarketId(String(selects[1].value).trim());
+      const market = marketId == null ? null : state.perpMarkets.find((item) => Number(item.marketId) === marketId);
+      state.selectedPerpMarketId = marketId;
+      state.perpPoolTarget = market ? { marketId, tokenAddress: String(market.tokenAddress || "").toLowerCase() } : null;
       renderPerpetualServices();
     });
     amount.addEventListener('input', renderPerpetualServices);
@@ -2961,7 +2965,11 @@
     // A newly created market is selected in state before this panel refreshes.
     // Prefer that explicit selection over the stale value still mounted in the
     // pool form; otherwise market #0 can be submitted for a newly created #1.
-    const selectedMarketId = state.selectedPerpMarketId;
+    const boundPoolTarget = state.perpPoolTarget;
+    const boundPoolMarket = boundPoolTarget == null ? null : state.perpMarkets.find((market) =>
+      Number(market.marketId) === Number(boundPoolTarget.marketId)
+      && String(market.tokenAddress || "").toLowerCase() === String(boundPoolTarget.tokenAddress || "").toLowerCase());
+    const selectedMarketId = boundPoolMarket?.marketId ?? state.selectedPerpMarketId;
     const poolMarketDraft = selectedMarketId != null
       && state.perpMarkets.some((market) => Number(market.marketId) === Number(selectedMarketId))
       ? String(selectedMarketId)
@@ -2991,8 +2999,8 @@
       // Preserve form elements and focus; refresh options only if the market list changes.
       if (select.dataset.optionsHtml !== marketOptions) {
         select.innerHTML = marketOptions; select.dataset.optionsHtml = marketOptions;
-        if (state.perpMarkets.some(item => String(item.marketId) === poolMarketDraft)) select.value = poolMarketDraft;
       }
+      if (state.perpMarkets.some(item => String(item.marketId) === poolMarketDraft)) select.value = poolMarketDraft;
       const chosen = state.perpMarkets.find(item => String(item.marketId) === select.value);
       const leverage = Number(chosen?.maxLeverage || config.maxLeverage || 0);
       poolPanel.querySelector('#pool-leverage').value = String(leverage || 1);
@@ -3212,7 +3220,8 @@
     await checkWallet();
     const payload = request?.payload || {};
     const market = state.perpMarkets.find((item) => Number(item.marketId) === Number(payload.marketId));
-    if (!market || !request?.requestId || request.status !== "paid") throw new Error("找不到可继续的已付费对手池申请");
+    if (!market || String(market.tokenAddress || "").toLowerCase() !== String(payload.tokenAddress || "").toLowerCase()
+      || !request?.requestId || request.status !== "paid") throw new Error("找不到与代币及市场完全匹配的已付费对手池申请");
     state.selectedPerpMarketId = Number(payload.marketId);
     const body = { wallet_address: account, market_id: Number(payload.marketId), action: "deposit_liquidity", amount_raw: String(payload.amountRaw || "") };
     const completionKey = `bitbt_perp_pool_completion:${request.requestId}:${account}`;
@@ -3275,6 +3284,7 @@
     toast("对手池服务费与链上 LP 注资均已成功", 8000);
     await loadPerpetual();
     assertCurrent();
+    state.perpPoolTarget = null;
     show("perps-pool");
   };
   const createPermissionlessPerpetualMarket = async () => {
@@ -3300,7 +3310,8 @@
     if (!provider || !account || !/^0x[0-9a-f]{40}$/.test(contractAtStart)) throw new Error("钱包或永续合约配置无效");
     const continueToPool = async (marketId, txHash = "", existing = false) => {
       if (parsePerpMarketId(marketId) == null) throw new Error("永续市场编号无效，请勿重复创建并联系客服核验");
-      state.selectedPerpMarketId = marketId;
+      state.selectedPerpMarketId = Number(marketId);
+      state.perpPoolTarget = { marketId: Number(marketId), tokenAddress };
       try {
         await loadPerpetual();
       } catch {
@@ -3457,13 +3468,17 @@
     if (!state.account) await connectWallet();
     if (!isBscFeatureChain()) throw new Error("永续服务当前仅在 BNB Smart Chain 开放");
     if (requestType !== "create_pool") throw new Error("不支持的永续服务类型");
-    const marketIdValue = String($("#perps-pool-market")?.value ?? "").trim();
+    const boundTarget = state.perpPoolTarget;
+    const marketIdValue = String(boundTarget?.marketId ?? $("#perps-pool-market")?.value ?? "").trim();
     if (!marketIdValue) throw new Error("请选择有效的永续市场");
     if (!/^(0|[1-9][0-9]*)$/.test(marketIdValue)) throw new Error("请选择有效的永续市场");
     const marketId = Number(marketIdValue);
     if (!Number.isSafeInteger(marketId)) throw new Error("请选择有效的永续市场");
     const market = state.perpMarkets.find((item) => Number(item.marketId) === marketId);
     if (!market) throw new Error("请选择有效的永续市场");
+    if (boundTarget && String(market.tokenAddress || "").toLowerCase() !== String(boundTarget.tokenAddress || "").toLowerCase()) {
+      throw new Error("创建流程绑定的代币与永续市场不一致，已停止提交，请重新进入创建流程");
+    }
     const amount = String($("#perps-pool-amount")?.value || "").trim();
     const amountRaw = parseUnits(amount, Number(market.quoteDecimals || 18)).toString();
     const payload = { tokenAddress: market.tokenAddress, marketId, amount, amountRaw };
