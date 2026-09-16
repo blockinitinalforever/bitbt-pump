@@ -178,14 +178,14 @@ export async function sendTransaction(wallet: EvmWallet, tx: { from: string; to:
 }
 
 export async function waitForReceipt(wallet: EvmWallet, hash: string, onPoll?: () => void): Promise<TxReceipt> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 24; attempt += 1) {
     const receipt = await wallet.request({ method: "eth_getTransactionReceipt", params: [hash] });
     if (receipt && typeof receipt === "object") {
       const typed = receipt as TxReceipt;
       if (typed.status !== undefined) return typed;
     }
     onPoll?.();
-    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    if (attempt < 23) await new Promise((resolve) => window.setTimeout(resolve, 5000));
   }
   throw new Error("Transaction receipt timed out; check the transaction on BscScan");
 }

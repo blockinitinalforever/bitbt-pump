@@ -1584,10 +1584,13 @@ test("Pump startup loads only selected detail and a stale response cannot replac
   assert.equal(window.document.querySelector("[data-active-symbol]")?.textContent, "BETA", "stale Alpha detail replaced the newer Beta selection");
 });
 
-test("Pump polling refreshes selected trades every cycle but batches full market refreshes", () => {
+test("Pump polling spaces fallback requests and batches full market refreshes", () => {
   assert.match(bridge, /refreshSelectedTrades/);
-  assert.match(bridge, /const refreshMarket = !socketHealthy \|\| refreshCycle % 4 === 0/);
-  assert.match(bridge, /const refreshTrades = !socketHealthy \|\| refreshCycle % 2 === 0/);
+  assert.match(bridge, /const refreshMarket = refreshCycle % \(socketHealthy \? 4 : 2\) === 0/);
+  assert.match(bridge, /const refreshTrades = refreshCycle % 2 === 0/);
+  assert.match(bridge, /window\.setInterval\([\s\S]*?}, 30000\)/);
+  assert.match(bridge, /if \(state\.liveRefreshPromise\) return state\.liveRefreshPromise/);
+  assert.match(bridge, /if \(state\.tradesRefreshPromise \|\| !state\.selected\) return state\.tradesRefreshPromise/);
   assert.match(bridge, /loadDetail\(freshToken,\s*\{\s*refreshBalance:\s*false,\s*forceDetail:\s*true,\s*refreshTrades:\s*false,?\s*\}\s*\)/);
   assert.match(bridge, /requestSequence !== detailRequestSequence/);
   assert.match(bridge, /if \(!state\.candles\.length\)[\s\S]*?charts\.delete\(selector\)/);
