@@ -59,6 +59,29 @@ test('pilot dashboard and creation card show the same 4x cap; non-pilot keeps it
   assert.equal(leverage.querySelector('option')?.textContent, '20×');
 });
 
+test('opening leverage controls follow the selected market cap, never the global protocol cap', async () => {
+  const { parseHTML } = await import('linkedom');
+  const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
+  const start = source.indexOf('  const marketLeverageCap =');
+  const end = source.indexOf('  const renderPerpetualCreationLeverage =', start);
+  assert.ok(start >= 0 && end > start);
+  const sync = vm.runInNewContext(
+    `${source.slice(start, end)}\nsyncMarketLeverageInput`,
+  ) as (input: HTMLInputElement, market: { maxLeverage: number } | null, submitting: boolean) => number;
+  for (const selector of ['#perps-leverage', '#perp-leverage']) {
+    const field = document.querySelector(selector) as unknown as HTMLInputElement;
+    assert.ok(field);
+    field.value = '10';
+    assert.equal(sync(field, { maxLeverage: 4 }, false), 4);
+    assert.equal(field.max, '4');
+    assert.equal(field.value, '4');
+    assert.equal(field.disabled, false);
+    sync(field, null, false);
+    assert.equal(field.disabled, true);
+  }
+  assert.match(source, /body\.leverage > leverageCap/);
+});
+
 test('all BNB/BSC and Robinhood network selectors use their real logos', async () => {
   const { parseHTML } = await import('linkedom');
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
