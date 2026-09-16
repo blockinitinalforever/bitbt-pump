@@ -1090,7 +1090,7 @@
     }
     if (market) {
       const decimals = Number(market.quoteDecimals || 18);
-      text("[data-perp-market-pair]", `${market.tokenSymbol} / ${short(market.quoteTokenAddress)}`);
+      text("[data-perp-market-pair]", perpetualPairLabel(market));
       text("[data-perp-market-liquidity]", `${formatUnits(BigInt(market.liquidityRaw), decimals)} / ${formatUnits(BigInt(market.lockedNotionalRaw), decimals)}`);
       text("[data-perp-market-exposure]", `${formatUnits(BigInt(market.longNotionalRaw), decimals)} / ${formatUnits(BigInt(market.shortNotionalRaw), decimals)}`);
       text("[data-perp-market-limits]", `${formatUnits(BigInt(market.maxPositionNotionalRaw), decimals)} / ${formatUnits(BigInt(market.maxOpenInterestRaw), decimals)}`);
@@ -3015,7 +3015,9 @@
       const leverage = Number(chosen?.maxLeverage || config.maxLeverage || 0);
       poolPanel.querySelector('#pool-leverage').value = String(leverage || 1);
       poolPanel.querySelectorAll('[data-pool-preset-label]').forEach(node => { node.textContent = uiCopy("使用市场现有规则", "Use current market rules"); });
-      poolPanel.querySelector('[data-pool-real-summary]').textContent = (chosen?.tokenSymbol || '请选择市场') + ' · ' + (poolAmountDraft || '0') + ' ' + (chosen?.quoteTokenSymbol || 'QUOTE') + uiCopy(" · 聚合 LP", " · Pooled LP");
+      poolPanel.querySelector('[data-pool-real-summary]').textContent = chosen
+        ? perpetualPairLabel(chosen) + ' · ' + (poolAmountDraft || '0') + ' ' + (chosen.quoteTokenSymbol || 'QUOTE') + uiCopy(" · 聚合 LP", " · Pooled LP")
+        : uiCopy("请选择市场", "Select a market");
       poolPanel.querySelector('[data-pool-real-rules]').innerHTML = uiCopy("<div><span>最高杠杆</span><strong>", "<div><span>Maximum leverage</span><strong>") + (leverage || '—') + uiCopy("×</strong></div><div><span>市场状态</span><strong>", "×</strong></div><div><span>Market status</span><strong>") + (chosen?.enabled ? (chosen.closeOnly ? uiCopy("只减仓", "Reduce-only") : uiCopy("开放", "Open")) : uiCopy("未开放", "Not open")) + uiCopy("</strong></div><div><span>退出条件</span><strong>有未平仓量时锁定</strong></div>", "</strong></div><div><span>Withdrawal conditions</span><strong>Locked while positions are open</strong></div>");
       poolPanel.querySelector('[data-pool-real-fees]').innerHTML = uiCopy("<div><span>平台服务费</span><strong>", "<div><span>Platform service fee</span><strong>") + escapeHtml(serviceFeeLabel(config.createPoolFeeWei)) + uiCopy("</strong></div><div><span>统一收款地址</span><strong>", "</strong></div><div><span>Fee recipient</span><strong>") + escapeHtml(short(feeRecipient)) + uiCopy("</strong></div><div><span>Quote Token 授权</span><strong>仅输入金额</strong></div><div><span>网络 Gas</span><strong>钱包实时估算</strong></div>", "</strong></div><div><span>Quote-token allowance</span><strong>Entered amount only</strong></div><div><span>Network Gas</span><strong>Estimated by wallet</strong></div>");
       poolPanel.querySelector('[data-perp-pool-resumable]').innerHTML = resumablePools;

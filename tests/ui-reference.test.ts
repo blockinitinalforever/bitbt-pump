@@ -20,11 +20,37 @@ function renderLocale(language: () => string = () => 'zh') {
   return vm.runInNewContext(helpers + ';({uiCopy,uiMarkup})', {window,pumpLocale:language});
 }
 
+function productionPerpetualPairLabel(source: string) {
+  const start = source.indexOf('  const perpetualPairLabel =');
+  const end = source.indexOf('  const selectInitialPerpMarket =', start);
+  assert.ok(start > 0 && end > start);
+  return vm.runInNewContext(
+    source.slice(start, end) + ';perpetualPairLabel',
+    {
+      parsePerpMarketId: (value: unknown) => {
+        const parsed = Number(value);
+        return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+      },
+    },
+  ) as (market: { displayName?: string; marketId?: number }) => string;
+}
+
 test('dynamic translation touches source literals, never interpolated token names or amounts', () => {
   const helpers = renderLocale(() => 'en');
   const name = '我的买入代币';
   const markup = helpers.uiMarkup(['<strong>市值</strong><span>', '</span><b>', '</b>'], name, '0.0000000123');
   assert.equal(markup, '<strong>Market cap</strong><span>我的买入代币</span><b>0.0000000123</b>');
+});
+
+test('perpetual market labels use only the API displayName or the market id fallback', () => {
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  const label = productionPerpetualPairLabel(source);
+  assert.equal(label({ marketId: 7, displayName: 'ABCDEFGHIJ…/tBTUSD' }), 'ABCDEFGHIJ…/tBTUSD');
+  assert.equal(label({ marketId: 7, displayName: '' }), 'Market #7');
+  assert.equal(label({ marketId: 7 }), 'Market #7');
+  assert.equal(label({ displayName: '<TOKEN>/&QUOTE' }), '<TOKEN>/&QUOTE');
+  assert.match(source, /text\("\[data-perp-market-pair\]", perpetualPairLabel\(market\)\)/);
+  assert.match(source, /\? perpetualPairLabel\(chosen\) \+ ' · '/);
 });
 
 test('display preferences persist safe whitelisted values and do not round transaction amounts', () => {
@@ -288,7 +314,7 @@ test('discover search filters perpetual cards locally without overwriting spot c
   ] };
   const start = source.indexOf('  const renderPerpetualMarketCards =');
   const end = source.indexOf('  let perpUnreadySince', start);
-  const context = vm.createContext({ ...renderLocale(), state, $: (selector: string) => document.querySelector(selector), escapeHtml: (v: unknown) => String(v), short: (v: string) => v, formatUnits: (v: bigint) => String(v), perpetualPairLabel: (market: {displayName: string}) => market.displayName });
+  const context = vm.createContext({ ...renderLocale(), state, $: (selector: string) => document.querySelector(selector), escapeHtml: (v: unknown) => String(v), short: (v: string) => v, formatUnits: (v: bigint) => String(v), perpetualPairLabel: productionPerpetualPairLabel(source) });
   const render = vm.runInContext(source.slice(start, end) + '\nrenderPerpetualMarketCards', context);
   render();
   const grid = document.querySelector('[data-market-panel="perps"] .token-grid')!;
@@ -370,7 +396,7 @@ test('real on-chain rows keep the reference image-copy-badge order and native bu
     decimal: (value: unknown) => String(value),
     age: () => '刚刚',
     short: (value: string) => value,
-    perpetualPairLabel: (value: { displayName: string }) => value.displayName,
+    perpetualPairLabel: productionPerpetualPairLabel(source),
     bindLiveTokenSelection: () => undefined,
   });
   const render = vm.runInContext(source.slice(start, end) + ';renderLiveRows', scope) as () => void;
@@ -479,6 +505,7 @@ test('pool detail updates data without replacing the original depth and particip
     formatUnits: (value: bigint) => String(value),
     short: (value: string) => value,
     escapeHtml: (value: unknown) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'),
+    perpetualPairLabel: productionPerpetualPairLabel(source),
   });
   const render = vm.runInContext(`() => {${source.slice(start, end)}}`, context);
   render();
@@ -516,11 +543,11 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
     account: '0x1234', selectedPerpMarketId: 0, perpPoolTarget: null as null | { marketId:number; tokenAddress:string },
     perpConfig: { enabled:true, permissionlessMarketCreation:true, maxLeverage:10 }, perpServiceBusy:false, perpServiceRequests:[],
     perpMarkets:[
-      { marketId:0, tokenAddress:'0x0000000000000000000000000000000000000001', tokenSymbol:'OLD', enabled:true, maxLeverage:10 },
-      { marketId:1, tokenAddress:'0x0000000000000000000000000000000000000002', tokenSymbol:'NEW', enabled:false, maxLeverage:10 },
+      { marketId:0, tokenAddress:'0x0000000000000000000000000000000000000001', tokenSymbol:'OLD', quoteTokenSymbol:'tBTUSD', displayName:'OLD/tBTUSD', enabled:true, maxLeverage:10 },
+      { marketId:1, tokenAddress:'0x0000000000000000000000000000000000000002', tokenSymbol:'NEW', quoteTokenSymbol:'tBTUSD', displayName:'NEW/tBTUSD', enabled:false, maxLeverage:10 },
     ],
   };
-  const context = vm.createContext({ ...renderLocale(), document, state, ui20260911:true, $:(selector: string) => document.querySelector(selector), isBscFeatureChain:()=>true, escapeHtml:(v: unknown)=>String(v), short:(v: string)=>v, serviceFeeLabel:()=> '0 BNB' });
+  const context = vm.createContext({ ...renderLocale(), document, state, ui20260911:true, $:(selector: string) => document.querySelector(selector), isBscFeatureChain:()=>true, escapeHtml:(v: unknown)=>String(v), short:(v: string)=>v, serviceFeeLabel:()=> '0 BNB', perpetualPairLabel:productionPerpetualPairLabel(source) });
   const render = vm.runInContext(source.slice(start,end) + '\n};\nrenderPerpetualServices', context);
   render();
   const amount = pool.querySelector('#perps-pool-amount')!;
@@ -544,9 +571,12 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
   // The market list and mounted options are unchanged. A creation-flow binding
   // must still move the form from old market #0 to the exact new token/market.
   assert.equal((pool.querySelector('#perps-pool-market') as unknown as { value: string }).value, '0');
+  state.perpMarkets[1].displayName = '';
   state.perpPoolTarget = { marketId:1, tokenAddress:'0x0000000000000000000000000000000000000002' };
   render();
   assert.equal((pool.querySelector('#perps-pool-market') as unknown as { value: string }).value, '1');
+  assert.match(pool.querySelector('#perps-pool-market option[value="1"]')?.textContent || '', /Market #1/);
+  assert.match(pool.querySelector('[data-pool-real-summary]')?.textContent || '', /Market #1/);
 });
 
 test('live history refresh preserves delivered shell and removes sample records', () => {
