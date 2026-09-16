@@ -131,6 +131,13 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /needsWallet[\s\S]*Connect wallet to trade/);
 });
 
+test("personal perpetual activity is SIWE-gated and never publicly cached", () => {
+  assert.match(proxy, /personalizedPerpetualActivity[\s\S]*wallet_address[\s\S]*history/);
+  assert.match(proxy, /!personalizedPerpetualActivity && PUBLIC_SHORT_CACHE_ENDPOINTS\.has\(key\)/);
+  assert.match(proxy, /const requiresSiwe = personalizedPerpetualActivity/);
+  assert.match(proxy, /responseCacheControl[\s\S]*"no-store"/);
+});
+
 test("perpetual terminal binds live candles, indexed activity, honest order capability, and wallet-created pools", () => {
   assert.match(bridge, /v1\/pump\/candles\?token_address=/);
   assert.match(bridge, /renderPerpetualChart/);
@@ -971,6 +978,56 @@ test("perpetual history navigation preserves wallet and avoids trading RPC or pr
   assert.ok(requests.some(url=>url.includes("perpetual/activity")));
   assert.ok(!requests.some(url=>/perpetual\/(position|service-requests|prepare)/.test(url)));
   assert.ok(!providerCalls.some(method=>["personal_sign","eth_requestAccounts","eth_call","eth_getBalance"].includes(method)));
+});
+
+test("wallet-scoped current market zero position renders and navigates from stale market one to close", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const tx = `0x${"ab".repeat(32)}`;
+  const requests: string[] = [];
+  const markets = [0, 1].map((marketId) => ({
+    marketId,
+    tokenAddress: `0x${String(marketId + 2).repeat(40)}`,
+    tokenSymbol: `TOKEN${marketId}`,
+    quoteTokenAddress: "0x4444444444444444444444444444444444444444",
+    quoteTokenSymbol: "tBTUSD",
+    quoteDecimals: 18,
+    liquidityRaw: "10000000000000000000000",
+    lockedNotionalRaw: marketId === 0 ? "10000000000000000000" : "0",
+    longNotionalRaw: marketId === 0 ? "10000000000000000000" : "0",
+    shortNotionalRaw: "0",
+    maxPositionNotionalRaw: "1000000000000000000000",
+    maxOpenInterestRaw: "4000000000000000000000",
+    maxLeverage: 10,
+    enabled: true,
+    closeOnly: false,
+  }));
+  const response = async (input: string) => {
+    const url = String(input); requests.push(url);
+    if (url.includes("auth/siwe/session")) return {ok:true,json:async()=>({data:{address:account,expires_in:3600}})};
+    if (url.includes("perpetual/config")) return {ok:true,json:async()=>({data:{enabled:true,operationsReady:true,openingsPaused:false,contractAddress:"0x5555555555555555555555555555555555555555"}})};
+    if (url.includes("perpetual/markets")) return {ok:true,json:async()=>({data:markets})};
+    if (url.includes("perpetual/activity") && url.includes("history=true")) return {ok:true,json:async()=>({data:[]})};
+    if (url.includes("perpetual/activity")) return {ok:true,json:async()=>({data:[{marketId:0,traderAddress:account,isOpen:true,openedTxHash:tx,lastTxHash:tx,blockNumber:121617018}]})};
+    if (url.includes("perpetual/position")) return {ok:true,json:async()=>({data:{open:url.includes("market_id=0"),isLong:true,collateralRaw:"1000000000000000000",notionalRaw:"10000000000000000000",entryPriceE18:"1000000000000000000",currentPnlRaw:"0",openedAt:1789289538}})};
+    if (url.includes("pump/candles") || url.includes("service-requests") || url.includes("pump/announcements") || url.includes("market-activity") || url.includes("market/favorites")) return {ok:true,json:async()=>({data:[]})};
+    if (url.includes("app/config")) return {ok:true,json:async()=>({data:{pump:{}}})};
+    if (url.includes("token/launch-options")) return {ok:true,json:async()=>({data:{network:{id:"bsc",chain_id:56,chain_id_hex:"0x38",native_symbol:"BNB",launch_enabled:true,trade_enabled:true},quotes:[],dex_profiles:[]}})};
+    return {ok:true,json:async()=>({data:[]})};
+  };
+  const {window} = await boot(response,{account,session:{token:"session",address:account}});
+  window.document.querySelector('[data-open="perps"]')?.dispatchEvent(new window.Event("click",{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,50));
+  window.document.querySelector('[data-real-perp-market="1"]')?.dispatchEvent(new window.Event("click",{bubbles:true}));
+  window.document.querySelector('[data-open="perps-onchain"]')?.dispatchEvent(new window.Event("click",{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,50));
+  const close = window.document.querySelector('[data-perp-close-market="0"]');
+  assert.ok(close);
+  assert.match(close.closest('.onchain-row')?.textContent || '', /当前未平仓位/);
+  close.dispatchEvent(new window.Event("click",{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,50));
+  assert.ok(window.document.querySelector('[data-panel="perps"].active'));
+  assert.equal(window.document.querySelector('#perps-submit')?.textContent, '确认市价平仓');
+  assert.ok(requests.some(url=>url.includes('perpetual/position')&&url.includes('market_id=0')&&url.includes(`wallet_address=${account}`)));
 });
 
 test("BNB balance refresh reuses one native-balance request per token-balance request", async () => {

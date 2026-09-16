@@ -128,10 +128,13 @@ async function forward(request: NextRequest, path: string[]) {
   const key = path.join("/");
   if (!ALLOWED.has(key)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const writeRequest = request.method !== "GET" && request.method !== "HEAD";
-  const responseCacheControl = !writeRequest && PUBLIC_SHORT_CACHE_ENDPOINTS.has(key)
+  const personalizedPerpetualActivity = key === "v1/pump/perpetual/activity"
+    && (request.nextUrl.searchParams.has("wallet_address") || request.nextUrl.searchParams.get("history") === "true");
+  const responseCacheControl = !writeRequest && !personalizedPerpetualActivity && PUBLIC_SHORT_CACHE_ENDPOINTS.has(key)
     ? "public, max-age=2, s-maxage=5, stale-while-revalidate=30"
     : "no-store";
-  const requiresSiwe = SIWE_REQUIRED_ENDPOINTS.has(key) && (writeRequest || SIWE_REQUIRED_READ_ENDPOINTS.has(key));
+  const requiresSiwe = personalizedPerpetualActivity
+    || (SIWE_REQUIRED_ENDPOINTS.has(key) && (writeRequest || SIWE_REQUIRED_READ_ENDPOINTS.has(key)));
   if (requiresSiwe && !request.headers.get("authorization")?.startsWith("Bearer ")) {
     return NextResponse.json({ success: false, error: "SIWE session required for this operation" }, { status: 401, headers: { "cache-control": "no-store" } });
   }

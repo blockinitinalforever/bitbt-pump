@@ -96,6 +96,15 @@ test('wallet activity includes a real current position even when historical even
   assert.equal(c.state.perpActivity.length,1);assert.equal(c.state.perpActivity[0].currentPosition,true);
   assert.equal(c.state.perpActivity[0].eventType,'open');assert.equal(c.state.perpActivity[0].lastTxHash,tx);
 });
+test('wallet activity fails closed when current-position rows contain another wallet',async()=>{
+  const c=fixture('loadPerpetualActivity','completePaidPoolRequest');
+  c.api=async(url:string)=>url.includes('markets')?[]:url.includes('history=true')?[]:[
+    {marketId:0,traderAddress:c.state.account,isOpen:true,lastTxHash:'a'},
+    {marketId:1,traderAddress:'0x'+'22'.repeat(20),isOpen:true,lastTxHash:'b'},
+  ];
+  await assert.rejects(c.run(),/不匹配的钱包记录/);
+  assert.equal(c.state.perpActivity.length,0);
+});
 test('periodic status response cannot restore BSC config after a network switch',async()=>{
   const c=fixture('refreshPerpetualStatus','perpetualWord');
   c.ui20260911=true;c.perpetualPanelActive=()=>true;c.perpStatusRefreshInFlight=false;c.state.perpMarkets=[{}];
