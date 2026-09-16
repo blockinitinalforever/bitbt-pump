@@ -1072,7 +1072,7 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                 </div>
                 <div class="form-group" data-perp-leverage-field>
                   <label>杠杆</label>
-                  <input class="field" id="perp-leverage" type="number" min="1" max="100" value="2" />
+                  <input class="field" id="perp-leverage" type="number" min="1" max="1" value="1" />
                   <select class="field" id="perp-side"><option value="long">做多 Long</option><option value="short">做空 Short</option></select>
                 </div>
                 <div class="form-group" data-perp-shares-field hidden>
@@ -1540,21 +1540,21 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                     </div>
                     <div class="leverage-head">
                       <span>杠杆倍数</span
-                      ><strong><b data-perps-leverage>10</b>×</strong>
+                      ><strong><b data-perps-leverage>1</b>×</strong>
                     </div>
                     <input
                       class="leverage-slider"
                       id="perps-leverage"
                       type="range"
                       min="1"
-                      max="100"
-                      value="10"
+                      max="1"
+                      value="1"
                       step="1"
                       aria-label="杠杆倍数"
                     />
                     <div class="leverage-scale">
-                      <span>1×</span><span>10×</span><span>25×</span
-                      ><span>50×</span><span>100×</span>
+                      <span>1×</span><span>—</span><span>—</span
+                      ><span>—</span><span>—</span>
                     </div>
                     <div class="quote">
                       <div>

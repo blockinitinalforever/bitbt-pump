@@ -967,6 +967,29 @@
   };
   let perpUnreadySince = 0;
   let perpStatusRefreshInFlight = false;
+  const marketLeverageCap = (market) => {
+    const cap = Number(market?.maxLeverage);
+    return Number.isSafeInteger(cap) && cap >= 1 ? cap : 0;
+  };
+  const syncMarketLeverageInput = (input, market, submitting) => {
+    if (!input) return 0;
+    const cap = marketLeverageCap(market);
+    input.max = String(cap || 1);
+    input.value = String(Math.max(1, Math.min(cap || 1, Number(input.value) || 1)));
+    input.disabled = !cap || submitting;
+    return cap;
+  };
+  const renderPerpetualCreationLeverage = (config, addPanel) => {
+    const protocolCap = Number(config?.maxLeverage || 0);
+    const creationCap = config?.internalPilot ? Math.min(protocolCap || 4, 4) : protocolCap;
+    const label = creationCap > 0 ? `${creationCap}×` : '—';
+    text('[data-perp-max-leverage]', label);
+    const field = addPanel?.querySelector('[data-service-setting="2"]');
+    if (field) {
+      if (field.tagName === 'SELECT') field.options[0].textContent = label;
+      else field.value = label;
+    }
+  };
   const renderPerpetual = () => {
     const config = state.perpConfig;
     const enabled = Boolean(config?.enabled);
@@ -979,7 +1002,7 @@
     text("[data-perp-status]", keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
     text("[data-perp-fee]", config?.feePercent ? uiMarkup`默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
-    text("[data-perp-max-leverage]", config ? `${config.maxLeverage}x` : "—");
+    renderPerpetualCreationLeverage(config);
     text("[data-perp-version]", config?.contractVersion ? `V${config.contractVersion}` : "—");
     const select = $("#perp-market");
     if (select) {
@@ -998,7 +1021,7 @@
         marketSearch.disabled = !enabled || !state.perpMarkets.length;
         marketSearch.placeholder = !config ? uiCopy('正在读取真实永续市场…', 'Loading perpetual markets…') : !enabled ? uiCopy('当前网络永续市场未开放', 'Perpetuals are unavailable on this network') : !state.perpMarkets.length ? uiCopy('当前没有已开放的永续市场', 'No active perpetual markets') : uiCopy('搜索 MEME 名称、符号或合约地址', 'Search MEME name, symbol or contract');
       }
-      text('[data-perps-leverage-range]', market ? `1–${market.maxLeverage}×` : '—');
+      text('[data-perps-leverage-range]', marketLeverageCap(market) ? `1–${marketLeverageCap(market)}×` : '—');
       text('[data-perps-settlement-note]', market ? `${market.quoteTokenSymbol || 'Quote Token'} ${uiCopy('本位', 'settled')} · ${selectedNetwork().name} · ${uiCopy('资金费按链上规则随时间累计', 'Funding accrues under on-chain rules')}` : uiCopy('选择市场后显示结算资产与资金费规则', 'Select a market to view settlement and funding rules'));
       const marketImage = $('[data-perps-image]');
       if (marketImage) {
@@ -1027,17 +1050,15 @@
       text('[data-perps-quote-unit]', market?.quoteTokenSymbol || '—');
       text('[data-perps-margin-title]', `${market?.quoteTokenSymbol || 'QUOTE'}-M PERPETUAL`);
       const leverageInput = $('#perps-leverage');
-      const maximumLeverage = Math.max(1, Number(market?.maxLeverage || config?.maxLeverage || 1));
+      const maximumLeverage = Math.max(1, marketLeverageCap(market));
       if (leverageInput) {
-        if (market) {
-          leverageInput.max = String(maximumLeverage);
-          leverageInput.value = String(Math.max(1, Math.min(maximumLeverage, Number(leverageInput.value) || 1)));
-        }
-        leverageInput.disabled = !market || state.perpSubmitting;
+        syncMarketLeverageInput(leverageInput, market, state.perpSubmitting);
         text('[data-perps-leverage]', leverageInput.value);
       }
       $$('[data-panel="perps"] .leverage-scale span').forEach((node, index, nodes) => {
-        node.textContent = `${Math.round(1 + (maximumLeverage - 1) * index / (nodes.length - 1))}×`;
+        const compact = maximumLeverage <= nodes.length;
+        node.hidden = compact && index >= maximumLeverage;
+        node.textContent = `${compact ? index + 1 : Math.round(1 + (maximumLeverage - 1) * index / (nodes.length - 1))}×`;
       });
       $$('[data-perps-size]').forEach(button => { button.disabled = !state.account || state.perpQuoteBalance == null || !market || state.perpSubmitting; });
       text('[data-perps-price]', formatPerpPrice(latestPrice));
@@ -1122,6 +1143,7 @@
     $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select').forEach((node) => {
       node.disabled = state.perpSubmitting;
     });
+    syncMarketLeverageInput($('#perp-leverage'), market, state.perpSubmitting);
     const addsRisk = ["open_position", "deposit_liquidity"].includes(action);
     const changesLiquidity = ["deposit_liquidity", "withdraw_liquidity"].includes(action);
     const hasOpenInterest = BigInt(market?.lockedNotionalRaw || "0") > 0n;
@@ -1337,6 +1359,10 @@
     if (["open_position", "deposit_liquidity"].includes(action)) body.amount_raw = parseUnits($(modernPerps ? "#perps-size" : "#perp-amount")?.value, Number(market.quoteDecimals || 18)).toString();
     if (action === "open_position") {
       body.leverage = Number($(modernPerps ? "#perps-leverage" : "#perp-leverage")?.value || 0);
+      const leverageCap = marketLeverageCap(market);
+      if (!leverageCap || !Number.isSafeInteger(body.leverage) || body.leverage < 1 || body.leverage > leverageCap) {
+        throw new Error(`当前市场只允许 1–${leverageCap || '—'} 倍杠杆，请刷新市场参数后重试`);
+      }
       body.is_long = modernPerps ? !$('[data-perps-side="short"]')?.classList.contains("active") : $("#perp-side")?.value !== "short";
       const notional = BigInt(body.amount_raw) * BigInt(body.leverage);
       const maxPosition = BigInt(market.maxPositionNotionalRaw || "0");
@@ -2993,11 +3019,12 @@
       .join("");
     const addPanel = $('[data-panel="perps-add-contract"]');
     if (addPanel) {
-      const values = [uiCopy("受信任 Oracle（签名前校验）", "Trusted oracle (checked before signing)"), uiCopy("受信任 Quote Token", "Trusted quote token"), String(config.maxLeverage || '—') + '×', String(config.minLiquidityUsd || '—') + ' USD'];
+      const values = [uiCopy("受信任 Oracle（签名前校验）", "Trusted oracle (checked before signing)"), uiCopy("受信任 Quote Token", "Trusted quote token"), '—', String(config.minLiquidityUsd || '—') + ' USD'];
       addPanel.querySelectorAll('[data-service-setting]').forEach(node => {
         const value = values[Number(node.dataset.serviceSetting)];
         if (node.tagName === 'SELECT') node.options[0].textContent = value; else node.value = value;
       });
+      renderPerpetualCreationLeverage(config, addPanel);
       addPanel.querySelector('[data-service-summary]').textContent = uiCopy("签名钱包：", "Signing wallet: ") + (state.account ? short(state.account) : uiCopy("未连接", "Not connected")) + uiCopy(" · 目标合约：", " · Target contract: ") + (config.contractAddress || uiCopy('等待配置', 'Awaiting configuration')) + uiCopy(" · 创建时同步存入最低 LP", " · Minimum LP deposited during creation");
       const submit = addPanel.querySelector('[data-perp-service-submit]');
       submit.disabled = Boolean(state.perpServiceBusy || !config.enabled || !config.permissionlessMarketCreation || !isBscFeatureChain());
