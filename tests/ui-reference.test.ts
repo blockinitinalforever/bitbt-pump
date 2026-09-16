@@ -293,6 +293,14 @@ test('mobile bottom navigation exactly matches the delivered five tabs and icons
   assert.ok(current.querySelector('.screen-switcher [data-open="perps"]'), 'perpetual entry must stay reachable');
 });
 
+test('mobile tabs remain below the persistent official contact footer', () => {
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  assert.match(html, /\.bottom-nav \{ position:fixed; left:0; right:0; bottom:0; z-index:31;/);
+  assert.match(html, /\.official-contact-footer \{ position:fixed; left:0; right:0; bottom:0; z-index:30;/);
+  assert.match(html, /body:has\(\.bottom-nav\.visible\) \.official-contact-footer \{ bottom:calc\(72px \+ env\(safe-area-inset-bottom\)\); \}/);
+  assert.match(html, /\.screen\.has-bottom-nav \{ padding-bottom:calc\(136px \+ env\(safe-area-inset-bottom\)\); \}/);
+});
+
 test('bottom navigation visibility follows the original five main screens, not transaction subpages', () => {
   const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
   const {document} = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
