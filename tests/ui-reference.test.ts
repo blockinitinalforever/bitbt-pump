@@ -35,6 +35,14 @@ function productionPerpetualPairLabel(source: string) {
   ) as (market: { displayName?: string; marketId?: number }) => string;
 }
 
+function productionFormatUnits(source: string) {
+  const start = source.indexOf('  const formatUnits =');
+  const end = source.indexOf('  // GW remains here', start);
+  assert.ok(start > 0 && end > start);
+  return vm.runInNewContext(source.slice(start, end) + ';formatUnits') as
+    (value: bigint, decimals?: number, digits?: number) => string;
+}
+
 test('dynamic translation touches source literals, never interpolated token names or amounts', () => {
   const helpers = renderLocale(() => 'en');
   const name = '我的买入代币';
@@ -50,7 +58,7 @@ test('perpetual market labels use only the API displayName or the market id fall
   assert.equal(label({ marketId: 7 }), 'Market #7');
   assert.equal(label({ displayName: '<TOKEN>/&QUOTE' }), '<TOKEN>/&QUOTE');
   assert.match(source, /text\("\[data-perp-market-pair\]", perpetualPairLabel\(market\)\)/);
-  assert.match(source, /\? perpetualPairLabel\(chosen\) \+ ' · '/);
+  assert.match(source, /\? perpetualPairLabel\(chosen\) \+ uiCopy\(' · 当前 LP '/);
 });
 
 test('display preferences persist safe whitelisted values and do not round transaction amounts', () => {
@@ -285,6 +293,26 @@ test('mobile bottom navigation exactly matches the delivered five tabs and icons
   assert.ok(current.querySelector('.screen-switcher [data-open="perps"]'), 'perpetual entry must stay reachable');
 });
 
+test('mobile bottom stack keeps tabs last and removes the contact footer from the detail CTA state', () => {
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  const {document} = parseHTML(html);
+  const start = source.indexOf('  const mainScreens =');
+  const end = source.indexOf('  const show =', start);
+  const apply = vm.runInNewContext(source.slice(start, end) + ';applyScreenChrome', {$:(s:string)=>document.querySelector(s),$$:(s:string)=>[...document.querySelectorAll(s)]});
+  assert.match(html, /\.bottom-nav \{ position:fixed; left:0; right:0; bottom:0; z-index:31;/);
+  assert.match(html, /\.official-contact-footer \{ position:fixed; left:0; right:0; bottom:0; z-index:30;/);
+  assert.match(html, /body:has\(\.bottom-nav\.visible\) \.official-contact-footer \{ bottom:calc\(72px \+ env\(safe-area-inset-bottom\)\); \}/);
+  assert.match(html, /\.screen\.has-bottom-nav \{ padding-bottom:calc\(136px \+ env\(safe-area-inset-bottom\)\); \}/);
+  apply('detail');
+  assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), false);
+  assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), true);
+  assert.ok(document.querySelector('[data-panel="detail"] .fixed-trade'));
+  apply('discover');
+  assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), true);
+  assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), false);
+});
+
 test('bottom navigation visibility follows the original five main screens, not transaction subpages', () => {
   const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
   const {document} = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
@@ -300,6 +328,7 @@ test('bottom navigation visibility follows the original five main screens, not t
     apply(name);
     assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), false);
     assert.equal(document.querySelectorAll('.has-bottom-nav').length, 0);
+    assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), name === 'detail');
   }
 });
 
@@ -547,7 +576,7 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
       { marketId:1, tokenAddress:'0x0000000000000000000000000000000000000002', tokenSymbol:'NEW', quoteTokenSymbol:'tBTUSD', displayName:'NEW/tBTUSD', enabled:false, maxLeverage:10 },
     ],
   };
-  const context = vm.createContext({ ...renderLocale(), document, state, ui20260911:true, $:(selector: string) => document.querySelector(selector), isBscFeatureChain:()=>true, escapeHtml:(v: unknown)=>String(v), short:(v: string)=>v, serviceFeeLabel:()=> '0 BNB', perpetualPairLabel:productionPerpetualPairLabel(source) });
+  const context = vm.createContext({ ...renderLocale(), document, state, ui20260911:true, $:(selector: string) => document.querySelector(selector), isBscFeatureChain:()=>true, escapeHtml:(v: unknown)=>String(v), short:(v: string)=>v, serviceFeeLabel:()=> '0 BNB', perpetualPairLabel:productionPerpetualPairLabel(source), formatUnits:productionFormatUnits(source) });
   const render = vm.runInContext(source.slice(start,end) + '\n};\nrenderPerpetualServices', context);
   render();
   const amount = pool.querySelector('#perps-pool-amount')!;
@@ -577,6 +606,16 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
   assert.equal((pool.querySelector('#perps-pool-market') as unknown as { value: string }).value, '1');
   assert.match(pool.querySelector('#perps-pool-market option[value="1"]')?.textContent || '', /Market #1/);
   assert.match(pool.querySelector('[data-pool-real-summary]')?.textContent || '', /Market #1/);
+
+  state.perpMarkets[1] = { ...state.perpMarkets[1], displayName:'NEW/tBTUSD', quoteDecimals:6, liquidityRaw:'123456789012345678901234' } as typeof state.perpMarkets[number];
+  amountControl.value = '7.5';
+  render();
+  assert.match(pool.querySelector('[data-pool-real-summary]')?.textContent || '', /NEW\/tBTUSD · 当前 LP 123456789012345678\.901234 tBTUSD · 本次追加 7\.5/);
+  state.perpMarkets[1] = { ...state.perpMarkets[1], quoteDecimals:18, liquidityRaw:'0' } as typeof state.perpMarkets[number];
+  amountControl.value = '';
+  render();
+  assert.match(pool.querySelector('[data-pool-real-summary]')?.textContent || '', /NEW\/tBTUSD · 当前 LP 0 tBTUSD/);
+  assert.doesNotMatch(pool.querySelector('[data-pool-real-summary]')?.textContent || '', /本次追加/);
 });
 
 test('live history refresh preserves delivered shell and removes sample records', () => {

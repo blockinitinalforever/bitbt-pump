@@ -2903,7 +2903,7 @@
     for (const panel of [add, pool]) {
       panel.querySelectorAll('[data-toast], [data-action-confirm]').forEach(node => { node.removeAttribute('data-toast'); node.removeAttribute('data-action-confirm'); });
     }
-    add.querySelector('.page-guide span').textContent = uiCopy("无需人工审批。代币须有受信任 Oracle 和报价资产配置；创建后仍需注资、Oracle 就绪及市场启用。", "No manual approval. A trusted oracle and quote asset are required. Fund the market and satisfy oracle and activation requirements after creation.");
+    add.querySelector('.page-guide span').textContent = uiCopy("无需人工审批。创建时同步存入最低 Quote LP；系统校验现货流动性与 Oracle 后启用市场。", "No manual approval. The minimum quote LP is deposited during creation; the market is enabled after spot-liquidity and oracle checks pass.");
     add.querySelectorAll('[data-contract-chain]').forEach(node => { node.disabled = true; node.title = '请通过页头切换网络；当前永续创建仅开放 BSC'; node.querySelector('.tag').textContent = node.dataset.contractChain === 'bsc' ? uiCopy("当前支持", "Supported") : uiCopy("未开放", "Not open"); });
     const address = add.querySelector('#perps-contract-address');
     address.value = ''; address.placeholder = '0x...'; address.autocomplete = 'off';
@@ -2926,12 +2926,12 @@
     const direct = add.querySelector('.direct-chain-flow');
     direct.querySelector('p').textContent = uiCopy("平台费 0 BNB；网络 Gas 由钱包实时估算，确认后才发送交易。", "Platform fee 0 BNB; network Gas is estimated by your wallet. The transaction is sent only after confirmation.");
     direct.querySelector('.plain-summary').dataset.serviceSummary = '';
-    direct.querySelectorAll('.execution-path span')[2].textContent = uiCopy("市场创建后继续注资及启用", "Fund and activate after market creation");
+    direct.querySelectorAll('.execution-path span')[2].textContent = uiCopy("创建时注入最低 LP 并等待自动启用", "Deposit the minimum LP during creation and await automatic activation");
     const addButtons = direct.querySelectorAll('.flow-actions button');
     addButtons[0].removeAttribute('data-open'); addButtons[0].dataset.perpServiceSubmit = 'add_contract';
     addButtons[1].dataset.open = 'perps-create-pool'; addButtons[1].textContent = uiCopy("已有市场，前往注资", "Existing market? Deposit liquidity");
     pool.querySelector('.appbar .tag').textContent = uiCopy("链上聚合 LP", "On-chain pooled LP");
-    pool.querySelector('.page-title p').textContent = uiCopy("选择真实市场、核对规则、填入报价资产；按链上份额承担盈亏。", "Select a real market, review its rules and deposit quote assets. Profit and loss follow your on-chain shares.");
+    pool.querySelector('.page-title p').textContent = uiCopy("为已有市场可选追加 Quote Token 流动性；首次创建已经存入最低 LP。", "Optionally add quote-token liquidity to an existing market; the minimum LP was already deposited during creation.");
     pool.querySelector('.page-guide span').textContent = uiCopy("当前每个市场使用聚合 LP 池。独立做市池和自选风控方案尚未开放，不会创建虚假的独立池。", "Each market uses a pooled LP. Independent market-making pools and custom risk plans are not available.");
     pool.querySelectorAll('[data-pool-role], [data-pool-preset]').forEach(node => { node.disabled = true; node.title = '使用所选市场的现有协议规则'; });
     pool.querySelector('[data-pool-role="retail"] strong').textContent = uiCopy("聚合 LP 池", "Pooled LP");
@@ -2953,7 +2953,7 @@
     pool.querySelector('.pool-split').dataset.poolRealRules = '';
     pool.querySelector('.quote').dataset.poolRealFees = '';
     const buttons = pool.querySelectorAll('.pool-summary-card > button');
-    buttons[0].removeAttribute('data-open'); buttons[0].dataset.perpServiceSubmit = 'create_pool';
+    buttons[0].removeAttribute('data-open'); buttons[0].dataset.perpServiceSubmit = 'create_pool'; buttons[0].textContent = uiCopy("授权并追加流动性", "Authorize and add liquidity");
     buttons[1].dataset.open = 'perps-pool'; buttons[1].textContent = uiCopy("查看当前池详情", "View current pool");
     const resume = document.createElement('div'); resume.dataset.perpPoolResumable = ''; pool.querySelector('.pool-builder-grid').before(resume);
     selects[1].addEventListener('change', () => {
@@ -2998,7 +2998,7 @@
         const value = values[Number(node.dataset.serviceSetting)];
         if (node.tagName === 'SELECT') node.options[0].textContent = value; else node.value = value;
       });
-      addPanel.querySelector('[data-service-summary]').textContent = uiCopy("签名钱包：", "Signing wallet: ") + (state.account ? short(state.account) : uiCopy("未连接", "Not connected")) + uiCopy(" · 目标合约：", " · Target contract: ") + (config.contractAddress || uiCopy('等待配置', 'Awaiting configuration')) + uiCopy(" · 创建后需注资及启用", " · Fund and enable after creation");
+      addPanel.querySelector('[data-service-summary]').textContent = uiCopy("签名钱包：", "Signing wallet: ") + (state.account ? short(state.account) : uiCopy("未连接", "Not connected")) + uiCopy(" · 目标合约：", " · Target contract: ") + (config.contractAddress || uiCopy('等待配置', 'Awaiting configuration')) + uiCopy(" · 创建时同步存入最低 LP", " · Minimum LP deposited during creation");
       const submit = addPanel.querySelector('[data-perp-service-submit]');
       submit.disabled = Boolean(state.perpServiceBusy || !config.enabled || !config.permissionlessMarketCreation || !isBscFeatureChain());
       submit.textContent = state.perpServiceBusy ? uiCopy("正在校验…", "Validating…") : state.account ? uiCopy("校验并由钱包创建市场", "Validate and create with wallet") : uiCopy("连接钱包后创建", "Connect wallet to create");
@@ -3015,15 +3015,18 @@
       const leverage = Number(chosen?.maxLeverage || config.maxLeverage || 0);
       poolPanel.querySelector('#pool-leverage').value = String(leverage || 1);
       poolPanel.querySelectorAll('[data-pool-preset-label]').forEach(node => { node.textContent = uiCopy("使用市场现有规则", "Use current market rules"); });
+      const currentLiquidity = chosen
+        ? formatUnits(BigInt(chosen.liquidityRaw || '0'), Number(chosen.quoteDecimals || 18))
+        : '0';
       poolPanel.querySelector('[data-pool-real-summary]').textContent = chosen
-        ? perpetualPairLabel(chosen) + ' · ' + (poolAmountDraft || '0') + ' ' + (chosen.quoteTokenSymbol || 'QUOTE') + uiCopy(" · 聚合 LP", " · Pooled LP")
+        ? perpetualPairLabel(chosen) + uiCopy(' · 当前 LP ', ' · Current LP ') + currentLiquidity + ' ' + (chosen.quoteTokenSymbol || 'QUOTE') + (poolAmountDraft ? uiCopy(' · 本次追加 ', ' · Add ') + poolAmountDraft : '')
         : uiCopy("请选择市场", "Select a market");
       poolPanel.querySelector('[data-pool-real-rules]').innerHTML = uiCopy("<div><span>最高杠杆</span><strong>", "<div><span>Maximum leverage</span><strong>") + (leverage || '—') + uiCopy("×</strong></div><div><span>市场状态</span><strong>", "×</strong></div><div><span>Market status</span><strong>") + (chosen?.enabled ? (chosen.closeOnly ? uiCopy("只减仓", "Reduce-only") : uiCopy("开放", "Open")) : uiCopy("未开放", "Not open")) + uiCopy("</strong></div><div><span>退出条件</span><strong>有未平仓量时锁定</strong></div>", "</strong></div><div><span>Withdrawal conditions</span><strong>Locked while positions are open</strong></div>");
       poolPanel.querySelector('[data-pool-real-fees]').innerHTML = uiCopy("<div><span>平台服务费</span><strong>", "<div><span>Platform service fee</span><strong>") + escapeHtml(serviceFeeLabel(config.createPoolFeeWei)) + uiCopy("</strong></div><div><span>统一收款地址</span><strong>", "</strong></div><div><span>Fee recipient</span><strong>") + escapeHtml(short(feeRecipient)) + uiCopy("</strong></div><div><span>Quote Token 授权</span><strong>仅输入金额</strong></div><div><span>网络 Gas</span><strong>钱包实时估算</strong></div>", "</strong></div><div><span>Quote-token allowance</span><strong>Entered amount only</strong></div><div><span>Network Gas</span><strong>Estimated by wallet</strong></div>");
       poolPanel.querySelector('[data-perp-pool-resumable]').innerHTML = resumablePools;
       const submit = poolPanel.querySelector('[data-perp-service-submit]');
       submit.disabled = Boolean(state.perpServiceBusy || !chosen || !isBscFeatureChain());
-      submit.textContent = state.perpServiceBusy ? uiCopy("正在提交…", "Submitting…") : state.account ? uiCopy("付费并授权注资", "Pay fee and authorize deposit") : uiCopy("连接钱包后创建", "Connect wallet to create");
+      submit.textContent = state.perpServiceBusy ? uiCopy("正在提交…", "Submitting…") : state.account ? uiCopy("授权并追加流动性（可选）", "Authorize and add liquidity (optional)") : uiCopy("连接钱包后追加流动性", "Connect wallet to add liquidity");
     }
     const market = state.selectedPerpMarketId == null ? null : selectedPerpMarket();
     const poolDetail = $('[data-panel="perps-pool"]');
@@ -3359,9 +3362,9 @@
       renderPerpetualServices();
       show("perps-create-pool");
       showOperationDialog(existing
-        ? `该代币已存在市场 #${marketId}，无需重复创建。\n下一步请选择该市场并完成 Quote Token 注资。`
-        : `市场已由当前钱包创建。\n交易哈希：${txHash}\n下一步请选择该市场并完成 Quote Token 注资；市场初始保持未开放。`,
-      { title: existing ? "市场已存在" : "市场创建成功", tag: "继续创建对手池", success: true });
+        ? `该代币已存在市场 #${marketId}，无需重复创建。当前 LP 和启用状态以链上数据为准；如需扩容，可选择追加流动性。`
+        : `市场创建交易已确认。\n交易哈希：${txHash}\n该笔交易已原子完成 Oracle 校验、最低 Quote LP 注入及市场启用；无需重复注资。`,
+      { title: existing ? "市场已存在" : "市场创建成功", tag: "查看市场状态", success: true });
     };
     await assertProviderState();
     assertCurrent();
@@ -5542,6 +5545,9 @@
   const applyScreenChrome = (name) => {
     $$('[data-panel]').forEach(panel => panel.classList.toggle('has-bottom-nav', panel.dataset.panel === name && mainScreens.includes(name)));
     $('.bottom-nav')?.classList.toggle('visible', mainScreens.includes(name));
+    // The persistent contact footer must never sit above the token-detail
+    // Buy/Sell CTA or receive taps intended for that transaction control.
+    $('.official-contact-footer')?.toggleAttribute('hidden', name === 'detail');
   };
   const show = (name) => {
     name = resolveScreenName(name);
