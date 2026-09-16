@@ -1049,6 +1049,10 @@
       text('[data-perps-symbol]', market ? perpetualPairLabel(market) : '—');
       text('[data-perps-quote-unit]', market?.quoteTokenSymbol || '—');
       text('[data-perps-margin-title]', `${market?.quoteTokenSymbol || 'QUOTE'}-M PERPETUAL`);
+      text('[data-perps-order-market]', market ? perpetualPairLabel(market) : uiCopy('请选择永续市场', 'Select a perpetual market'));
+      text('[data-perps-order-description]', market
+        ? uiCopy(`开多或开空 ${market.tokenSymbol || 'MEME'}；使用 ${market.quoteTokenSymbol || 'Quote Token'} 支付保证金和结算`, `Long or short ${market.tokenSymbol || 'MEME'}; margin and settlement in ${market.quoteTokenSymbol || 'Quote Token'}`)
+        : uiCopy('选择市场后查看开仓标的与结算资产', 'Select a market to see the traded token and settlement asset'));
       const leverageInput = $('#perps-leverage');
       const maximumLeverage = Math.max(1, marketLeverageCap(market));
       if (leverageInput) {
@@ -1104,7 +1108,7 @@
         const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
         const needsWallet = !state.account;
         submit.disabled = state.perpSubmitting || (!needsWallet && (!enabled || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly))));
-        submit.textContent = state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy('确认市价平仓', 'Confirm market close') : uiCopy(`确认开${isShort ? uiCopy("空", "Short") : uiCopy("多", "Long")}`, `Confirm ${isShort ? 'short' : 'long'}`);
+        submit.textContent = state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !market ? uiCopy('请选择市场', 'Select market') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy(`确认平仓 ${perpetualPairLabel(market)}`, `Close ${perpetualPairLabel(market)}`) : uiCopy(`确认开${isShort ? '空' : '多'} ${perpetualPairLabel(market)}`, `${isShort ? 'Short' : 'Long'} ${perpetualPairLabel(market)}`);
         submit.removeAttribute('data-toast');
       }
       renderPerpetualChart();
