@@ -3363,7 +3363,7 @@
       show("perps-create-pool");
       showOperationDialog(existing
         ? `该代币已存在市场 #${marketId}，无需重复创建。当前 LP 和启用状态以链上数据为准；如需扩容，可选择追加流动性。`
-        : `市场已由当前钱包创建并同步存入最低 Quote LP。\n交易哈希：${txHash}\n系统将继续校验 Oracle 并启用市场；无需重复注资。`,
+        : `市场创建交易已确认。\n交易哈希：${txHash}\n该笔交易已原子完成 Oracle 校验、最低 Quote LP 注入及市场启用；无需重复注资。`,
       { title: existing ? "市场已存在" : "市场创建成功", tag: "查看市场状态", success: true });
     };
     await assertProviderState();
