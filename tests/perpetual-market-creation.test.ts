@@ -50,7 +50,7 @@ test('pilot dashboard and creation card show the same 4x cap; non-pilot keeps it
   const render = vm.runInNewContext(
     `${source.slice(start, end)}\nrenderPerpetualCreationLeverage`,
     { text: (selector: string, value: string) => { const node = document.querySelector(selector); if (node) node.textContent = value; } },
-  ) as (config: { internalPilot: boolean; maxLeverage: number }, card: typeof card) => void;
+  ) as (config: { internalPilot: boolean; maxLeverage: number }, card: Element) => void;
   render({ internalPilot: true, maxLeverage: 100 }, card);
   assert.equal(document.querySelector('[data-perp-max-leverage]')?.textContent, '4×');
   assert.equal(leverage.querySelector('option')?.textContent, '4×');
