@@ -99,7 +99,7 @@ test('VM: warming keeper polls read-only config then sends at most one more prep
   await assert.rejects(context.prepare({wallet_address:wallet}),/禁止重复发送/);
   assert.equal(posts,2);
 });
-test('VM: keeper timeout never repeats prepare POST while readiness stays false', async () => {
+test('VM: keeper timeout makes only three read-only status checks', async () => {
   const code = pendingGuard + source.slice(source.indexOf('  const preparePerpetualWhenReady ='), source.indexOf('  const preparePerpetualAction ='));
   let posts = 0;
   let polls = 0;
@@ -112,7 +112,22 @@ test('VM: keeper timeout never repeats prepare POST while readiness stays false'
   vm.runInContext(code+'\nglobalThis.prepare = preparePerpetualWhenReady;',context);
   await assert.rejects(context.prepare({wallet_address:wallet}),/尚未就绪/);
   assert.equal(posts,1);
-  assert.equal(polls,15);
+  assert.equal(polls,3);
+});
+test('VM: degraded keeper stops status polling after one check', async () => {
+  const code = pendingGuard + source.slice(source.indexOf('  const preparePerpetualWhenReady ='), source.indexOf('  const preparePerpetualAction ='));
+  let posts = 0;
+  let polls = 0;
+  const context: any = {
+    state:{perpConfig:{contractAddress:'proxy'}},readLocalPreference:()=>'',writeLocalPreference:()=>{},
+    renderPerpetual:()=>{},window:{setTimeout:(callback:()=>void)=>callback()},
+    api:async(url:string)=>{if(url.endsWith('/config')){polls++;return {contractAddress:'proxy',operationsState:'degraded',operationsReady:false};}posts++;throw Error('perpetual keeper is warming up; retry shortly');},
+  };
+  vm.createContext(context);
+  vm.runInContext(code+'\nglobalThis.prepare = preparePerpetualWhenReady;',context);
+  await assert.rejects(context.prepare({wallet_address:wallet}),/已停止自动重试/);
+  assert.equal(posts,1);
+  assert.equal(polls,1);
 });
 test('VM: perpetual stale-allowance loop is bounded and never sends core', async () => {
   const f = fixture();
