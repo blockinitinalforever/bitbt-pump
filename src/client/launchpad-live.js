@@ -1101,8 +1101,21 @@
         node.textContent = `${compact ? index + 1 : Math.round(1 + (maximumLeverage - 1) * index / (nodes.length - 1))}×`;
       });
       $$('[data-perps-size]').forEach(button => { button.disabled = !state.account || state.perpQuoteBalance == null || !market || state.perpSubmitting; });
-      text('[data-perps-price]', formatPerpPrice(latestPrice));
+      text('[data-perps-price]', formatPerpPrice(latestPrice > 0 ? latestPrice : oraclePrice));
       text('[data-perps-mark]', formatPerpPrice(oraclePrice));
+      const priceInput = $('#perps-price-limit');
+      const marketPrice = market && !market.dataStale && BigInt(market.oraclePriceE18 || '0') > 0n
+        ? formatUnits(BigInt(market.oraclePriceE18), 18, 18) : '';
+      text('[data-perps-market-price]', marketPrice || '—');
+      if (priceInput) {
+        const marketId = market ? String(market.marketId) : '';
+        if (priceInput.dataset.marketId !== marketId) {
+          priceInput.dataset.marketId = marketId;
+          priceInput.dataset.userEdited = '';
+        }
+        if (!priceInput.dataset.userEdited) priceInput.value = marketPrice;
+        priceInput.disabled = !marketPrice || state.perpSubmitting;
+      }
       text('[data-perps-change]', priceChange == null ? '—' : `${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%`);
       text('[data-perps-volume]', market ? `${volume24h.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${market.quoteTokenSymbol || 'QUOTE'}` : '—');
       text('[data-perps-oi]', market ? `${formatUnits(BigInt(market.lockedNotionalRaw || '0'), quoteDecimals)} ${market.quoteTokenSymbol || 'QUOTE'}` : '—');
@@ -1359,6 +1372,10 @@
       const minPrice = perpetualWord(actionTransaction.data, request.action === "open_position" ? 4 : 1);
       const maxPrice = perpetualWord(actionTransaction.data, request.action === "open_position" ? 5 : 2);
       if (deadline !== BigInt(prepared.expiresAt || 0) || deadline <= BigInt(Math.floor(Date.now() / 1000)) || minPrice <= 0n || maxPrice < minPrice) throw new Error("永续报价已过期或价格边界无效，请重新确认");
+      if (request.action === 'open_position' && request.price_limit_e18) {
+        const limit = BigInt(request.price_limit_e18);
+        if (request.is_long ? maxPrice > limit : minPrice < limit) throw new Error('最新预言机价格已超出输入的可接受成交价；请刷新市价并重新确认');
+      }
     }
     if (request.action !== "claim_platform_fees" && perpetualWord(actionTransaction.data, 0) !== BigInt(request.market_id)) throw new Error("永续 marketId 绑定失败");
     let requiredApproval = 0n;
@@ -1386,36 +1403,35 @@
     if (requiredApproval > 0n && approvals.length && (approvals.at(-1) !== requiredApproval || approvals.slice(0, -1).some((amount) => amount !== 0n))) throw new Error("永续授权额度绑定失败");
     if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
   };
-  const preparePerpetualWhenReady = async (request, assertContext = () => {}) => {
-    try {
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        assertContext();
-        try {
-          const prepared = await api("v1/pump/perpetual/prepare", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(request),
-          });
-          assertContext();
-          return prepared;
-        } catch (error) {
-          if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
-          state.perpKeeperWaking = true;
-          renderPerpetual();
-          if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；本次未发送开仓交易");
-          await new Promise((resolve) => window.setTimeout(resolve, 3000));
-          assertContext();
-          state.perpConfig = await api("v1/pump/perpetual/config");
-          assertContext();
-        }
-      }
-      throw new Error("永续交易参数暂未准备完成");
-    } finally {
-      if (state.perpKeeperWaking) {
-        state.perpKeeperWaking = false;
-        renderPerpetual();
-      }
+  const ensureNoPendingPerpetualTransaction = async (walletAddress, assertContext = () => {}) => {
+    assertContext();
+    const pendingKey = `bitbt_perp_pending:bsc:${state.perpConfig?.contractAddress}:${walletAddress.toLowerCase()}`;
+    const persistPending = (value) => {
+      writeLocalPreference(pendingKey, value);
+      if (readLocalPreference(pendingKey) !== value) throw new Error("浏览器无法保存待确认交易状态，已停止继续提交；请检查存储权限并核对钱包记录");
+    };
+    const pending = readLocalPreference(pendingKey);
+    if (pending) {
+      if (pending === "unknown") throw new Error("上一笔永续交易提交状态未知，请先在钱包中核对链上记录，勿重复提交");
+      const receipt = await selectedProvider().request({ method: "eth_getTransactionReceipt", params: [pending] });
+      assertContext();
+      if (receipt?.status == null) throw new Error(`上一笔永续交易仍待确认，禁止重复发送：${pending}`);
+      if (!receiptSucceeded(receipt) && ![false, 0, "0", "0x0", "0x00"].includes(receipt.status)) throw new Error("上一笔永续交易回执状态未知，禁止重复发送");
+      persistPending("");
+      throw new Error(receiptSucceeded(receipt) ? `上一笔永续交易已成功，请刷新仓位后再操作：${pending}` : `上一笔永续交易链上失败，请确认后重试：${pending}`);
     }
+    return { pendingKey, persistPending };
+  };
+  const preparePerpetualWhenReady = async (request, assertContext = () => {}) => {
+    await ensureNoPendingPerpetualTransaction(request.wallet_address, assertContext);
+    assertContext();
+    const prepared = await api("v1/pump/perpetual/prepare", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    assertContext();
+    return prepared;
   };
   const preparePerpetualAction = async () => {
     if (!state.account) await connectWallet();
@@ -1435,6 +1451,20 @@
         throw new Error(`当前市场只允许 1–${leverageCap || '—'} 倍杠杆，请刷新市场参数后重试`);
       }
       body.is_long = modernPerps ? !$('[data-perps-side="short"]')?.classList.contains("active") : $("#perp-side")?.value !== "short";
+      if (modernPerps) {
+        const oracle = BigInt(market.oraclePriceE18 || '0');
+        if (market.dataStale || oracle <= 0n) throw new Error('当前预言机市价不可用，请刷新市场后重试');
+        let limit;
+        try { limit = parseUnits($('#perps-price-limit')?.value, 18); }
+        catch { throw new Error('请输入有效的可接受成交价'); }
+        if (limit <= 0n) throw new Error('可接受成交价必须大于零');
+        if (body.is_long ? limit < oracle : limit > oracle) throw new Error(body.is_long ? '开多最高价不能低于当前预言机价' : '开空最低价不能高于当前预言机价');
+        const difference = body.is_long ? limit - oracle : oracle - limit;
+        const slippageBps = difference * 10_000n / oracle;
+        if (slippageBps > 500n) throw new Error('可接受成交价不得偏离当前预言机价超过 5%');
+        body.slippage_bps = Number(slippageBps);
+        body.price_limit_e18 = limit.toString();
+      }
       const notional = BigInt(body.amount_raw) * BigInt(body.leverage);
       const maxPosition = BigInt(market.maxPositionNotionalRaw || "0");
       if (maxPosition > 0n && notional > maxPosition) {
@@ -1460,21 +1490,7 @@
   };
   const executePreparedPerpetual = async (prepared, market, request, onCoreBroadcast, assertContext = () => {}) => {
     assertContext();
-    const pendingKey = `bitbt_perp_pending:bsc:${state.perpConfig?.contractAddress}:${request.wallet_address.toLowerCase()}`;
-    const persistPending = (value) => {
-      writeLocalPreference(pendingKey, value);
-      if (readLocalPreference(pendingKey) !== value) throw new Error("浏览器无法保存待确认交易状态，已停止继续提交；请检查存储权限并核对钱包记录");
-    };
-    const pending = readLocalPreference(pendingKey);
-    if (pending) {
-      if (pending === "unknown") throw new Error("上一笔永续交易提交状态未知，请先在钱包中核对链上记录，勿重复提交");
-      const receipt = await selectedProvider().request({ method: "eth_getTransactionReceipt", params: [pending] });
-      assertContext();
-      if (receipt?.status == null) throw new Error(`上一笔永续交易仍待确认，禁止重复发送：${pending}`);
-      if (!receiptSucceeded(receipt) && ![false, 0, "0", "0x0", "0x00"].includes(receipt.status)) throw new Error("上一笔永续交易回执状态未知，禁止重复发送");
-      persistPending("");
-      throw new Error(receiptSucceeded(receipt) ? `上一笔永续交易已成功，请刷新仓位后再操作：${pending}` : `上一笔永续交易链上失败，请确认后重试：${pending}`);
-    }
+    const { pendingKey, persistPending } = await ensureNoPendingPerpetualTransaction(request.wallet_address, assertContext);
     // Approval confirmation can outlive a quote. Refresh the exact original
     // request after approvals, never reread mutable form inputs.
     for (let round = 0; round < 3; round += 1) {
@@ -3387,18 +3403,7 @@
       }
     }
     if (!depositTxHash) {
-      let action;
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        try {
-          assertCurrent();
-          action = await api("v1/pump/perpetual/prepare?chain_id=bsc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-          break;
-        } catch (error) {
-          if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
-          if (attempt === 39) throw new Error("平台服务费已支付，但 Keeper 唤醒超时；稍后仍可从本页继续注资，不会重复收费");
-          await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        }
-      }
+      const action = await preparePerpetualWhenReady(body, assertCurrent);
       await checkWallet();
       validatePreparedPerpetual(action, market, body);
       try {
@@ -5826,6 +5831,7 @@
       renderPerpetual();
     });
     $$('[data-panel="perpetual"] input, [data-panel="perpetual"] select, [data-panel="perps"] input, [data-panel="perps"] select').forEach((node) => node.addEventListener("input", () => {
+      if (node.id === 'perps-price-limit') node.dataset.userEdited = 'true';
       state.preparedPerpAction = null;
       state.preparedPerpRequest = null;
       renderPerpetual();
@@ -5992,6 +5998,18 @@
       if (sideButton) {
         state.perpModernAction = "open_position";
         $$('[data-perps-side]').forEach((node) => node.classList.toggle("active", node === sideButton));
+        const priceInput = $('#perps-price-limit');
+        if (priceInput) priceInput.dataset.userEdited = '';
+        state.preparedPerpAction = null;
+        state.preparedPerpRequest = null;
+        renderPerpetual();
+      }
+      if (event.target.closest('[data-perps-use-market-price]')) {
+        event.preventDefault();
+        const priceInput = $('#perps-price-limit');
+        if (priceInput) priceInput.dataset.userEdited = '';
+        state.preparedPerpAction = null;
+        state.preparedPerpRequest = null;
         renderPerpetual();
       }
       const viewButton = event.target.closest("[data-perps-view]");

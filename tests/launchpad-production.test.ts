@@ -980,6 +980,36 @@ test("perpetual history navigation preserves wallet and avoids trading RPC or pr
   assert.ok(!providerCalls.some(method=>["personal_sign","eth_requestAccounts","eth_call","eth_getBalance"].includes(method)));
 });
 
+test("perpetual order shows the oracle market price in an editable price protection field", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const market = {
+    marketId: 0, tokenAddress: "0x2222222222222222222222222222222222222222",
+    tokenSymbol: "TITAN", quoteTokenSymbol: "tBTUSD", quoteDecimals: 18,
+    oraclePriceE18: "12910484093825212", dataStale: false,
+    maxLeverage: 10, enabled: true, closeOnly: false,
+    liquidityRaw: "0", lockedNotionalRaw: "0", longNotionalRaw: "0", shortNotionalRaw: "0",
+    maxPositionNotionalRaw: "0", maxOpenInterestRaw: "0",
+  };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("auth/siwe/session")) return {ok:true,json:async()=>({data:{address:account,expires_in:3600}})};
+    if (url.includes("perpetual/config")) return {ok:true,json:async()=>({data:{enabled:true,operationsReady:true,openingsPaused:false,contractAddress:"0x5555555555555555555555555555555555555555"}})};
+    if (url.includes("perpetual/markets")) return {ok:true,json:async()=>({data:[market]})};
+    if (url.includes("app/config")) return {ok:true,json:async()=>({data:{pump:{}}})};
+    return {ok:true,json:async()=>({data:[]})};
+  };
+  const {window} = await boot(response,{account,session:{token:"session",address:account}});
+  window.document.querySelector('[data-open="perps"]')?.dispatchEvent(new window.Event("click",{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,60));
+  const input = window.document.querySelector('#perps-price-limit') as HTMLInputElement;
+  assert.ok(input);
+  assert.equal(input.value,"0.012910484093825212");
+  assert.match(window.document.querySelector('[data-perps-use-market-price]')?.textContent || '',/0\.012910484093825212/);
+  input.value = '0.013';
+  input.dispatchEvent(new window.Event('input',{bubbles:true}));
+  assert.equal(input.value,'0.013');
+});
+
 test("wallet-scoped current market zero position renders and navigates from stale market one to close", async () => {
   const account = "0x1111111111111111111111111111111111111111";
   const tx = `0x${"ab".repeat(32)}`;

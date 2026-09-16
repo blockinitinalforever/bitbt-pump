@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
 const addressGuard = source.slice(source.indexOf('  const isNonZeroPerpTokenAddress ='), source.indexOf('  const selectedPerpMarket ='));
+const pendingGuard = source.slice(source.indexOf('  const ensureNoPendingPerpetualTransaction ='), source.indexOf('  const preparePerpetualWhenReady ='));
 const runner = source.slice(source.indexOf('  const executePreparedPerpetual ='), source.indexOf('  const executePerpetualAction ='));
 const wallet = '0x' + '11'.repeat(20);
 const token = '0x' + '55'.repeat(20);
@@ -36,7 +37,7 @@ function fixture() {
     },
   };
   vm.createContext(context);
-  vm.runInContext(runner + '\nglobalThis.run = executePreparedPerpetual;', context);
+  vm.runInContext(pendingGuard + runner + '\nglobalThis.run = executePreparedPerpetual;', context);
   return { context, request, stored, sent, refreshed: () => refreshed };
 }
 
@@ -69,6 +70,26 @@ test('VM: broadcast then receipt timeout retains hash and blocks duplicate send'
   await assert.rejects(f.context.run({transactions:[operation]}, {}, f.request),/已成功/);
   assert.equal(sends,1);
 });
+test('VM: warming keeper causes one prepare POST and pending hash blocks prepare', async () => {
+  const code = pendingGuard + source.slice(source.indexOf('  const preparePerpetualWhenReady ='), source.indexOf('  const preparePerpetualAction ='));
+  const stored = new Map<string,string>();
+  let posts = 0;
+  const context: any = {
+    state: {perpConfig:{contractAddress:'proxy'}},
+    readLocalPreference:(key:string)=>stored.get(key)||'',
+    writeLocalPreference:(key:string,value:string)=>stored.set(key,value),
+    selectedProvider:()=>({request:async()=>null}),
+    receiptSucceeded:()=>false,
+    api:async()=>{posts++;throw Error('perpetual keeper is warming up; retry shortly');},
+  };
+  vm.createContext(context);
+  vm.runInContext(code+'\nglobalThis.prepare = preparePerpetualWhenReady;',context);
+  await assert.rejects(context.prepare({wallet_address:wallet}),/warming up/);
+  assert.equal(posts,1);
+  stored.set('bitbt_perp_pending:bsc:proxy:'+wallet,'0x'+'ab'.repeat(32));
+  await assert.rejects(context.prepare({wallet_address:wallet}),/禁止重复发送/);
+  assert.equal(posts,1);
+});
 test('VM: perpetual stale-allowance loop is bounded and never sends core', async () => {
   const f = fixture();
   f.context.api = async () => ({transactions:[approval,operation]});
@@ -90,6 +111,7 @@ test('VM: real calldata validator rejects expired quote, wallet switch and misma
   vm.createContext(ctx);
   vm.runInContext(validation+'\nglobalThis.validate = validatePreparedPerpetual;',ctx);
   ctx.validate(prepared,market,request);
+  assert.throws(()=>ctx.validate(prepared,market,{...request,price_limit_e18:'100'}),/可接受成交价/);
   assert.throws(()=>ctx.validate({...prepared,expiresAt:now-1},market,request),/过期/);
   ctx.state.account='0x'+'44'.repeat(20);
   assert.throws(()=>ctx.validate(prepared,market,request),/钱包或网络/);
@@ -130,8 +152,8 @@ test('VM: LP completion API failure retries bookkeeping without another deposit'
     readLocalPreference:(k:string)=>stored.get(k)||'',writeLocalPreference:(k:string,v:string)=>stored.set(k,v),
     validatePreparedPerpetual:()=>{},toast:()=>{},show:()=>{},loadPerpetual:async()=>{},
     executePreparedPerpetual:async (_a:any,_m:any,_r:any,cb:any)=>{deposits++;cb(hash);return hash;},
+    preparePerpetualWhenReady:async (body:any)=>{prepares++;return {transactions:[],body};},
     api:async (url:string,options:any)=>{
-      if(url.includes('/prepare?')){prepares++;return {transactions:[]};}
       completions++;
       assert.equal(JSON.parse(options.body).txHash,hash);
       if(completions===1)throw Error('temporary completion failure');
