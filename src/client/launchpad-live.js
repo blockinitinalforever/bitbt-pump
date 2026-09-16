@@ -1320,7 +1320,7 @@
   };
   const perpetualPanelActive = () => Boolean(root.querySelector('[data-panel="perpetual"].active, [data-panel="perps"].active'));
   const refreshPerpetualStatus = async () => {
-    if (!ui20260911 || !perpetualPanelActive() || !isBscFeatureChain() || perpStatusRefreshInFlight) return;
+    if (!ui20260911 || !perpetualPanelActive() || !isBscFeatureChain() || perpStatusRefreshInFlight || state.perpKeeperWaking) return;
     perpStatusRefreshInFlight = true;
     const current = beginPerpRead('config', false);
     try {
@@ -1451,11 +1451,17 @@
     state.perpKeeperWaking = true;
     renderPerpetual();
     try {
-      for (let attempt = 0; attempt < 15; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+      for (const delay of [5000, 10000, 15000]) {
+        await new Promise((resolve) => window.setTimeout(resolve, delay));
         assertContext();
         state.perpConfig = await api('v1/pump/perpetual/config');
         assertContext();
+        if (state.perpConfig?.operationsState === 'degraded') {
+          throw new Error('永续运维服务异常，已停止自动重试；本次未发送开仓交易');
+        }
+        if (state.perpConfig?.chainOpeningsPaused) {
+          throw new Error('永续合约已暂停开仓；本次未发送开仓交易');
+        }
         if (state.perpConfig?.operationsReady && !state.perpConfig?.openingsPaused) {
           await ensureNoPendingPerpetualTransaction(request.wallet_address, assertContext);
           const prepared = await prepare();
@@ -6714,6 +6720,7 @@
     const refreshTrades = !socketHealthy || refreshCycle % 2 === 0;
     if (refreshMarket) void refreshLive({ refreshSelected: !refreshTrades });
     if (refreshTrades) void refreshSelectedTrades();
-    if (ui20260911 && perpetualPanelActive() && refreshCycle % 2 === 0) void refreshPerpetualStatus().catch(() => {});
+    const perpetualStatusInterval = state.perpConfig?.operationsState === 'degraded' ? 8 : 4;
+    if (ui20260911 && perpetualPanelActive() && refreshCycle % perpetualStatusInterval === 0) void refreshPerpetualStatus().catch(() => {});
   }, 15000);
 })();
