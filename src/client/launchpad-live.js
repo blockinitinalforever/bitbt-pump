@@ -976,13 +976,16 @@
     setPerpReadError('candles');
   };
   const renderPerpetualMarketCards = () => {
+    const marketCardIcon = (url, symbol, className) => url
+      ? `<img class="${className}" src="${escapeHtml(url)}" alt="${escapeHtml(symbol || '')}">`
+      : `<span class="perps-letter-logo ${className}" aria-label="${escapeHtml(symbol || '')}">${escapeHtml(String(symbol || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
     const config = state.perpConfig;
     const query = state.tokenSearch.trim().toLowerCase();
     const markets = state.perpMarkets.filter(item => !query || `${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase().includes(query));
     const marketGrid = $('[data-market-panel="perps"] .token-grid');
     if (marketGrid) {
       marketGrid.innerHTML = markets.length
-        ? markets.map((item) => uiMarkup`<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><span class="perps-pair-logos">${perpetualLogoMarkup(perpetualBaseLogo(item), item.tokenSymbol, 'token-logo')}${perpetualLogoMarkup(perpetualQuoteLogo(item), item.quoteTokenSymbol, 'perps-quote-logo')}</span><div class="token-name"><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(state.selectedChain === 'robinhood' ? 'Robinhood' : 'BNB Chain')} · ${escapeHtml(item.quoteTokenSymbol || short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? uiCopy("已开放", "Available") : uiCopy("已暂停", "Paused")}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
+        ? markets.map((item) => uiMarkup`<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><span class="perps-pair-logos">${marketCardIcon(item.tokenLogoUrl, item.tokenSymbol, 'token-logo')}${marketCardIcon(item.quoteTokenLogoUrl, item.quoteTokenSymbol, 'perps-quote-logo')}</span><div class="token-name"><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(state.selectedChain === 'robinhood' ? 'Robinhood' : 'BNB Chain')} · ${escapeHtml(item.quoteTokenSymbol || short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? uiCopy("已开放", "Available") : uiCopy("已暂停", "Paused")}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
         : `<p class="footer-note">${escapeHtml(query ? '没有匹配的永续市场，请修改名称或地址搜索。' : config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
     }
   };
@@ -3048,7 +3051,14 @@
         const value = values[Number(node.dataset.serviceSetting)];
         if (node.tagName === 'SELECT') node.options[0].textContent = value; else node.value = value;
       });
-      renderPerpetualCreationLeverage(config, addPanel);
+      const protocolCap = Number(config?.maxLeverage || 0);
+      const creationCap = config?.internalPilot ? Math.min(protocolCap || 4, 4) : protocolCap;
+      const leverageLabel = creationCap > 0 ? `${creationCap}×` : '—';
+      const leverageField = addPanel.querySelector('[data-service-setting="2"]');
+      if (leverageField) {
+        if (leverageField.tagName === 'SELECT') leverageField.options[0].textContent = leverageLabel;
+        else leverageField.value = leverageLabel;
+      }
       addPanel.querySelector('[data-service-summary]').textContent = uiCopy("签名钱包：", "Signing wallet: ") + (state.account ? short(state.account) : uiCopy("未连接", "Not connected")) + uiCopy(" · 目标合约：", " · Target contract: ") + (config.contractAddress || uiCopy('等待配置', 'Awaiting configuration')) + uiCopy(" · 创建时同步存入最低 LP", " · Minimum LP deposited during creation");
       const submit = addPanel.querySelector('[data-perp-service-submit]');
       submit.disabled = Boolean(state.perpServiceBusy || !config.enabled || !config.permissionlessMarketCreation || !isBscFeatureChain());
@@ -3088,7 +3098,19 @@
       set('.pool-identity h2', uiMarkup`${market ? perpetualPairLabel(market) : '—'} · 聚合池 #${market ? Number(market.marketId) : '—'}`);
       set('.pool-identity p', uiMarkup`${selectedNetwork().shortName} · 链上聚合 LP 池`);
       const logo = poolDetail.querySelector('.pool-identity img');
-      setPerpetualLogo(logo, perpetualBaseLogo(market), market?.tokenSymbol);
+      if (logo) {
+        const logoUrl = market?.tokenLogoUrl || '';
+        logo.hidden = !logoUrl;
+        if (logoUrl) { logo.src = logoUrl; logo.alt = market?.tokenSymbol || ''; }
+        let letter = logo.nextElementSibling;
+        if (!letter?.classList.contains('perps-letter-logo')) {
+          letter = logo.ownerDocument.createElement('span');
+          letter.className = 'perps-letter-logo';
+          logo.after(letter);
+        }
+        letter.hidden = Boolean(logoUrl) || !market?.tokenSymbol;
+        letter.textContent = String(market?.tokenSymbol || '').charAt(0).toUpperCase();
+      }
       const summaries = [...poolDetail.querySelectorAll('.pool-identity .plain-summary span')];
       [uiMarkup`${unit} 结算`, uiCopy("LP 按链上份额记账", "LP accounting uses on-chain shares"), uiCopy("资金可能亏损", "Funds are at risk")].forEach((label, i) => { if (summaries[i]) summaries[i].textContent = label; });
       set('.pool-health > strong', market?.enabled ? (market.closeOnly ? uiCopy("只减仓", "Reduce-only") : uiCopy("市场已启用", "Market enabled")) : uiCopy("市场未开放", "MarketNot open"));
@@ -3167,12 +3189,17 @@
       }
       const rows = filteredActivity.map(item => {
         const itemMarket = state.perpMarkets.find(candidate => Number(candidate.marketId) === Number(item.marketId));
+        const logo = itemMarket?.tokenLogoUrl
+          ? `<img src="${escapeHtml(itemMarket.tokenLogoUrl)}" alt="${escapeHtml(itemMarket.tokenSymbol || '')}">`
+          : itemMarket?.tokenSymbol
+            ? `<span class="perps-letter-logo" aria-label="${escapeHtml(itemMarket.tokenSymbol)}">${escapeHtml(String(itemMarket.tokenSymbol).charAt(0).toUpperCase())}</span>`
+            : '';
         const hash = String(item.lastTxHash || '');
         const validHash = /^0x[0-9a-fA-F]{64}$/.test(hash);
         const currentPosition = item.currentPosition === true;
         const label = currentPosition ? '当前未平仓位' : ({ open: '开仓', close: '平仓', liquidate: '清算', expire: '到期结算' }[item.eventType] || '未知事件');
         return uiMarkup`<article class="onchain-row">
-          <div class="record-identity">${perpetualLogoMarkup(perpetualBaseLogo(itemMarket), itemMarket?.tokenSymbol)}<div><strong>${escapeHtml(itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`)}</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
+          <div class="record-identity">${logo}<div><strong>${escapeHtml(itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`)}</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
           <div class="record-cell"><strong>${label}</strong><span>${escapeHtml(short(item.traderAddress || ''))}</span></div>
           <div class="record-cell"><span>成交价</span><strong>—</strong></div>
           <div class="record-cell"><span>保证金 / 仓位</span><strong>—</strong></div>
