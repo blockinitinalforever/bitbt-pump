@@ -988,6 +988,7 @@ test("wallet-scoped current market zero position renders and navigates from stal
     marketId,
     tokenAddress: `0x${String(marketId + 2).repeat(40)}`,
     tokenSymbol: `TOKEN${marketId}`,
+    displayName: `TOKEN${marketId}/tBTUSD`,
     quoteTokenAddress: "0x4444444444444444444444444444444444444444",
     quoteTokenSymbol: "tBTUSD",
     quoteDecimals: 18,
@@ -1026,7 +1027,7 @@ test("wallet-scoped current market zero position renders and navigates from stal
   close.dispatchEvent(new window.Event("click",{bubbles:true}));
   await new Promise(resolve=>setTimeout(resolve,50));
   assert.ok(window.document.querySelector('[data-panel="perps"].active'));
-  assert.equal(window.document.querySelector('#perps-submit')?.textContent, '确认市价平仓');
+  assert.equal(window.document.querySelector('#perps-submit')?.textContent, '确认平仓 TOKEN0/tBTUSD');
   assert.ok(requests.some(url=>url.includes('perpetual/position')&&url.includes('market_id=0')&&url.includes(`wallet_address=${account}`)));
 });
 

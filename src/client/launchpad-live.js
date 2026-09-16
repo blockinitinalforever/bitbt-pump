@@ -61,6 +61,7 @@
     preparedPerpAction: null,
     preparedPerpRequest: null,
     perpSubmitting: false,
+    perpKeeperWaking: false,
     perpModernAction: "open_position",
     perpCandles: [],
     perpChartInterval: 300,
@@ -591,7 +592,7 @@
     if (/liquidity is locked while positions are open/i.test(message)) return "市场仍有未平仓仓位，当前不能注入或提取流动性";
     if (/insufficient Quote Token balance/i.test(message)) return "报价币余额不足，当前未收取对手池服务费；请补足报价币后重试";
     if (/pool request does not match the selected perpetual market/i.test(message)) return "对手池参数与所选永续市场不一致，当前未收取服务费；请重新选择市场";
-    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "永续运维服务正在唤醒，尚未收取对手池服务费；请稍后重试";
+    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "永续运维服务暂未就绪，本次操作尚未发送链上交易；请稍后重试";
     if (/no platform fees are claimable/i.test(message)) return "当前没有可领取的平台手续费";
     if (status === 413 || /payload too large|request entity too large/i.test(message)) return "文件过大，请压缩后重试";
     if (status === 429 || /rate limit|too many requests/i.test(message)) return "操作过于频繁，请稍后重试";
@@ -833,6 +834,27 @@
     const marketId = parsePerpMarketId(market?.marketId);
     return marketId == null ? "—" : `Market #${marketId}`;
   };
+  const perpetualBaseLogo = (market) => market?.tokenLogoUrl || null;
+  const perpetualQuoteLogo = (market) => market?.quoteTokenLogoUrl || null;
+  const perpetualLogoLetter = (symbol) => String(symbol || '?').trim().charAt(0).toUpperCase() || '?';
+  const perpetualLogoMarkup = (url, symbol, extraClass = '') => url
+    ? `<img class="${extraClass}" src="${escapeHtml(url)}" alt="${escapeHtml(symbol || '')}">`
+    : symbol ? `<span class="perps-letter-logo ${extraClass}" aria-label="${escapeHtml(symbol)}">${escapeHtml(perpetualLogoLetter(symbol))}</span>` : '';
+  const setPerpetualLogo = (image, url, symbol) => {
+    if (!image) return;
+    image.hidden = !url;
+    if (url) { image.src = url; image.alt = symbol || ''; }
+    let letter = image.nextElementSibling;
+    if (!letter?.classList.contains('perps-letter-logo')) {
+      letter = document.createElement('span');
+      letter.className = 'perps-letter-logo';
+      if ('perpsQuoteImage' in image.dataset || 'perpsOrderQuoteImage' in image.dataset) letter.classList.add('perps-quote-logo');
+      image.after(letter);
+    }
+    letter.hidden = Boolean(url) || !symbol;
+    letter.textContent = perpetualLogoLetter(symbol);
+    letter.setAttribute('aria-label', symbol || '');
+  };
   const selectInitialPerpMarket = (markets) => {
     if (state.selectedPerpMarketId != null) return;
     const initial = markets.find((market) => parsePerpMarketId(market?.marketId) != null);
@@ -869,7 +891,7 @@
       if (fallback) {
         fallback.hidden = false;
         fallback.textContent = selectedPerpMarket()
-          ? uiCopy("该 MEME 暂无可生成 K 线的真实成交。", "No real trades are available to build candles for this MEME.")
+          ? uiCopy("本站暂未索引到可绘制 K 线的现货成交。", "No indexed spot trades are available for this chart yet.")
           : uiCopy("选择已开放市场后显示真实成交 K 线。", "Select an open market to view real trade candles.");
       }
       return;
@@ -955,13 +977,16 @@
     setPerpReadError('candles');
   };
   const renderPerpetualMarketCards = () => {
+    const marketCardIcon = (url, symbol, className) => url
+      ? `<img class="${className}" src="${escapeHtml(url)}" alt="${escapeHtml(symbol || '')}">`
+      : `<span class="perps-letter-logo ${className}" aria-label="${escapeHtml(symbol || '')}">${escapeHtml(String(symbol || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
     const config = state.perpConfig;
     const query = state.tokenSearch.trim().toLowerCase();
     const markets = state.perpMarkets.filter(item => !query || `${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase().includes(query));
     const marketGrid = $('[data-market-panel="perps"] .token-grid');
     if (marketGrid) {
       marketGrid.innerHTML = markets.length
-        ? markets.map((item) => uiMarkup`<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><img class="token-logo" src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div class="token-name"><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(state.selectedChain === 'robinhood' ? 'Robinhood' : 'BNB Chain')} · ${escapeHtml(item.quoteTokenSymbol || short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? uiCopy("已开放", "Available") : uiCopy("已暂停", "Paused")}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
+        ? markets.map((item) => uiMarkup`<button class="token-card perp-market-card" type="button" data-open="perps" data-perp-market-id="${Number(item.marketId)}"><div class="token-head"><span class="perps-pair-logos">${marketCardIcon(item.tokenLogoUrl, item.tokenSymbol, 'token-logo')}${marketCardIcon(item.quoteTokenLogoUrl, item.quoteTokenSymbol, 'perps-quote-logo')}</span><div class="token-name"><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(state.selectedChain === 'robinhood' ? 'Robinhood' : 'BNB Chain')} · ${escapeHtml(item.quoteTokenSymbol || short(item.quoteTokenAddress || ''))} 本位</small></div><span class="change ${item.enabled ? 'up' : ''}">${item.enabled ? uiCopy("已开放", "Available") : uiCopy("已暂停", "Paused")}</span></div><div class="card-metrics"><div><span>流动性</span><strong>${escapeHtml(formatUnits(BigInt(item.liquidityRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>未平仓量</span><strong>${escapeHtml(formatUnits(BigInt(item.lockedNotionalRaw || '0'), Number(item.quoteDecimals || 18)))}</strong></div><div><span>最高杠杆</span><strong>${Number(item.maxLeverage || config?.maxLeverage || 0)}×</strong></div></div></button>`).join('')
         : `<p class="footer-note">${escapeHtml(query ? '没有匹配的永续市场，请修改名称或地址搜索。' : config?.statusNote || '当前没有已开放的真实永续市场。')}</p>`;
     }
   };
@@ -999,7 +1024,19 @@
     const keeperSyncing = enabled && (config?.operationsState === "preparing" || (!config?.operationsState && !config?.operationsReady && Date.now() - perpUnreadySince < 60_000));
     text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')}${uiCopy(' 个', '')}`);
     text("[data-perp-menu-status]", enabled ? (keeperStandby ? uiCopy("按需待命", "Standby") : keeperSyncing ? uiCopy("准备中", "Preparing") : config?.openingsPaused ? uiCopy("只减仓", "Reduce only") : uiCopy("已开放", "Available")) : uiCopy("未开放", "Unavailable"));
-    text("[data-perp-status]", keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
+    text("[data-perp-status]", state.perpKeeperWaking ? uiCopy("永续运维服务正在启动，系统会自动继续准备；请勿重复点击，本次永续交易尚未发送。", "Perpetual operations are starting. Preparation will continue automatically; do not click again. This perpetual trade has not been sent.") : keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
+    const keeperHint = $('[data-perps-keeper-hint]');
+    if (keeperHint) {
+      const hint = state.perpKeeperWaking
+        ? uiCopy("运维服务正在启动，系统会自动继续；本次开仓交易尚未发送，请勿重复点击。", "Operations are starting. We will continue automatically; this opening trade has not been sent. Please do not click again.")
+        : keeperStandby
+          ? uiCopy("运维服务目前待命。点击开仓后可能需要短暂启动，期间不会请求签名或发送交易。", "Operations are on standby. Starting a trade may take a moment; no signature or transaction is sent while waiting.")
+          : keeperSyncing
+            ? uiCopy("运维服务正在准备；系统会在就绪后继续，暂未发送开仓交易。", "Operations are preparing. We will continue when ready; no opening trade has been sent.")
+            : '';
+      keeperHint.hidden = !enabled || state.perpModernAction !== 'open_position' || !hint;
+      keeperHint.textContent = hint;
+    }
     text("[data-perp-fee]", config?.feePercent ? uiMarkup`默认 ${config.feePercent} / ${config.feePercent}` : "—");
     text("[data-perp-min-liquidity]", config ? `${config.minLiquidityUsd} USD` : "—");
     renderPerpetualCreationLeverage(config);
@@ -1023,18 +1060,17 @@
       }
       text('[data-perps-leverage-range]', marketLeverageCap(market) ? `1–${marketLeverageCap(market)}×` : '—');
       text('[data-perps-settlement-note]', market ? `${market.quoteTokenSymbol || 'Quote Token'} ${uiCopy('本位', 'settled')} · ${selectedNetwork().name} · ${uiCopy('资金费按链上规则随时间累计', 'Funding accrues under on-chain rules')}` : uiCopy('选择市场后显示结算资产与资金费规则', 'Select a market to view settlement and funding rules'));
-      const marketImage = $('[data-perps-image]');
-      if (marketImage) {
-        marketImage.src = market?.tokenImage || './assets/tokens/generic.svg';
-        marketImage.alt = market?.tokenSymbol || '永续市场';
-      }
+      setPerpetualLogo($('[data-perps-image]'), perpetualBaseLogo(market), market?.tokenSymbol);
+      setPerpetualLogo($('[data-perps-quote-image]'), perpetualQuoteLogo(market), market?.quoteTokenSymbol);
+      setPerpetualLogo($('[data-perps-order-base-image]'), perpetualBaseLogo(market), market?.tokenSymbol);
+      setPerpetualLogo($('[data-perps-order-quote-image]'), perpetualQuoteLogo(market), market?.quoteTokenSymbol);
       const pairRow = $('[data-panel="perps"] .perps-pairs');
       if (pairRow) {
-        pairRow.innerHTML = state.perpMarkets.map((item) => `<button type="button" class="${market && Number(item.marketId) === Number(market.marketId) ? 'active' : ''}" data-real-perp-market="${Number(item.marketId)}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="">${escapeHtml(perpetualPairLabel(item))} <span>${item.enabled ? 'LIVE' : '暂停'}</span></button>`).join('');
+        pairRow.innerHTML = state.perpMarkets.map((item) => `<button type="button" class="${market && Number(item.marketId) === Number(market.marketId) ? 'active' : ''}" aria-pressed="${market && Number(item.marketId) === Number(market.marketId)}" data-real-perp-market="${Number(item.marketId)}">${perpetualLogoMarkup(perpetualBaseLogo(item), item.tokenSymbol)}${perpetualLogoMarkup(perpetualQuoteLogo(item), item.quoteTokenSymbol, 'perps-quote-logo')}${escapeHtml(perpetualPairLabel(item))} <span>${item.enabled ? 'LIVE' : '暂停'}</span></button>`).join('');
       }
       const searchResults = $('[data-panel="perps"] .perps-search-results');
       if (searchResults) {
-        searchResults.innerHTML = uiMarkup`<div class="perps-search-head"><span>搜索结果</span><span>市场状态</span></div>${state.perpMarkets.map((item) => uiMarkup`<div class="perps-search-item ready" data-real-perp-search data-search="${escapeHtml(`${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase())}"><img src="${escapeHtml(item.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(item.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(short(item.tokenAddress || ''))} · BSC · <span class="pool-state">${item.enabled ? uiCopy("可交易", "Tradable") : uiCopy("已暂停", "Paused")}</span></small></div><button type="button" data-real-perp-market="${Number(item.marketId)}">选择交易</button></div>`).join('')}<div class="perps-search-empty" data-perps-search-empty>未找到已接入的真实 MEME 永续市场。</div>`;
+        searchResults.innerHTML = uiMarkup`<div class="perps-search-head"><span>搜索结果</span><span>市场状态</span></div>${state.perpMarkets.map((item) => uiMarkup`<div class="perps-search-item ready" data-real-perp-search data-search="${escapeHtml(`${item.tokenName || ''} ${item.tokenSymbol || ''} ${item.tokenAddress || ''}`.toLowerCase())}"><span class="perps-pair-logos">${perpetualLogoMarkup(perpetualBaseLogo(item), item.tokenSymbol)}${perpetualLogoMarkup(perpetualQuoteLogo(item), item.quoteTokenSymbol, 'perps-quote-logo')}</span><div><strong>${escapeHtml(perpetualPairLabel(item))}</strong><small>${escapeHtml(short(item.tokenAddress || ''))} · BSC · <span class="pool-state">${item.enabled ? uiCopy("可交易", "Tradable") : uiCopy("已暂停", "Paused")}</span></small></div><button type="button" data-real-perp-market="${Number(item.marketId)}">选择交易</button></div>`).join('')}<div class="perps-search-empty" data-perps-search-empty>未找到已接入的真实 MEME 永续市场。</div>`;
       }
       const latestCandle = state.perpCandles.at(-1);
       const latestPrice = Number(latestCandle?.close || 0);
@@ -1049,6 +1085,10 @@
       text('[data-perps-symbol]', market ? perpetualPairLabel(market) : '—');
       text('[data-perps-quote-unit]', market?.quoteTokenSymbol || '—');
       text('[data-perps-margin-title]', `${market?.quoteTokenSymbol || 'QUOTE'}-M PERPETUAL`);
+      text('[data-perps-order-market]', market ? perpetualPairLabel(market) : uiCopy('请选择永续市场', 'Select a perpetual market'));
+      text('[data-perps-order-description]', market
+        ? uiCopy(`开多或开空 ${market.tokenSymbol || 'MEME'}；使用 ${market.quoteTokenSymbol || 'Quote Token'} 支付保证金和结算`, `Long or short ${market.tokenSymbol || 'MEME'}; margin and settlement in ${market.quoteTokenSymbol || 'Quote Token'}`)
+        : uiCopy('选择市场后查看开仓标的与结算资产', 'Select a market to see the traded token and settlement asset'));
       const leverageInput = $('#perps-leverage');
       const maximumLeverage = Math.max(1, marketLeverageCap(market));
       if (leverageInput) {
@@ -1088,7 +1128,7 @@
           ? uiMarkup`<p class="footer-note">连接钱包后读取当前真实仓位。</p>`
           : !state.perpPosition?.open
             ? uiMarkup`<p class="footer-note">当前钱包在该市场没有未平仓仓位。</p>`
-            : uiMarkup`<div class="perps-position-head"><div class="perps-position-name"><img src="${escapeHtml(market?.tokenImage || './assets/tokens/generic.svg')}" alt="${escapeHtml(market?.tokenSymbol || 'MEME')}"><div><strong>${escapeHtml(perpetualPairLabel(market))} <span class="tag lime">${state.perpPosition.isLong ? uiCopy("多", "Long") : uiCopy("空", "Short")}</span></strong><small>逐仓 · ${escapeHtml(market?.quoteTokenSymbol || 'Quote Token')} 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
+            : uiMarkup`<div class="perps-position-head"><div class="perps-position-name">${perpetualLogoMarkup(perpetualBaseLogo(market), market?.tokenSymbol)}<div><strong>${escapeHtml(perpetualPairLabel(market))} <span class="tag lime">${state.perpPosition.isLong ? uiCopy("多", "Long") : uiCopy("空", "Short")}</span></strong><small>逐仓 · ${escapeHtml(market?.quoteTokenSymbol || 'Quote Token')} 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
       }
       const orders = $('[data-panel="perps"] [data-perps-panel="orders"]');
       if (orders) orders.innerHTML = '<p class="footer-note">当前合约仅支持钱包签名后立即上链的市价操作，没有待成交挂单。</p>';
@@ -1104,7 +1144,7 @@
         const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
         const needsWallet = !state.account;
         submit.disabled = state.perpSubmitting || (!needsWallet && (!enabled || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly))));
-        submit.textContent = state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy('确认市价平仓', 'Confirm market close') : uiCopy(`确认开${isShort ? uiCopy("空", "Short") : uiCopy("多", "Long")}`, `Confirm ${isShort ? 'short' : 'long'}`);
+        submit.textContent = state.perpKeeperWaking ? uiCopy('运维服务启动中，请稍候…', 'Starting operations, please wait…') : state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : !market ? uiCopy('请选择市场', 'Select market') : state.perpModernAction === 'close_position' ? uiCopy(`确认平仓 ${perpetualPairLabel(market)}`, `Close ${perpetualPairLabel(market)}`) : uiCopy(`确认开${isShort ? '空' : '多'} ${perpetualPairLabel(market)}`, `${isShort ? 'Short' : 'Long'} ${perpetualPairLabel(market)}`);
         submit.removeAttribute('data-toast');
       }
       renderPerpetualChart();
@@ -1346,6 +1386,37 @@
     if (requiredApproval > 0n && approvals.length && (approvals.at(-1) !== requiredApproval || approvals.slice(0, -1).some((amount) => amount !== 0n))) throw new Error("永续授权额度绑定失败");
     if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
   };
+  const preparePerpetualWhenReady = async (request, assertContext = () => {}) => {
+    try {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        assertContext();
+        try {
+          const prepared = await api("v1/pump/perpetual/prepare", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(request),
+          });
+          assertContext();
+          return prepared;
+        } catch (error) {
+          if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
+          state.perpKeeperWaking = true;
+          renderPerpetual();
+          if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；本次未发送开仓交易");
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          assertContext();
+          state.perpConfig = await api("v1/pump/perpetual/config");
+          assertContext();
+        }
+      }
+      throw new Error("永续交易参数暂未准备完成");
+    } finally {
+      if (state.perpKeeperWaking) {
+        state.perpKeeperWaking = false;
+        renderPerpetual();
+      }
+    }
+  };
   const preparePerpetualAction = async () => {
     if (!state.account) await connectWallet();
     const market = selectedPerpMarket();
@@ -1380,24 +1451,7 @@
       body.recipient = String($("#perp-trader")?.value || "").trim().toLowerCase();
       if (!/^0x[0-9a-f]{40}$/.test(body.recipient) || /^0x0{40}$/.test(body.recipient)) throw new Error("请输入有效的目标仓位钱包地址");
     }
-    let prepared = null;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      try {
-        prepared = await api("v1/pump/perpetual/prepare", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        break;
-      } catch (error) {
-        if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
-        text("[data-perp-status]", "正在按需唤醒永续风控与预言机，请稍候，无需重复点击…");
-        if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；当前不会发起钱包签名或扣费");
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        state.perpConfig = await api("v1/pump/perpetual/config");
-      }
-    }
-    if (!prepared) throw new Error("永续交易参数暂未准备完成");
+    const prepared = await preparePerpetualWhenReady(body);
     validatePreparedPerpetual(prepared, market, body);
     state.preparedPerpAction = prepared;
     state.preparedPerpRequest = body;
@@ -1433,7 +1487,7 @@
       }
       if (approvals.length) {
         assertContext();
-        prepared = await api("v1/pump/perpetual/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
+        prepared = await preparePerpetualWhenReady(request, assertContext);
         continue;
       }
       validatePreparedPerpetual(prepared, market, request);
@@ -3024,7 +3078,14 @@
         const value = values[Number(node.dataset.serviceSetting)];
         if (node.tagName === 'SELECT') node.options[0].textContent = value; else node.value = value;
       });
-      renderPerpetualCreationLeverage(config, addPanel);
+      const protocolCap = Number(config?.maxLeverage || 0);
+      const creationCap = config?.internalPilot ? Math.min(protocolCap || 4, 4) : protocolCap;
+      const leverageLabel = creationCap > 0 ? `${creationCap}×` : '—';
+      const leverageField = addPanel.querySelector('[data-service-setting="2"]');
+      if (leverageField) {
+        if (leverageField.tagName === 'SELECT') leverageField.options[0].textContent = leverageLabel;
+        else leverageField.value = leverageLabel;
+      }
       addPanel.querySelector('[data-service-summary]').textContent = uiCopy("签名钱包：", "Signing wallet: ") + (state.account ? short(state.account) : uiCopy("未连接", "Not connected")) + uiCopy(" · 目标合约：", " · Target contract: ") + (config.contractAddress || uiCopy('等待配置', 'Awaiting configuration')) + uiCopy(" · 创建时同步存入最低 LP", " · Minimum LP deposited during creation");
       const submit = addPanel.querySelector('[data-perp-service-submit]');
       submit.disabled = Boolean(state.perpServiceBusy || !config.enabled || !config.permissionlessMarketCreation || !isBscFeatureChain());
@@ -3064,7 +3125,19 @@
       set('.pool-identity h2', uiMarkup`${market ? perpetualPairLabel(market) : '—'} · 聚合池 #${market ? Number(market.marketId) : '—'}`);
       set('.pool-identity p', uiMarkup`${selectedNetwork().shortName} · 链上聚合 LP 池`);
       const logo = poolDetail.querySelector('.pool-identity img');
-      if (logo) { logo.src = market?.tokenImage || './assets/tokens/generic.svg'; logo.alt = market?.tokenSymbol || ''; }
+      if (logo) {
+        const logoUrl = market?.tokenLogoUrl || '';
+        logo.hidden = !logoUrl;
+        if (logoUrl) { logo.src = logoUrl; logo.alt = market?.tokenSymbol || ''; }
+        let letter = logo.nextElementSibling;
+        if (!letter?.classList.contains('perps-letter-logo')) {
+          letter = logo.ownerDocument.createElement('span');
+          letter.className = 'perps-letter-logo';
+          logo.after(letter);
+        }
+        letter.hidden = Boolean(logoUrl) || !market?.tokenSymbol;
+        letter.textContent = String(market?.tokenSymbol || '').charAt(0).toUpperCase();
+      }
       const summaries = [...poolDetail.querySelectorAll('.pool-identity .plain-summary span')];
       [uiMarkup`${unit} 结算`, uiCopy("LP 按链上份额记账", "LP accounting uses on-chain shares"), uiCopy("资金可能亏损", "Funds are at risk")].forEach((label, i) => { if (summaries[i]) summaries[i].textContent = label; });
       set('.pool-health > strong', market?.enabled ? (market.closeOnly ? uiCopy("只减仓", "Reduce-only") : uiCopy("市场已启用", "Market enabled")) : uiCopy("市场未开放", "MarketNot open"));
@@ -3143,12 +3216,17 @@
       }
       const rows = filteredActivity.map(item => {
         const itemMarket = state.perpMarkets.find(candidate => Number(candidate.marketId) === Number(item.marketId));
+        const logo = itemMarket?.tokenLogoUrl
+          ? `<img src="${escapeHtml(itemMarket.tokenLogoUrl)}" alt="${escapeHtml(itemMarket.tokenSymbol || '')}">`
+          : itemMarket?.tokenSymbol
+            ? `<span class="perps-letter-logo" aria-label="${escapeHtml(itemMarket.tokenSymbol)}">${escapeHtml(String(itemMarket.tokenSymbol).charAt(0).toUpperCase())}</span>`
+            : '';
         const hash = String(item.lastTxHash || '');
         const validHash = /^0x[0-9a-fA-F]{64}$/.test(hash);
         const currentPosition = item.currentPosition === true;
         const label = currentPosition ? '当前未平仓位' : ({ open: '开仓', close: '平仓', liquidate: '清算', expire: '到期结算' }[item.eventType] || '未知事件');
         return uiMarkup`<article class="onchain-row">
-          <div class="record-identity"><img src="${escapeHtml(itemMarket?.tokenImage || './assets/tokens/generic.svg')}" alt=""><div><strong>${escapeHtml(itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`)}</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
+          <div class="record-identity">${logo}<div><strong>${escapeHtml(itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`)}</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
           <div class="record-cell"><strong>${label}</strong><span>${escapeHtml(short(item.traderAddress || ''))}</span></div>
           <div class="record-cell"><span>成交价</span><strong>—</strong></div>
           <div class="record-cell"><span>保证金 / 仓位</span><strong>—</strong></div>
@@ -3469,7 +3547,7 @@
         if (!Array.isArray(transactions) || transactions.length < 1 || transactions.length > 3) {
           throw new Error("市场创建交易步骤无效，已阻止签名");
         }
-        const transaction = transactions.at(-1);
+        let transaction = transactions.at(-1);
         const approvalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(prepared.minLiquidityRaw)}`;
         const resetApprovalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(0)}`;
         const approvals = transactions.slice(0, -1);
@@ -3488,6 +3566,30 @@
         for (const approval of approvals) {
           await sendVaultTransaction(approval, approval.label || "授权永续 Quote LP", undefined, undefined, assertCurrent);
         }
+        // Wallet approval can take longer than the Keeper demand lease. Refresh
+        // readiness and the exact creation transaction before requesting a new
+        // wallet signature; never reuse the pre-approval creation snapshot.
+        const refreshed = await api("v1/pump/perpetual/prepare-market", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ walletAddress: account, tokenAddress }),
+        });
+        assertCurrent();
+        const freshTransaction = refreshed?.transactions?.[0];
+        if (refreshed?.existingMarketId != null
+          || String(refreshed?.tokenAddress || "").toLowerCase() !== tokenAddress
+          || String(refreshed?.quoteTokenAddress || "").toLowerCase() !== quoteToken
+          || String(refreshed?.oracleAddress || "").toLowerCase() !== oracle
+          || String(refreshed?.minLiquidityRaw) !== String(prepared.minLiquidityRaw)
+          || String(refreshed?.maxLeverage) !== String(prepared.maxLeverage)
+          || refreshed?.transactions?.length !== 1
+          || String(freshTransaction?.to || "").toLowerCase() !== contractAtStart
+          || normalizeChainId(freshTransaction?.chainId || freshTransaction?.chain_id || "") !== "0x38"
+          || BigInt(freshTransaction?.value || "0") !== 0n
+          || String(freshTransaction?.data || "").toLowerCase() !== expectedData) {
+          throw new Error("授权后市场参数或运维状态已变化，已阻止创建签名；不会重复授权，请重试");
+        }
+        transaction = freshTransaction;
         txHash = await sendVaultTransaction(
           transaction,
           transaction.label || "创建永续市场并存入最低 Quote LP",
@@ -5733,6 +5835,11 @@
       event.preventDefault();
       handlePerpetualSubmit().catch((error) => toastError(error, "永续操作失败"));
     });
+    const scrollToPerpetualOrderForm = () => {
+      const scroll = () => $('[data-panel="perps"] .perps-order-column')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(scroll);
+      else window.setTimeout(scroll, 0);
+    };
     root.addEventListener("click", (event) => {
       const shortcut = event.target.closest('[data-perp-shortcut]');
       if (shortcut) {
@@ -5775,6 +5882,7 @@
         if (openButton.dataset.side) applySide(openButton.dataset.side === "sell");
         if (openButton.dataset.perpMarketId != null) {
           void Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualCandles()]).catch((error) => toastError(error, "永续市场读取失败"));
+          scrollToPerpetualOrderForm();
         }
         return;
       }
@@ -5853,6 +5961,7 @@
       }
       const marketButton = event.target.closest("[data-real-perp-market]");
       if (marketButton) {
+        event.preventDefault();
         state.selectedPerpMarketId = Number(marketButton.dataset.realPerpMarket);
         const legacySelect = $("#perp-market");
         if (legacySelect) legacySelect.value = String(state.selectedPerpMarketId);
@@ -5864,6 +5973,10 @@
         void loadPerpetualPosition().catch((error) => toastError(error, "永续仓位读取失败"));
         void loadPerpetualWalletBalance().catch((error) => toastError(error, "保证金余额读取失败"));
         void loadPerpetualCandles().catch((error) => toastError(error, "永续 K 线读取失败"));
+        // Market cards are above the chart on mobile. Make the selected card
+        // lead to the actual order form, including when it was already active.
+        scrollToPerpetualOrderForm();
+        return;
       }
       const perpInterval = event.target.closest("[data-perps-chart-interval]");
       if (perpInterval) {
