@@ -1325,6 +1325,7 @@
     const current = beginPerpRead('config', false);
     try {
       const config = await api("v1/pump/perpetual/config");
+      if (!current()) return;
       const markets = config?.enabled ? await api("v1/pump/perpetual/markets") : [];
       if (!current()) return;
       state.perpConfig = config;
@@ -1475,6 +1476,11 @@
     const modernPerps = Boolean($('[data-panel="perps"].active'));
     const action = modernPerps ? state.perpModernAction : $("#perp-action")?.value || "open_position";
     if (modernPerps && action === 'open_position') {
+      const requestedLeverage = Number($('#perps-leverage')?.value || 0);
+      const initialLeverageCap = marketLeverageCap(market);
+      if (!initialLeverageCap || !Number.isSafeInteger(requestedLeverage) || requestedLeverage < 1 || requestedLeverage > initialLeverageCap) {
+        throw new Error(`当前市场只允许 1–${initialLeverageCap || '—'} 倍杠杆，请刷新市场参数后重试`);
+      }
       const marketId = Number(market.marketId);
       const account = state.account;
       const latestMarkets = await api('v1/pump/perpetual/markets');
