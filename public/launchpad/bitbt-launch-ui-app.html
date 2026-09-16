@@ -308,6 +308,7 @@
     @media(max-width:440px){.creator-reward-card{grid-template-columns:auto 1fr}.creator-reward-card>.tag{grid-column:2}.profile-menu-group .menu-row>.tag,.profile-menu-group .menu-row>.menu-meta,.profile-menu-group .menu-row>.status-good{display:none}.split-recipient{grid-template-columns:auto 1fr 52px auto}.choice-pills{display:grid;grid-template-columns:repeat(3,1fr)}.creator-tool-grid{grid-template-columns:1fr}.tool-card.featured{min-height:160px}.tool-card.compact{min-height:68px}.profile-section-head>span{max-width:120px;text-align:right}.invite-hero-copy h1{font-size:23px}.invite-share-row{display:grid;grid-template-columns:1fr 1fr}.invite-share-row .primary{grid-column:1/-1;width:100%}.invite-share-row .secondary{width:100%;justify-content:center}.invite-code-line{align-items:flex-end}.invite-metric-grid{grid-template-columns:1fr 1fr}.invite-metric-grid article{min-height:98px;padding:12px}.referral-list>div{grid-template-columns:auto minmax(0,1fr)}.referral-list>div>span:last-child{grid-column:2;text-align:left}.kol-data-grid{grid-template-columns:1fr 1fr}}
   </style>
 <style id="bitbt-live-extensions">
+  .perps-price-refresh{border:0;background:transparent;color:#ffd21c;font:9px/1.3 "IBM Plex Sans",sans-serif;cursor:pointer}.perps-price-explanation{display:block;margin-top:7px;color:#818681;font:9px/1.4 "IBM Plex Sans",sans-serif}
     .perps-keeper-hint{margin:10px 0 0;padding:10px 12px;border:1px solid #74621b;border-radius:9px;background:#211d0e;color:#f2d778;font-size:11px;line-height:1.5}.perps-keeper-hint[hidden]{display:none}
     .perps-order-market{border:1px solid #685a10;border-radius:12px;background:#211d0d;padding:12px 14px;margin-bottom:12px}.perps-order-market span,.perps-order-market strong,.perps-order-market small{display:block}.perps-order-market span{color:#b8a64c;font-size:10px}.perps-order-market strong{color:#fff;font-size:20px;line-height:1.35;overflow-wrap:anywhere;margin-top:3px}.perps-order-market small{color:#a5a9a3;font-size:11px;line-height:1.5;margin-top:4px}
     .perps-pair-logos{display:inline-flex;align-items:center;flex:0 0 auto}.perps-pair-logos img{display:block;object-fit:cover;border-radius:50%}.perps-pair-logos img+img{margin-left:-8px;border:2px solid #101213}.perps-symbol .perps-pair-logos img{width:48px;height:48px}.perps-symbol .perps-pair-logos img+img{width:27px;height:27px;align-self:flex-end}.perps-order-market .perps-order-identity{display:flex;align-items:center;gap:10px;margin-top:4px}.perps-order-market .perps-pair-logos img{width:30px;height:30px}.perps-order-market .perps-pair-logos img+img{width:19px;height:19px}.perps-order-market .perps-order-identity strong{margin:0}.perps-pairs img.perps-quote-logo{width:15px;height:15px;margin-left:-10px;border:2px solid #111314}.perps-search-item img.perps-quote-logo{width:16px;height:16px;margin-left:-13px;border:2px solid #101213}
@@ -1324,15 +1325,17 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                     </div>
                     <div class="perps-field">
                       <div class="order-label">
-                        <span>委托价格</span><span>最优市场价</span>
+                        <span>可接受成交价</span><button class="perps-price-refresh" type="button" data-perps-use-market-price>填入当前预言机价 <span data-perps-market-price>—</span></button>
                       </div>
                       <div class="amount-input">
                         <input
-                          value="市价"
-                          readonly
-                          aria-label="委托价格"
+                          id="perps-price-limit"
+                          inputmode="decimal"
+                          placeholder="等待当前价格"
+                          aria-label="可接受成交价，开多为最高价，开空为最低价"
                         /><strong data-perps-quote-unit>—</strong>
                       </div>
+                      <small class="perps-price-explanation">市价立即成交：开多为最高价，开空为最低价；不会创建挂单。</small>
                     </div>
                     <div class="perps-field">
                       <div class="order-label">
