@@ -196,6 +196,7 @@ test('wallet-created perpetual market pins context and continues directly to poo
   const shown: string[] = [];
   const preferences = new Map<string, string>();
   let transactionsSent = 0;
+  let prepareCalls = 0;
   const context = vm.createContext({
     state,
     parsePerpMarketId,
@@ -208,19 +209,21 @@ test('wallet-created perpetual market pins context and continues directly to poo
     readLocalPreference: (key: string) => preferences.get(key) || '',
     writeLocalPreference: (key: string, value: string) => value ? preferences.set(key, value) : preferences.delete(key),
     $: (selector: string) => selector === '#perps-contract-address' ? { value: token } : null,
-    api: async (path: string) => path.endsWith('/market-created')
-      ? { marketId: 9, tokenAddress: token }
-      : {
+    api: async (path: string) => {
+      if (path.endsWith('/market-created')) return { marketId: 9, tokenAddress: token };
+      prepareCalls += 1;
+      return {
         tokenAddress: token,
         quoteTokenAddress: quote,
         oracleAddress: oracle,
         maxLeverage: 10,
         minLiquidityRaw: '1000',
-        transactions: [
+        transactions: prepareCalls === 1 ? [
           { to: quote, chainId: '0x38', value: '0x0', data: approval, label: 'Approve tBTUSD' },
           { to: contract, chainId: '0x38', value: '0x0', data, label: 'Create and fund' },
-        ],
-      },
+        ] : [{ to: contract, chainId: '0x38', value: '0x0', data, label: 'Create and fund' }],
+      };
+    },
     normalizeChainId: (value: string) => value,
     sendVaultTransaction: async (_tx: unknown, _label: string, _broadcast: unknown, _submitting: unknown, assertContext: () => void) => {
       assertContext();
@@ -235,6 +238,7 @@ test('wallet-created perpetual market pins context and continues directly to poo
   });
   vm.runInContext(`${source.slice(start, end)}\nglobalThis.run = createPermissionlessPerpetualMarket;`, context);
   await context.run();
+  assert.equal(prepareCalls, 2);
   assert.equal(transactionsSent, 2);
   assert.equal(state.selectedPerpMarketId, 9);
   assert.equal(shown.at(-1), 'perps-create-pool');
@@ -258,7 +262,14 @@ test('market creation accepts only the exact 1/2/3-step matrix and stops before 
   const approve = { to: quote, chainId: '0x38', value: '0x0', data: approveData, label: 'Approve' };
   const reset = { to: quote, chainId: '0x38', value: '0x0', data: resetData, label: 'Reset' };
 
-  const run = async (transactions: Record<string, string>[], failAt = -1, changeContextAt = -1, confirmedMarketId: unknown = 9) => {
+  const run = async (
+    transactions: Record<string, string>[],
+    failAt = -1,
+    changeContextAt = -1,
+    confirmedMarketId: unknown = 9,
+    refreshedTransactions: Record<string, string>[] = [create],
+    refreshedOverrides: Record<string, unknown> = {},
+  ) => {
     const provider = {};
     const state: TestState = {
       account,
@@ -268,6 +279,7 @@ test('market creation accepts only the exact 1/2/3-step matrix and stops before 
       perpServiceBusy: false,
     };
     let sends = 0;
+    let prepareCalls = 0;
     const context = vm.createContext({
       state,
       parsePerpMarketId,
@@ -280,9 +292,19 @@ test('market creation accepts only the exact 1/2/3-step matrix and stops before 
       readLocalPreference: () => '',
       writeLocalPreference: () => undefined,
       $: (selector: string) => selector === '#perps-contract-address' ? { value: token } : null,
-      api: async (path: string) => path.endsWith('/market-created')
-        ? { marketId: confirmedMarketId, tokenAddress: token }
-        : { tokenAddress: token, quoteTokenAddress: quote, oracleAddress: oracle, maxLeverage: 10, minLiquidityRaw: '1000', transactions },
+      api: async (path: string) => {
+        if (path.endsWith('/market-created')) return { marketId: confirmedMarketId, tokenAddress: token };
+        prepareCalls += 1;
+        return {
+          tokenAddress: token,
+          quoteTokenAddress: quote,
+          oracleAddress: oracle,
+          maxLeverage: 10,
+          minLiquidityRaw: '1000',
+          transactions: prepareCalls === 1 ? transactions : refreshedTransactions,
+          ...(prepareCalls === 1 ? {} : refreshedOverrides),
+        };
+      },
       normalizeChainId: (value: string) => value,
       sendVaultTransaction: async (_tx: unknown, _label: string, _broadcast: unknown, _submitting: unknown, assertContext: () => void) => {
         assertContext();
@@ -297,13 +319,28 @@ test('market creation accepts only the exact 1/2/3-step matrix and stops before 
       showOperationDialog: () => undefined,
     });
     vm.runInContext(`${source.slice(start, end)}\nglobalThis.run = createPermissionlessPerpetualMarket;`, context);
-    return { invoke: () => context.run(), sends: () => sends };
+    return { invoke: () => context.run(), sends: () => sends, prepares: () => prepareCalls };
   };
 
   for (const valid of [[create], [approve, create], [reset, approve, create]]) {
     const harness = await run(valid);
     await harness.invoke();
     assert.equal(harness.sends(), valid.length);
+    assert.equal(harness.prepares(), 2);
+  }
+
+  for (const [refreshedTransactions, refreshedOverrides] of [
+    [[approve, create], {}],
+    [[{ ...create, to: quote }], {}],
+    [[{ ...create, chainId: '0x1' }], {}],
+    [[{ ...create, data: `${createData.slice(0, -1)}0` }], {}],
+    [[{ ...create, value: '0x1' }], {}],
+    [[create], { minLiquidityRaw: '1001' }],
+  ] as [Record<string, string>[], Record<string, unknown>][]) {
+    const harness = await run([approve, create], -1, -1, 9, refreshedTransactions, refreshedOverrides);
+    await assert.rejects(harness.invoke(), /授权后市场参数或运维状态已变化/);
+    assert.equal(harness.prepares(), 2);
+    assert.equal(harness.sends(), 1, 'approval may be sent, but creation must not be signed');
   }
 
   const invalid = [

@@ -30,6 +30,7 @@ function fixture() {
       refreshed++;
       return { transactions: [operation], fresh: true };
     },
+    preparePerpetualWhenReady: async (body: any) => context.api('v1/pump/perpetual/prepare', { body: JSON.stringify(body) }),
     sendVaultTransaction: async (tx: any,_label: string,callback: any) => {
       sent.push(tx.label); callback?.('0xhash'); return '0xhash';
     },

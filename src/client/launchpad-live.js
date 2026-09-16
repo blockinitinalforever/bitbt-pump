@@ -1144,7 +1144,7 @@
         const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
         const needsWallet = !state.account;
         submit.disabled = state.perpSubmitting || (!needsWallet && (!enabled || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly))));
-        submit.textContent = state.perpKeeperWaking ? uiCopy('运维服务启动中，请稍候…', 'Starting operations, please wait…') : state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !market ? uiCopy('请选择市场', 'Select market') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : state.perpModernAction === 'close_position' ? uiCopy(`确认平仓 ${perpetualPairLabel(market)}`, `Close ${perpetualPairLabel(market)}`) : uiCopy(`确认开${isShort ? '空' : '多'} ${perpetualPairLabel(market)}`, `${isShort ? 'Short' : 'Long'} ${perpetualPairLabel(market)}`);
+        submit.textContent = state.perpKeeperWaking ? uiCopy('运维服务启动中，请稍候…', 'Starting operations, please wait…') : state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : !market ? uiCopy('请选择市场', 'Select market') : state.perpModernAction === 'close_position' ? uiCopy(`确认平仓 ${perpetualPairLabel(market)}`, `Close ${perpetualPairLabel(market)}`) : uiCopy(`确认开${isShort ? '空' : '多'} ${perpetualPairLabel(market)}`, `${isShort ? 'Short' : 'Long'} ${perpetualPairLabel(market)}`);
         submit.removeAttribute('data-toast');
       }
       renderPerpetualChart();
@@ -5835,9 +5835,11 @@
       event.preventDefault();
       handlePerpetualSubmit().catch((error) => toastError(error, "永续操作失败"));
     });
-    const scrollToPerpetualOrderForm = () => window.requestAnimationFrame(() => {
-      $('[data-panel="perps"] .perps-order-column')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    const scrollToPerpetualOrderForm = () => {
+      const scroll = () => $('[data-panel="perps"] .perps-order-column')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(scroll);
+      else window.setTimeout(scroll, 0);
+    };
     root.addEventListener("click", (event) => {
       const shortcut = event.target.closest('[data-perp-shortcut]');
       if (shortcut) {
