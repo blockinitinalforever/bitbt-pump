@@ -1346,6 +1346,29 @@
     if (requiredApproval > 0n && approvals.length && (approvals.at(-1) !== requiredApproval || approvals.slice(0, -1).some((amount) => amount !== 0n))) throw new Error("永续授权额度绑定失败");
     if (requiredApproval === 0n && approvals.length) throw new Error("当前永续操作不需要 ERC20 授权");
   };
+  const preparePerpetualWhenReady = async (request, assertContext = () => {}) => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      assertContext();
+      try {
+        const prepared = await api("v1/pump/perpetual/prepare", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        });
+        assertContext();
+        return prepared;
+      } catch (error) {
+        if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
+        text("[data-perp-status]", "正在按需唤醒永续风控与预言机，请稍候，无需重复点击…");
+        if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；当前不会发起新的钱包签名");
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        assertContext();
+        state.perpConfig = await api("v1/pump/perpetual/config");
+        assertContext();
+      }
+    }
+    throw new Error("永续交易参数暂未准备完成");
+  };
   const preparePerpetualAction = async () => {
     if (!state.account) await connectWallet();
     const market = selectedPerpMarket();
@@ -1380,24 +1403,7 @@
       body.recipient = String($("#perp-trader")?.value || "").trim().toLowerCase();
       if (!/^0x[0-9a-f]{40}$/.test(body.recipient) || /^0x0{40}$/.test(body.recipient)) throw new Error("请输入有效的目标仓位钱包地址");
     }
-    let prepared = null;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      try {
-        prepared = await api("v1/pump/perpetual/prepare", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        break;
-      } catch (error) {
-        if (!String(error?.message || error).includes("perpetual keeper is warming up")) throw error;
-        text("[data-perp-status]", "正在按需唤醒永续风控与预言机，请稍候，无需重复点击…");
-        if (attempt === 39) throw new Error("永续风控唤醒超时，请稍后重试；当前不会发起钱包签名或扣费");
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        state.perpConfig = await api("v1/pump/perpetual/config");
-      }
-    }
-    if (!prepared) throw new Error("永续交易参数暂未准备完成");
+    const prepared = await preparePerpetualWhenReady(body);
     validatePreparedPerpetual(prepared, market, body);
     state.preparedPerpAction = prepared;
     state.preparedPerpRequest = body;
@@ -1433,7 +1439,7 @@
       }
       if (approvals.length) {
         assertContext();
-        prepared = await api("v1/pump/perpetual/prepare", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
+        prepared = await preparePerpetualWhenReady(request, assertContext);
         continue;
       }
       validatePreparedPerpetual(prepared, market, request);
