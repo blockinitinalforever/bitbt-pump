@@ -166,7 +166,7 @@ test("perpetual terminal renders spot candles, oracle mark price, and indexed ac
     const url = String(input);
     requests.push(url);
     if (url.includes("v1/pump/perpetual/config")) return { ok: true, json: async () => ({ data: { enabled: true, operationsReady: true, openingsPaused: false, maxLeverage: 20, feePercent: "0.05%" } }) };
-    if (url.includes("v1/pump/perpetual/markets")) return { ok: true, json: async () => ({ data: [{ marketId: 7, tokenAddress, tokenName: "Code Token", tokenSymbol: "CODET", quoteTokenAddress: "0x2222222222222222222222222222222222222222", quoteTokenSymbol: "tBTUSD", quoteDecimals: 18, oraclePriceE18: "2500000000000000000", liquidityRaw: "1000000000000000000000", lockedNotionalRaw: "40000000000000000000", longNotionalRaw: "25000000000000000000", shortNotionalRaw: "15000000000000000000", maxPositionNotionalRaw: "100000000000000000000", maxOpenInterestRaw: "500000000000000000000", minKeeperRewardRaw: "100000000000000000", platformFeeClaimableRaw: "0", platformFeeLiabilityRaw: "0", maxLeverage: 20, maxFundingRatePpmPerDay: 1000, enabled: true, closeOnly: false }] }) };
+    if (url.includes("v1/pump/perpetual/markets")) return { ok: true, json: async () => ({ data: [{ marketId: 7, tokenAddress, tokenName: "Code Token", tokenSymbol: "CODET", displayName: "CODET/tBTUSD", quoteTokenAddress: "0x2222222222222222222222222222222222222222", quoteTokenSymbol: "tBTUSD", quoteDecimals: 18, oraclePriceE18: "2500000000000000000", liquidityRaw: "1000000000000000000000", lockedNotionalRaw: "40000000000000000000", longNotionalRaw: "25000000000000000000", shortNotionalRaw: "15000000000000000000", maxPositionNotionalRaw: "100000000000000000000", maxOpenInterestRaw: "500000000000000000000", minKeeperRewardRaw: "100000000000000000", platformFeeClaimableRaw: "0", platformFeeLiabilityRaw: "0", maxLeverage: 20, maxFundingRatePpmPerDay: 1000, enabled: true, closeOnly: false }] }) };
     if (url.includes("v1/pump/perpetual/activity")) return { ok: true, json: async () => ({ data: [{ marketId: 7, trader: "0x3333333333333333333333333333333333333333", isOpen: true, isLong: true, collateralRaw: "10000000000000000000", notionalRaw: "20000000000000000000", entryPriceE18: "2400000000000000000", openedAt: 1_789_000_000 }] }) };
     if (url.includes("v1/pump/candles")) return { ok: true, json: async () => ({ data: [{ open_time: 1_789_000_000, open: "1", high: "1.2", low: "0.9", close: "1.1", volume_quote: "12" }, { open_time: 1_789_000_060, open: "1.1", high: "1.4", low: "1", close: "1.25", volume_quote: "15" }] }) };
     if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
@@ -181,7 +181,7 @@ test("perpetual terminal renders spot candles, oracle mark price, and indexed ac
   for (let attempt = 0; attempt < 20 && window.document.querySelector("[data-perps-price]")?.textContent === "—"; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  assert.equal(window.document.querySelector("[data-perps-symbol]")?.textContent, "CODET");
+  assert.equal(window.document.querySelector("[data-perps-symbol]")?.textContent, "CODET/tBTUSD");
   assert.match(window.document.querySelector("[data-perps-price]")?.textContent || "", /1\.25/, requests.join("\n"));
   assert.match(window.document.querySelector("[data-perps-mark]")?.textContent || "", /2\.5/);
   assert.match(window.document.querySelector("[data-perps-oi]")?.textContent || "", /40 tBTUSD/);
