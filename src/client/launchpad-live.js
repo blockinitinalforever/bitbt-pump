@@ -3469,7 +3469,7 @@
         if (!Array.isArray(transactions) || transactions.length < 1 || transactions.length > 3) {
           throw new Error("市场创建交易步骤无效，已阻止签名");
         }
-        const transaction = transactions.at(-1);
+        let transaction = transactions.at(-1);
         const approvalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(prepared.minLiquidityRaw)}`;
         const resetApprovalData = `0x095ea7b3${encodeAddressWord(contractAtStart)}${encodeUintWord(0)}`;
         const approvals = transactions.slice(0, -1);
@@ -3488,6 +3488,30 @@
         for (const approval of approvals) {
           await sendVaultTransaction(approval, approval.label || "授权永续 Quote LP", undefined, undefined, assertCurrent);
         }
+        // Wallet approval can take longer than the Keeper demand lease. Refresh
+        // readiness and the exact creation transaction before requesting a new
+        // wallet signature; never reuse the pre-approval creation snapshot.
+        const refreshed = await api("v1/pump/perpetual/prepare-market", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ walletAddress: account, tokenAddress }),
+        });
+        assertCurrent();
+        const freshTransaction = refreshed?.transactions?.[0];
+        if (refreshed?.existingMarketId != null
+          || String(refreshed?.tokenAddress || "").toLowerCase() !== tokenAddress
+          || String(refreshed?.quoteTokenAddress || "").toLowerCase() !== quoteToken
+          || String(refreshed?.oracleAddress || "").toLowerCase() !== oracle
+          || String(refreshed?.minLiquidityRaw) !== String(prepared.minLiquidityRaw)
+          || String(refreshed?.maxLeverage) !== String(prepared.maxLeverage)
+          || refreshed?.transactions?.length !== 1
+          || String(freshTransaction?.to || "").toLowerCase() !== contractAtStart
+          || normalizeChainId(freshTransaction?.chainId || freshTransaction?.chain_id || "") !== "0x38"
+          || BigInt(freshTransaction?.value || "0") !== 0n
+          || String(freshTransaction?.data || "").toLowerCase() !== expectedData) {
+          throw new Error("授权后市场参数或运维状态已变化，已阻止创建签名；不会重复授权，请重试");
+        }
+        transaction = freshTransaction;
         txHash = await sendVaultTransaction(
           transaction,
           transaction.label || "创建永续市场并存入最低 Quote LP",
