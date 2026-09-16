@@ -1108,12 +1108,17 @@
         ? formatUnits(BigInt(market.oraclePriceE18), 18, 18) : '';
       text('[data-perps-market-price]', marketPrice || '—');
       if (priceInput) {
+        const oracleRaw = marketPrice ? BigInt(market.oraclePriceE18) : 0n;
+        const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
+        const defaultLimit = oracleRaw > 0n
+          ? formatUnits(isShort ? oracleRaw * 99n / 100n : (oracleRaw * 101n + 99n) / 100n, 18, 18)
+          : '';
         const marketId = market ? String(market.marketId) : '';
         if (priceInput.dataset.marketId !== marketId) {
           priceInput.dataset.marketId = marketId;
           priceInput.dataset.userEdited = '';
         }
-        if (!priceInput.dataset.userEdited) priceInput.value = marketPrice;
+        if (!priceInput.dataset.userEdited) priceInput.value = defaultLimit;
         priceInput.disabled = !marketPrice || state.perpSubmitting;
       }
       text('[data-perps-change]', priceChange == null ? '—' : `${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%`);
@@ -1319,15 +1324,13 @@
     perpStatusRefreshInFlight = true;
     const current = beginPerpRead('config', false);
     try {
-      const previousEnabled = Boolean(state.perpConfig?.enabled);
       const config = await api("v1/pump/perpetual/config");
-      const markets = config?.enabled && (!previousEnabled || !state.perpMarkets.length) ? await api("v1/pump/perpetual/markets") : null;
+      if (!current()) return;
+      const markets = config?.enabled ? await api("v1/pump/perpetual/markets") : [];
       if (!current()) return;
       state.perpConfig = config;
-      if (markets) {
-        state.perpMarkets = markets;
-        selectInitialPerpMarket(markets);
-      }
+      state.perpMarkets = markets;
+      selectInitialPerpMarket(markets);
       renderPerpetual();
       setPerpReadError('config');
     } catch (error) {
@@ -1468,10 +1471,25 @@
   };
   const preparePerpetualAction = async () => {
     if (!state.account) await connectWallet();
-    const market = selectedPerpMarket();
+    let market = selectedPerpMarket();
     if (!market || !state.perpConfig?.enabled) throw new Error("永续市场尚未开放");
     const modernPerps = Boolean($('[data-panel="perps"].active'));
     const action = modernPerps ? state.perpModernAction : $("#perp-action")?.value || "open_position";
+    if (modernPerps && action === 'open_position') {
+      const requestedLeverage = Number($('#perps-leverage')?.value || 0);
+      const initialLeverageCap = marketLeverageCap(market);
+      if (!initialLeverageCap || !Number.isSafeInteger(requestedLeverage) || requestedLeverage < 1 || requestedLeverage > initialLeverageCap) {
+        throw new Error(`当前市场只允许 1–${initialLeverageCap || '—'} 倍杠杆，请刷新市场参数后重试`);
+      }
+      const marketId = Number(market.marketId);
+      const account = state.account;
+      const latestMarkets = await api('v1/pump/perpetual/markets');
+      if (state.account !== account || Number(selectedPerpMarket()?.marketId) !== marketId) throw new Error('钱包或市场已变化，请重新确认订单');
+      market = Array.isArray(latestMarkets) ? latestMarkets.find((item) => Number(item.marketId) === marketId) : null;
+      if (!market) throw new Error('当前市场已不可用，请刷新页面');
+      state.perpMarkets = latestMarkets;
+      renderPerpetual();
+    }
     if (["open_position", "deposit_liquidity"].includes(action) && market.closeOnly) throw new Error("永续市场当前只允许平仓、清算和安全提取");
     if (action === "open_position" && Number(market.epochEnd || 0) > 0 && Date.now() >= Number(market.epochEnd) * 1000) throw new Error("当前风险周期已结束，等待存量仓位结算和下一周期开启");
     if (["deposit_liquidity", "withdraw_liquidity"].includes(action) && BigInt(market.lockedNotionalRaw || "0") > 0n) throw new Error("当前市场存在未平仓仓位，LP 份额暂时锁定以防未实现盈亏套利");
@@ -6040,7 +6058,11 @@
       if (event.target.closest('[data-perps-use-market-price]')) {
         event.preventDefault();
         const priceInput = $('#perps-price-limit');
-        if (priceInput) priceInput.dataset.userEdited = '';
+        const marketPrice = $('[data-perps-market-price]')?.textContent?.trim();
+        if (priceInput && marketPrice && marketPrice !== '—') {
+          priceInput.value = marketPrice;
+          priceInput.dataset.userEdited = 'true';
+        }
         state.preparedPerpAction = null;
         state.preparedPerpRequest = null;
         renderPerpetual();
