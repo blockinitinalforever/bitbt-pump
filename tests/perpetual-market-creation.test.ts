@@ -82,6 +82,63 @@ test('opening leverage controls follow the selected market cap, never the global
   assert.match(source, /body\.leverage > leverageCap/);
 });
 
+test('production open handler rejects 5x against a 4x market before prepare or wallet signing', async () => {
+  const part = (start: string, end: string) => {
+    const from = source.indexOf(`  const ${start} =`);
+    const to = source.indexOf(`  const ${end} =`, from);
+    assert.ok(from >= 0 && to > from, `${start} production handler must exist`);
+    return source.slice(from, to);
+  };
+  const state = {
+    account: '0x1111111111111111111111111111111111111111',
+    selectedPerpMarketId: 0,
+    perpMarkets: [{ marketId: 0, maxLeverage: 4, quoteDecimals: 18, epochEnd: 0, lockedNotionalRaw: '0' }],
+    perpConfig: { enabled: true, maxLeverage: 100 },
+    perpModernAction: 'open_position',
+    perpSubmitting: false,
+  };
+  let modern = true;
+  let prepareCalls = 0;
+  let walletRequests = 0;
+  const fields: Record<string, { value: string }> = {
+    '#perps-size': { value: '10' }, '#perps-leverage': { value: '5' },
+    '#perp-amount': { value: '10' }, '#perp-leverage': { value: '5' },
+    '#perp-action': { value: 'open_position' }, '#perp-market': { value: '0' },
+  };
+  const context = vm.createContext({
+    state,
+    parsePerpMarketId,
+    $: (selector: string) => selector === '[data-panel="perps"].active' ? (modern ? {} : null) : fields[selector] || null,
+    parseUnits: () => 10n,
+    api: async () => { prepareCalls += 1; throw new Error('prepare must not be called'); },
+    selectedProvider: () => ({ request: async () => { walletRequests += 1; throw new Error('wallet must not be called'); } }),
+    sendVaultTransaction: async () => { walletRequests += 1; throw new Error('wallet must not be called'); },
+    connectWallet: async () => { walletRequests += 1; throw new Error('wallet must not be called'); },
+    loadPerpetual: async () => undefined,
+    renderPerpetual: () => undefined,
+    executePerpetualAction: async () => { walletRequests += 1; throw new Error('execution must not be called'); },
+  });
+  vm.runInContext(
+    part('selectedPerpMarket', 'perpetualPairLabel')
+      + part('marketLeverageCap', 'renderPerpetualCreationLeverage')
+      + part('preparePerpetualAction', 'executePreparedPerpetual')
+      + part('submitPerpetualAction', 'pumpBasePath')
+      + ';globalThis.runOpen = handlePerpetualSubmit;',
+    context,
+  );
+  const runOpen = (context as { runOpen: () => Promise<unknown> }).runOpen;
+  await assert.rejects(runOpen(), /只允许 1–4 倍杠杆/);
+  modern = false;
+  await assert.rejects(runOpen(), /只允许 1–4 倍杠杆/);
+  state.selectedPerpMarketId = 1;
+  await assert.rejects(runOpen(), /永续市场尚未开放/);
+  state.selectedPerpMarketId = 0;
+  state.account = '0x2222222222222222222222222222222222222222';
+  await assert.rejects(runOpen(), /只允许 1–4 倍杠杆/);
+  assert.equal(prepareCalls, 0);
+  assert.equal(walletRequests, 0);
+});
+
 test('all BNB/BSC and Robinhood network selectors use their real logos', async () => {
   const { parseHTML } = await import('linkedom');
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
