@@ -869,7 +869,7 @@
       if (fallback) {
         fallback.hidden = false;
         fallback.textContent = selectedPerpMarket()
-          ? uiCopy("该 MEME 暂无可生成 K 线的真实成交。", "No real trades are available to build candles for this MEME.")
+          ? uiCopy("本站暂未索引到可绘制 K 线的现货成交；上方仍显示独立的 Oracle 标记价。", "No indexed spot trades are available for this chart yet; the independent Oracle mark price remains available above.")
           : uiCopy("选择已开放市场后显示真实成交 K 线。", "Select an open market to view real trade candles.");
       }
       return;
