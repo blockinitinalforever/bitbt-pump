@@ -2993,7 +2993,11 @@
       .join("");
     const addPanel = $('[data-panel="perps-add-contract"]');
     if (addPanel) {
-      const values = [uiCopy("受信任 Oracle（签名前校验）", "Trusted oracle (checked before signing)"), uiCopy("受信任 Quote Token", "Trusted quote token"), String(config.maxLeverage || '—') + '×', String(config.minLiquidityUsd || '—') + ' USD'];
+      // The internal pilot Oracle declares 10% max deviation. The on-chain
+      // margin rule therefore caps market creation at 4x, not the protocol's
+      // unrelated global 100x ceiling returned as config.maxLeverage.
+      const creationLeverage = config.internalPilot ? 4 : Number(config.maxLeverage || 0);
+      const values = [uiCopy("受信任 Oracle（签名前校验）", "Trusted oracle (checked before signing)"), uiCopy("受信任 Quote Token", "Trusted quote token"), creationLeverage ? `${creationLeverage}×` : '—', String(config.minLiquidityUsd || '—') + ' USD'];
       addPanel.querySelectorAll('[data-service-setting]').forEach(node => {
         const value = values[Number(node.dataset.serviceSetting)];
         if (node.tagName === 'SELECT') node.options[0].textContent = value; else node.value = value;
