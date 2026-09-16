@@ -189,12 +189,13 @@ test("perpetual terminal renders spot candles, oracle mark price, and indexed ac
   assert.ok(chartData.some((rows) => rows.length === 2));
 });
 
-type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean; sourceHtml?: string };
+type BootOptions = { account?: string; chainId?: string | number; selectedChain?: string; receiptStatus?: unknown; receiptPromise?: Promise<unknown>; missingTransaction?: boolean; pendingPerp?: { contract: string; hash: string }; sendRejects?: number; sendErrorCode?: number; estimateRejects?: number; nullHash?: boolean; nativeBalance?: bigint; tokenBalance?: bigint; estimatedGas?: bigint; pathname?: string; parentPathname?: string; session?: { token: string; address: string; expiresIn?: number }; pendingConfirmation?: Record<string, unknown>; providerTarget?: "ethereum" | "okxwallet" | "parent-okxwallet" | "binance" | "tokenpocket" | "eip6963" | "none"; walletConnect?: boolean; maliciousAnnouncement?: boolean; sourceHtml?: string };
 
 const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<unknown>, options: BootOptions = {}) => {
   const { window } = parseHTML(options.sourceHtml || html);
   const storage = new Map<string, string>();
   const localPreferences = new Map<string, string>();
+  if (options.pendingPerp && options.account) localPreferences.set(`bitbt_perp_pending:bsc:${options.pendingPerp.contract}:${options.account.toLowerCase()}`, options.pendingPerp.hash);
   if (options.selectedChain) localPreferences.set("bitbt_pump_chain", options.selectedChain);
   if (options.session) {
     storage.set("bitbt_pump_session", options.session.token);
@@ -217,7 +218,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   let currentChainId = options.chainId ?? "0x38";
   let sendRejectsRemaining = options.sendRejects ?? 0;
   let estimateRejectsRemaining = options.estimateRejects ?? 0;
-  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return currentChainId; if (method === "wallet_switchEthereumChain") { currentChainId = String(params?.[0]?.chainId || currentChainId); return null; } if (method === "personal_sign") return "0xsigned"; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_call") return `0x${(options.tokenBalance ?? 0n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return options.receiptPromise ? await options.receiptPromise : { status: options.receiptStatus ?? "0x1" }; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
+  const ethereum = { request: async ({ method, params }: { method: string; params?: Array<Record<string, unknown>> }) => { providerCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : []; if (method === "eth_chainId") return currentChainId; if (method === "wallet_switchEthereumChain") { currentChainId = String(params?.[0]?.chainId || currentChainId); return null; } if (method === "personal_sign") return "0xsigned"; if (method === "eth_getBalance") return `0x${(options.nativeBalance ?? 10n ** 19n).toString(16)}`; if (method === "eth_call") return `0x${(options.tokenBalance ?? 0n).toString(16)}`; if (method === "eth_getBlockByNumber") return { baseFeePerGas: "0x3b9aca00" }; if (method === "eth_estimateGas") { if (estimateRejectsRemaining > 0) { estimateRejectsRemaining -= 1; throw new Error("execution reverted: Address must end with 8888"); } return `0x${(options.estimatedGas ?? 2_000_000n).toString(16)}`; } if (method === "eth_sendTransaction") { if (sendRejectsRemaining > 0) { sendRejectsRemaining -= 1; const error = new Error("Provider rejected the request") as Error & { code?: number }; error.code = options.sendErrorCode; throw error; } if (options.nullHash) return null; if (params?.[0]) providerTransactions.push(params[0]); return `0x${"ab".repeat(32)}`; } if (method === "eth_getTransactionReceipt") return options.missingTransaction ? null : options.receiptPromise ? await options.receiptPromise : { status: options.receiptStatus ?? "0x1" }; if (method === "eth_getTransactionByHash" && options.missingTransaction) return null; throw new Error(`unexpected provider call: ${method}`); }, on: (event: string, callback: (value: unknown) => void) => { providerEvents[event] = callback; } };
   const untrustedProvider = { request: async ({ method }: { method: string }) => { untrustedProviderCalls.push(method); if (method === "eth_accounts" || method === "eth_requestAccounts") return ["0x9999999999999999999999999999999999999999"]; if (method === "eth_chainId") return "0x38"; if (method === "wallet_switchEthereumChain") return null; if (method === "personal_sign") return "0xattacker"; throw new Error(`unexpected untrusted provider call: ${method}`); }, on: () => undefined };
   Object.defineProperty(window, "location", { configurable: true, value: location });
   Object.defineProperty(window, "history", { configurable: true, value: history });
@@ -245,6 +246,7 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   if (options.maliciousAnnouncement) window.addEventListener("eip6963:requestProvider", () => window.dispatchEvent(new window.CustomEvent("eip6963:announceProvider", { detail: { info: { name: "OKX Wallet", rdns: "com.okex.wallet" }, provider: untrustedProvider } })));
   const localStorage = { getItem: (key: string) => localPreferences.get(key) ?? null, setItem: (key: string, value: string) => localPreferences.set(key, value), removeItem: (key: string) => localPreferences.delete(key) };
   Object.defineProperty(window, "localStorage", { configurable: true, value: localStorage });
+  Object.defineProperty(window, "confirm", { configurable: true, value: () => true });
   const context = { window, document: window.document, fetch: fetchImpl, ...providerGlobals, localStorage, sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) }, CSS: { escape: (value: string) => value }, history, location, navigator, TextEncoder, console, setTimeout, clearTimeout, setInterval: () => 0 } as Record<string, unknown>;
   const windowContext = { ...context };
   delete windowContext.history;
@@ -1008,6 +1010,32 @@ test("perpetual order shows the oracle market price in an editable price protect
   input.value = '0.013';
   input.dispatchEvent(new window.Event('input',{bubbles:true}));
   assert.equal(input.value,'0.013');
+});
+
+test("perpetual order clears a missing prior hash only after wallet checks", async () => {
+  const account = "0x1111111111111111111111111111111111111111";
+  const contract = "0x5555555555555555555555555555555555555555";
+  const hash = "0x" + "ab".repeat(32);
+  const market = { marketId: 0, tokenAddress: "0x2222222222222222222222222222222222222222", tokenSymbol: "TITAN", quoteTokenSymbol: "tBTUSD", quoteDecimals: 18, oraclePriceE18: "12910484093825212", dataStale: false, maxLeverage: 10, enabled: true, closeOnly: false, liquidityRaw: "0", lockedNotionalRaw: "0", longNotionalRaw: "0", shortNotionalRaw: "0", maxPositionNotionalRaw: "0", maxOpenInterestRaw: "0" };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("auth/siwe/session")) return {ok:true,json:async()=>({data:{address:account,expires_in:3600}})};
+    if (url.includes("perpetual/config")) return {ok:true,json:async()=>({data:{enabled:true,operationsReady:true,openingsPaused:false,contractAddress:contract}})};
+    if (url.includes("perpetual/markets")) return {ok:true,json:async()=>({data:[market]})};
+    if (url.includes("app/config")) return {ok:true,json:async()=>({data:{pump:{}}})};
+    return {ok:true,json:async()=>({data:[]})};
+  };
+  const {window,providerCalls} = await boot(response,{account,session:{token:"session",address:account},missingTransaction:true,pendingPerp:{contract,hash}});
+  window.document.querySelector('[data-open="perps"]')?.dispatchEvent(new window.Event("click",{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,60));
+  const pendingKey = `bitbt_perp_pending:bsc:${contract}:${account.toLowerCase()}`;
+  assert.equal(window.document.querySelector('[data-perps-pending-record]')?.hasAttribute('hidden'),false);
+  window.document.querySelector('[data-perps-clear-missing-pending]')?.dispatchEvent(new window.Event('click',{bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.ok(providerCalls.includes('eth_getTransactionReceipt'));
+  assert.ok(providerCalls.includes('eth_getTransactionByHash'));
+  assert.equal(window.localStorage.getItem(pendingKey),'');
+  assert.equal(window.document.querySelector('[data-perps-pending-record]')?.hasAttribute('hidden'),true);
 });
 
 test("wallet-scoped current market zero position renders and navigates from stale market one to close", async () => {
