@@ -495,7 +495,7 @@ test('pool detail updates data without replacing the original depth and particip
 test('pool selection never substitutes market zero for a stale or blank selection', () => {
   const source = fs.readFileSync(path.resolve('src/client/launchpad-live.js'), 'utf8');
   assert.match(source, /if \(state\.selectedPerpMarketId != null\)[\s\S]*?return selected \|\| null;/);
-  assert.match(source, /const marketIdValue = String\(\$\("#perps-pool-market"\)\?\.value \?\? ""\)\.trim\(\);/);
+  assert.match(source, /const marketIdValue = String\(boundTarget\?\.marketId \?\? \$\("#perps-pool-market"\)\?\.value \?\? ""\)\.trim\(\);/);
   assert.match(source, /if \(!marketIdValue\) throw new Error\("请选择有效的永续市场"\);/);
   assert.doesNotMatch(source, /Number\(\$\("#perps-pool-market"\)\?\.value\);/);
 });
@@ -511,7 +511,14 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
   const start = source.indexOf('  const initializePerpetualForms =');
   const renderStart = source.indexOf('  const renderPerpetualServices =', start);
   const end = source.indexOf('    const market = state.selectedPerpMarketId == null ? null : selectedPerpMarket();', renderStart);
-  const state = { account: '0x1234', selectedPerpMarketId: 0, perpConfig: { enabled:true, permissionlessMarketCreation:true, maxLeverage:10 }, perpServiceBusy:false, perpServiceRequests:[], perpMarkets:[{ marketId:0, tokenSymbol:'REAL', enabled:true, maxLeverage:10 }] };
+  const state = {
+    account: '0x1234', selectedPerpMarketId: 0, perpPoolTarget: null as null | { marketId:number; tokenAddress:string },
+    perpConfig: { enabled:true, permissionlessMarketCreation:true, maxLeverage:10 }, perpServiceBusy:false, perpServiceRequests:[],
+    perpMarkets:[
+      { marketId:0, tokenAddress:'0x0000000000000000000000000000000000000001', tokenSymbol:'OLD', enabled:true, maxLeverage:10 },
+      { marketId:1, tokenAddress:'0x0000000000000000000000000000000000000002', tokenSymbol:'NEW', enabled:false, maxLeverage:10 },
+    ],
+  };
   const context = vm.createContext({ ...renderLocale(), document, state, ui20260911:true, $:(selector: string) => document.querySelector(selector), isBscFeatureChain:()=>true, escapeHtml:(v: unknown)=>String(v), short:(v: string)=>v, serviceFeeLabel:()=> '0 BNB' });
   const render = vm.runInContext(source.slice(start,end) + '\n};\nrenderPerpetualServices', context);
   render();
@@ -533,14 +540,10 @@ test('perpetual creation refresh keeps delivered shells, inputs, and user drafts
   assert.doesNotMatch(add.textContent || '', /CASHCAT|\$483K|25,000|已验证/);
   assert.doesNotMatch(pool.querySelector('.pool-summary-card')!.textContent || '', /CASHCAT|50,000|10,000|0\.006 BNB/);
 
-  // Market creation selects the new market in state while the mounted form can
-  // still contain the previous market. The explicit selection must win.
-  state.perpMarkets = [
-    { marketId:0, tokenSymbol:'OLD', enabled:true, maxLeverage:10 },
-    { marketId:1, tokenSymbol:'NEW', enabled:false, maxLeverage:10 },
-  ];
+  // The market list and mounted options are unchanged. A creation-flow binding
+  // must still move the form from old market #0 to the exact new token/market.
   assert.equal((pool.querySelector('#perps-pool-market') as unknown as { value: string }).value, '0');
-  state.selectedPerpMarketId = 1;
+  state.perpPoolTarget = { marketId:1, tokenAddress:'0x0000000000000000000000000000000000000002' };
   render();
   assert.equal((pool.querySelector('#perps-pool-market') as unknown as { value: string }).value, '1');
 });
