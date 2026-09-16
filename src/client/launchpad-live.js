@@ -2958,7 +2958,14 @@
     const feeRecipient = config.serviceFeeRecipient || "—";
     // The address input remains mounted so refreshes preserve the user's draft.
     const poolAmountDraft = String($("#perps-pool-amount")?.value || "");
-    const poolMarketDraft = String($("#perps-pool-market")?.value || (state.selectedPerpMarketId ?? ""));
+    // A newly created market is selected in state before this panel refreshes.
+    // Prefer that explicit selection over the stale value still mounted in the
+    // pool form; otherwise market #0 can be submitted for a newly created #1.
+    const selectedMarketId = state.selectedPerpMarketId;
+    const poolMarketDraft = selectedMarketId != null
+      && state.perpMarkets.some((market) => Number(market.marketId) === Number(selectedMarketId))
+      ? String(selectedMarketId)
+      : String($("#perps-pool-market")?.value || "");
     const marketOptions = state.perpMarkets.length
       ? `${uiCopy('<option value="">请选择真实市场</option>', '<option value="">Select a real market</option>')}${state.perpMarkets.map((market) => `<option value="${Number(market.marketId)}" ${String(market.marketId) === poolMarketDraft ? "selected" : ""}>${escapeHtml(market.tokenSymbol || market.tokenName || "MEME")}-PERP · #${Number(market.marketId)}</option>`).join("")}`
       : uiCopy("<option value=\"\">当前没有可用市场</option>", "<option value=\"\">No markets available</option>");
