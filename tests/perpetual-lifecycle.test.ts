@@ -70,25 +70,49 @@ test('VM: broadcast then receipt timeout retains hash and blocks duplicate send'
   await assert.rejects(f.context.run({transactions:[operation]}, {}, f.request),/已成功/);
   assert.equal(sends,1);
 });
-test('VM: warming keeper causes one prepare POST and pending hash blocks prepare', async () => {
+test('VM: warming keeper polls read-only config then sends at most one more prepare POST', async () => {
   const code = pendingGuard + source.slice(source.indexOf('  const preparePerpetualWhenReady ='), source.indexOf('  const preparePerpetualAction ='));
   const stored = new Map<string,string>();
   let posts = 0;
+  let polls = 0;
   const context: any = {
     state: {perpConfig:{contractAddress:'proxy'}},
     readLocalPreference:(key:string)=>stored.get(key)||'',
     writeLocalPreference:(key:string,value:string)=>stored.set(key,value),
     selectedProvider:()=>({request:async()=>null}),
     receiptSucceeded:()=>false,
-    api:async()=>{posts++;throw Error('perpetual keeper is warming up; retry shortly');},
+    renderPerpetual:()=>{},
+    window:{setTimeout:(callback:()=>void)=>callback()},
+    api:async(url:string)=>{
+      if(url.endsWith('/config')) { polls++; return {contractAddress:'proxy',operationsReady:polls>=3,openingsPaused:false}; }
+      posts++;
+      if(posts===1)throw Error('perpetual keeper is warming up; retry shortly');
+      return {transactions:[]};
+    },
   };
   vm.createContext(context);
   vm.runInContext(code+'\nglobalThis.prepare = preparePerpetualWhenReady;',context);
-  await assert.rejects(context.prepare({wallet_address:wallet}),/warming up/);
-  assert.equal(posts,1);
+  await context.prepare({wallet_address:wallet});
+  assert.equal(posts,2);
+  assert.equal(polls,3);
   stored.set('bitbt_perp_pending:bsc:proxy:'+wallet,'0x'+'ab'.repeat(32));
   await assert.rejects(context.prepare({wallet_address:wallet}),/禁止重复发送/);
+  assert.equal(posts,2);
+});
+test('VM: keeper timeout never repeats prepare POST while readiness stays false', async () => {
+  const code = pendingGuard + source.slice(source.indexOf('  const preparePerpetualWhenReady ='), source.indexOf('  const preparePerpetualAction ='));
+  let posts = 0;
+  let polls = 0;
+  const context: any = {
+    state:{perpConfig:{contractAddress:'proxy'}},readLocalPreference:()=>'',writeLocalPreference:()=>{},
+    renderPerpetual:()=>{},window:{setTimeout:(callback:()=>void)=>callback()},
+    api:async(url:string)=>{if(url.endsWith('/config')){polls++;return {contractAddress:'proxy',operationsReady:false};}posts++;throw Error('perpetual keeper is warming up; retry shortly');},
+  };
+  vm.createContext(context);
+  vm.runInContext(code+'\nglobalThis.prepare = preparePerpetualWhenReady;',context);
+  await assert.rejects(context.prepare({wallet_address:wallet}),/尚未就绪/);
   assert.equal(posts,1);
+  assert.equal(polls,15);
 });
 test('VM: perpetual stale-allowance loop is bounded and never sends core', async () => {
   const f = fixture();
