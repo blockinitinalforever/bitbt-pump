@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
 const runner = source.slice(source.indexOf('  const executePreparedPerpetual ='), source.indexOf('  const executePerpetualAction ='));
 const wallet = '0x' + '11'.repeat(20);
+const token = '0x' + '55'.repeat(20);
 const approval = { data: '0x095ea7b3', label: 'approval' };
 const operation = { data: '0xd7449e6b', label: 'open' };
 function fixture() {
@@ -121,7 +122,7 @@ test('VM: LP completion API failure retries bookkeeping without another deposit'
     throw Error(method);
   }};
   const ctx: any = {
-    state:{account:wallet,selectedChain:'bsc',perpConfig:{contractAddress:contract},perpMarkets:[{marketId:0}],perpServiceRequests:[]},
+    state:{account:wallet,selectedChain:'bsc',perpConfig:{contractAddress:contract},perpMarkets:[{marketId:0,tokenAddress:token}],perpServiceRequests:[],perpPoolTarget:{marketId:0,tokenAddress:token}},
     walletSessionEpoch:0,selectedProvider:()=>provider,normalizeChainId:(x:string)=>x,word,
     receiptHasStatus:(r:any)=>r?.status!=null,receiptSucceeded:(r:any)=>r.status==='0x1',
     readLocalPreference:(k:string)=>stored.get(k)||'',writeLocalPreference:(k:string,v:string)=>stored.set(k,v),
@@ -136,8 +137,9 @@ test('VM: LP completion API failure retries bookkeeping without another deposit'
     },
   };
   vm.createContext(ctx);vm.runInContext(code+'\nglobalThis.complete=completePaidPoolRequest;',ctx);
-  const request={requestId:'request1',status:'paid',payload:{marketId:0,amountRaw:'10'}};
+  const request={requestId:'request1',status:'paid',payload:{marketId:0,tokenAddress:token,amountRaw:'10'}};
   await assert.rejects(ctx.complete(request),/temporary/);
   await ctx.complete(request);
   assert.equal(deposits,1);assert.equal(prepares,1);assert.equal(completions,2);
+  assert.equal(ctx.state.perpPoolTarget,null);
 });

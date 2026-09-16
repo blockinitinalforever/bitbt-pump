@@ -3220,7 +3220,9 @@
     await checkWallet();
     const payload = request?.payload || {};
     const market = state.perpMarkets.find((item) => Number(item.marketId) === Number(payload.marketId));
-    if (!market || String(market.tokenAddress || "").toLowerCase() !== String(payload.tokenAddress || "").toLowerCase()
+    const payloadTokenAddress = String(payload.tokenAddress || "").toLowerCase();
+    const marketTokenAddress = String(market?.tokenAddress || "").toLowerCase();
+    if (!market || !/^0x[0-9a-f]{40}$/.test(payloadTokenAddress) || marketTokenAddress !== payloadTokenAddress
       || !request?.requestId || request.status !== "paid") throw new Error("找不到与代币及市场完全匹配的已付费对手池申请");
     state.selectedPerpMarketId = Number(payload.marketId);
     const body = { wallet_address: account, market_id: Number(payload.marketId), action: "deposit_liquidity", amount_raw: String(payload.amountRaw || "") };

@@ -495,7 +495,7 @@ test('pool detail updates data without replacing the original depth and particip
 test('pool selection never substitutes market zero for a stale or blank selection', () => {
   const source = fs.readFileSync(path.resolve('src/client/launchpad-live.js'), 'utf8');
   assert.match(source, /if \(state\.selectedPerpMarketId != null\)[\s\S]*?return selected \|\| null;/);
-  assert.match(source, /const marketIdValue = String\(\$\("#perps-pool-market"\)\?\.value \?\? ""\)\.trim\(\);/);
+  assert.match(source, /const marketIdValue = String\(boundTarget\?\.marketId \?\? \$\("#perps-pool-market"\)\?\.value \?\? ""\)\.trim\(\);/);
   assert.match(source, /if \(!marketIdValue\) throw new Error\("请选择有效的永续市场"\);/);
   assert.doesNotMatch(source, /Number\(\$\("#perps-pool-market"\)\?\.value\);/);
 });

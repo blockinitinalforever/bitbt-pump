@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
 const part = (start: string, end: string) => source.slice(source.indexOf(`  const ${start}`), source.indexOf(`  const ${end}`));
-const wallet = '0x'+'11'.repeat(20), contract = '0x'+'22'.repeat(20), quote = '0x'+'33'.repeat(20);
+const wallet = '0x'+'11'.repeat(20), contract = '0x'+'22'.repeat(20), quote = '0x'+'33'.repeat(20), token = '0x'+'44'.repeat(20);
 const hash = '0x'+'aa'.repeat(32), word = (n: bigint) => n.toString(16).padStart(64,'0');
 const data = '0x34a860e4'+word(0n)+word(10n);
 function deferred() {
@@ -61,7 +61,7 @@ function poolFixture() {
     throw Error(method);
   }};
   let sends=0,completions=0;
-  const c:any={state:{account:wallet,selectedChain:'bsc',perpConfig:{contractAddress:contract},perpMarkets:[{marketId:0,quoteTokenAddress:quote}],perpServiceRequests:[]},
+  const c:any={state:{account:wallet,selectedChain:'bsc',perpConfig:{contractAddress:contract},perpMarkets:[{marketId:0,tokenAddress:token,quoteTokenAddress:quote}],perpServiceRequests:[]},
     walletSessionEpoch:0,selectedProvider:()=>provider,word,normalizeChainId:(x:string)=>x,
     readLocalPreference:(k:string)=>stored.get(k)||'',writeLocalPreference:(k:string,v:string)=>stored.set(k,v),
     toast(){},show(){},loadPerpetual:async()=>{},
@@ -76,9 +76,18 @@ function poolFixture() {
   vm.createContext(c);
   vm.runInContext(part('receiptHasStatus','waitReceipt')+part('perpetualWord','preparePerpetualAction')
     +part('executePreparedPerpetual','executePerpetualAction')+part('completePaidPoolRequest','createPermissionlessPerpetualMarket')+';globalThis.run=completePaidPoolRequest;',c);
-  const request={requestId:'r',walletAddress:wallet,status:'paid',payload:{marketId:0,amountRaw:'10'}};
+  const request={requestId:'r',walletAddress:wallet,status:'paid',payload:{marketId:0,tokenAddress:token,amountRaw:'10'}};
   return {c,stored,completionKey,pendingKey,calls,receipt,tx,provider,request,sends:()=>sends,completions:()=>completions};
 }
+
+test('VM: paid pool recovery requires an explicit valid token address on both request and market',async()=>{
+  const missingRequestToken=poolFixture();delete missingRequestToken.request.payload.tokenAddress;
+  await assert.rejects(missingRequestToken.c.run(missingRequestToken.request),/代币及市场完全匹配/);
+  assert.equal(missingRequestToken.sends(),0);assert.equal(missingRequestToken.completions(),0);
+  const missingMarketToken=poolFixture();delete missingMarketToken.c.state.perpMarkets[0].tokenAddress;
+  await assert.rejects(missingMarketToken.c.run(missingMarketToken.request),/代币及市场完全匹配/);
+  assert.equal(missingMarketToken.sends(),0);assert.equal(missingMarketToken.completions(),0);
+});
 
 test('VM: LP broadcast timeout then confirmed revert clears only its hashes and stops this click',async()=>{
   const f=poolFixture();await assert.rejects(f.c.run(f.request),/timeout/);
