@@ -1433,13 +1433,38 @@
   const preparePerpetualWhenReady = async (request, assertContext = () => {}) => {
     await ensureNoPendingPerpetualTransaction(request.wallet_address, assertContext);
     assertContext();
-    const prepared = await api("v1/pump/perpetual/prepare", {
+    const prepare = () => api("v1/pump/perpetual/prepare", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(request),
     });
-    assertContext();
-    return prepared;
+    try {
+      const prepared = await prepare();
+      assertContext();
+      return prepared;
+    } catch (error) {
+      if (!String(error?.message || error).includes('perpetual keeper is warming up')) throw error;
+    }
+    state.perpKeeperWaking = true;
+    renderPerpetual();
+    try {
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        assertContext();
+        state.perpConfig = await api('v1/pump/perpetual/config');
+        assertContext();
+        if (state.perpConfig?.operationsReady && !state.perpConfig?.openingsPaused) {
+          await ensureNoPendingPerpetualTransaction(request.wallet_address, assertContext);
+          const prepared = await prepare();
+          assertContext();
+          return prepared;
+        }
+      }
+      throw new Error('永续运维服务尚未就绪，请稍后重试；本次未发送开仓交易');
+    } finally {
+      state.perpKeeperWaking = false;
+      renderPerpetual();
+    }
   };
   const preparePerpetualAction = async () => {
     if (!state.account) await connectWallet();
