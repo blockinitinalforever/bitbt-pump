@@ -65,6 +65,7 @@
   "对手池参数与所选永续市场不一致，当前未收取服务费；请重新选择市场": "The pool parameters do not match the selected perpetual market. No service fee was charged; select the market again.",
   "永续运维服务正在唤醒，尚未收取对手池服务费；请稍后重试": "Perpetual operations are warming up. No counterparty-pool service fee was charged; try again later.",
   "永续运维服务暂未就绪，本次操作尚未发送链上交易；请稍后重试": "Perpetual operations are not ready. This transaction was not sent on-chain; please try again later.",
+  "后台正在准备永续服务，请稍等片刻后再试；本次交易尚未发送": "Perpetual services are preparing in the background. Please wait a moment and try again; no transaction was sent.",
   "永续风控唤醒超时，请稍后重试；本次未发送开仓交易": "Perpetual risk operations timed out while starting. Please try again later; no opening trade was sent.",
   "继续链上注资": "Resume on-chain deposit",
   "服务费已支付": "Service fee paid",

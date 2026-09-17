@@ -63,9 +63,13 @@
     perpSubmitting: false,
     perpKeeperWaking: false,
     perpKeeperWakeAttempt: 0,
+    perpOperationNotice: "",
+    perpCoreBroadcast: false,
+    perpOperationPhase: "",
     perpModernAction: "open_position",
     perpCandles: [],
     perpChartInterval: 300,
+    perpChartIndicators: ["MA", "VOL"],
     perpActivity: [],
     perpIndexedPositions: [],
     perpActivityFilter: "all",
@@ -597,7 +601,7 @@
     if (/liquidity is locked while positions are open/i.test(message)) return "市场仍有未平仓仓位，当前不能注入或提取流动性";
     if (/insufficient Quote Token balance/i.test(message)) return "报价币余额不足，当前未收取对手池服务费；请补足报价币后重试";
     if (/pool request does not match the selected perpetual market/i.test(message)) return "对手池参数与所选永续市场不一致，当前未收取服务费；请重新选择市场";
-    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "永续运维服务暂未就绪，本次操作尚未发送链上交易；请稍后重试";
+    if (/perpetual keeper is (?:unavailable|warming up)/i.test(message)) return "后台正在准备永续服务，请稍等片刻后再试；本次交易尚未发送";
     if (/no platform fees are claimable/i.test(message)) return "当前没有可领取的平台手续费";
     if (status === 413 || /payload too large|request entity too large/i.test(message)) return "文件过大，请压缩后重试";
     if (status === 429 || /rate limit|too many requests/i.test(message)) return "操作过于频繁，请稍后重试";
@@ -697,7 +701,10 @@
   const toastError = (error, fallback) => {
     const message = friendlyError(error, fallback);
     toast(message, 6000);
-    showErrorDialog(message);
+    const deferredPerpetual = /后台正在准备|永续运维服务|本次.*(?:尚未|未)发送|尚未发送永续/.test(message);
+    showOperationDialog(message, deferredPerpetual
+      ? { title: "后台正在处理，请稍等后再试", tag: "交易尚未发送" }
+      : undefined);
   };
   window.addEventListener("bitbt:toast", (event) => toast(event.detail));
   const setLaunchAvailability = (enabled) =>
@@ -874,9 +881,103 @@
     if (price >= 1) return `$${price.toLocaleString("en-US", { maximumFractionDigits: 6 })}`;
     return `$${price.toLocaleString("en-US", { minimumSignificantDigits: 2, maximumSignificantDigits: 8 })}`;
   };
+  const klineLine = (candles, period, valueAt) => candles.map((candle, index) => {
+    if (index + 1 < period) return null;
+    let total = 0;
+    for (let offset = index - period + 1; offset <= index; offset += 1) total += valueAt(candles[offset]);
+    return { time: candle.time, value: total / period };
+  }).filter(Boolean);
+  const klineEma = (candles, period, valueAt = (candle) => candle.close) => {
+    const alpha = 2 / (period + 1);
+    let previous = null;
+    return candles.map((candle) => {
+      const value = valueAt(candle);
+      previous = previous == null ? value : value * alpha + previous * (1 - alpha);
+      return { time: candle.time, value: previous };
+    });
+  };
+  const klineBoll = (candles, period = 20, multiple = 2) => {
+    const middle = klineLine(candles, period, (candle) => candle.close);
+    const byTime = new Map(middle.map((point) => [point.time, point.value]));
+    const upper = [], lower = [];
+    candles.forEach((candle, index) => {
+      if (index + 1 < period) return;
+      const mean = byTime.get(candle.time);
+      let variance = 0;
+      for (let offset = index - period + 1; offset <= index; offset += 1) variance += (candles[offset].close - mean) ** 2;
+      const deviation = Math.sqrt(variance / period);
+      upper.push({ time: candle.time, value: mean + multiple * deviation });
+      lower.push({ time: candle.time, value: mean - multiple * deviation });
+    });
+    return { middle, upper, lower };
+  };
+  const klineAtr = (candles, period = 14) => {
+    const values = candles.map((candle, index) => index === 0
+      ? candle.high - candle.low
+      : Math.max(candle.high - candle.low, Math.abs(candle.high - candles[index - 1].close), Math.abs(candle.low - candles[index - 1].close)));
+    return klineEma(candles.map((candle, index) => ({ ...candle, atr: values[index] })), period, (candle) => candle.atr);
+  };
+  const klineSuperTrend = (candles, period = 14, multiple = 3) => {
+    const atr = new Map(klineAtr(candles, period).map((point) => [point.time, point.value]));
+    let upper = 0, lower = 0, trend = 1;
+    return candles.map((candle, index) => {
+      const volatility = atr.get(candle.time);
+      if (!volatility || index === 0) return null;
+      const middle = (candle.high + candle.low) / 2;
+      const basicUpper = middle + multiple * volatility;
+      const basicLower = middle - multiple * volatility;
+      upper = basicUpper < upper || candles[index - 1].close > upper ? basicUpper : upper;
+      lower = basicLower > lower || candles[index - 1].close < lower ? basicLower : lower;
+      if (trend < 0 && candle.close > upper) trend = 1;
+      else if (trend > 0 && candle.close < lower) trend = -1;
+      return { time: candle.time, value: trend > 0 ? lower : upper };
+    }).filter(Boolean);
+  };
+  const klineMacd = (candles) => {
+    const fast = klineEma(candles, 12), slow = klineEma(candles, 26);
+    const dif = fast.map((point, index) => ({ time: point.time, value: point.value - slow[index].value }));
+    const signal = klineEma(dif.map((point) => ({ time: point.time, close: point.value })), 9);
+    const histogram = dif.map((point, index) => ({ time: point.time, value: (point.value - signal[index].value) * 2, color: point.value >= signal[index].value ? "rgba(50,207,124,.65)" : "rgba(255,92,115,.65)" }));
+    return { dif, signal, histogram };
+  };
+  const klineRsi = (candles, period = 14) => {
+    let gain = 0, loss = 0;
+    return candles.map((candle, index) => {
+      if (index === 0) return null;
+      const change = candle.close - candles[index - 1].close;
+      const up = Math.max(change, 0), down = Math.max(-change, 0);
+      if (index <= period) {
+        gain += up; loss += down;
+        if (index < period) return null;
+        gain /= period; loss /= period;
+      } else {
+        gain = (gain * (period - 1) + up) / period;
+        loss = (loss * (period - 1) + down) / period;
+      }
+      return { time: candle.time, value: loss === 0 ? 100 : 100 - 100 / (1 + gain / loss) };
+    }).filter(Boolean);
+  };
+  const klineKdj = (candles, period = 9) => {
+    let k = 50, d = 50;
+    const result = { k: [], d: [], j: [] };
+    candles.forEach((candle, index) => {
+      if (index + 1 < period) return;
+      const window = candles.slice(index - period + 1, index + 1);
+      const high = Math.max(...window.map((item) => item.high));
+      const low = Math.min(...window.map((item) => item.low));
+      const rsv = high === low ? 50 : (candle.close - low) / (high - low) * 100;
+      k = k * 2 / 3 + rsv / 3; d = d * 2 / 3 + k / 3;
+      result.k.push({ time: candle.time, value: k });
+      result.d.push({ time: candle.time, value: d });
+      result.j.push({ time: candle.time, value: 3 * k - 2 * d });
+    });
+    return result;
+  };
+  const lastKlineValue = (series) => series.length ? series[series.length - 1].value : null;
   const renderPerpetualChart = () => {
     const host = $("#perps-kline");
-    const fallback = host?.parentElement?.querySelector(".chart-fallback");
+    const wrap = host?.parentElement;
+    const fallback = wrap?.querySelector(".chart-fallback");
     if (!host) return;
     const candles = state.perpCandles
       .map((candle) => ({
@@ -902,36 +1003,113 @@
       return;
     }
     if (fallback) fallback.hidden = true;
+    const selected = new Set(state.perpChartIndicators);
+    const smallestPrice = Math.min(...candles.map((candle) => candle.low));
+    const pricePrecision = smallestPrice >= 1 ? 4 : Math.min(14, Math.max(6, Math.ceil(-Math.log10(smallestPrice)) + 4));
+    const chartPriceFormat = { type: 'price', precision: pricePrecision, minMove: 10 ** -pricePrecision };
+    const subIndicators = ["VOL", "MACD", "KDJ", "RSI"].filter((name) => selected.has(name));
+    const chartHeight = Math.min(520, 320 + Math.max(0, subIndicators.length - 1) * 82);
+    wrap?.classList.toggle("has-sub-indicator", subIndicators.length > 1);
+    if (wrap) wrap.style.height = chartHeight + "px";
     let entry = charts.get("#perps-kline");
+    let created = false;
     if (!entry || entry.host !== host) {
       entry?.chart.remove?.();
       host.replaceChildren();
       const chart = window.LightweightCharts.createChart(host, {
         localization: chartLocalization(),
         width: host.clientWidth || 720,
-        height: 320,
+        height: chartHeight,
         layout: { background: { type: "solid", color: "#0a0b0c" }, textColor: "#777c78" },
         grid: { vertLines: { color: "#1d2021" }, horzLines: { color: "#1d2021" } },
         rightPriceScale: { borderColor: "#303334", scaleMargins: { top: 0.08, bottom: 0.25 } },
-        timeScale: { borderColor: "#303334", timeVisible: true, tickMarkFormatter: chartTick },
+        timeScale: { borderColor: "#303334", timeVisible: true, secondsVisible: false, tickMarkFormatter: chartTick },
       });
       const series = chart.addCandlestickSeries({
         upColor: "#32cf7c", downColor: "#ff5c73", borderUpColor: "#32cf7c",
-        borderDownColor: "#ff5c73", wickUpColor: "#32cf7c", wickDownColor: "#ff5c73",
+        borderDownColor: "#ff5c73", wickUpColor: "#32cf7c", wickDownColor: "#ff5c73", priceFormat: chartPriceFormat,
       });
-      const volumeSeries = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "" });
-      volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
-      entry = { host, chart, series, volumeSeries };
+      const volumeSeries = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "volume", lastValueVisible: false, priceLineVisible: false });
+      entry = { host, chart, series, volumeSeries, indicatorSeries: [], renderKey: "" };
       charts.set("#perps-kline", entry);
+      created = true;
     }
+    const newest = candles[candles.length - 1];
+    const dataKey = [state.selectedPerpMarketId, state.perpChartInterval, state.perpChartIndicators.join(','), candles.length, newest.time, newest.open, newest.high, newest.low, newest.close, newest.volume].join(':');
+    if (!created && entry.dataKey === dataKey) {
+      entry.chart.applyOptions?.({ width: host.clientWidth || 720, height: chartHeight });
+      return;
+    }
+    entry.dataKey = dataKey;
+    entry.indicatorSeries.forEach((series) => { try { entry.chart.removeSeries(series); } catch {} });
+    entry.indicatorSeries = [];
+    const addLine = (data, color, priceScaleId = "right") => {
+      const series = entry.chart.addLineSeries({ color, lineWidth: 1, priceScaleId, priceFormat: priceScaleId === 'right' ? chartPriceFormat : { type: 'price', precision: 6, minMove: 0.000001 }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+      series.setData(data);
+      entry.indicatorSeries.push(series);
+    };
+    const legend = [];
+    const addLegend = (name, data, css = "") => {
+      const value = lastKlineValue(data);
+      if (Number.isFinite(value)) legend.push('<b class="' + css + '">' + name + " " + escapeHtml(formatPerpPrice(value)) + "</b>");
+    };
+    entry.series.applyOptions({ priceFormat: chartPriceFormat });
     entry.series.setData(candles.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
-    entry.volumeSeries.setData(candles.map((candle) => ({
-      time: candle.time,
-      value: Number.isFinite(candle.volume) ? candle.volume : 0,
-      color: candle.close >= candle.open ? "rgba(50,207,124,.45)" : "rgba(255,92,115,.45)",
-    })));
-    entry.chart.applyOptions?.({ width: host.clientWidth || 720 });
-    entry.chart.timeScale().fitContent();
+    if (selected.has("VOL")) {
+      entry.volumeSeries.setData(candles.map((candle) => ({
+        time: candle.time, value: Number.isFinite(candle.volume) ? candle.volume : 0,
+        color: candle.close >= candle.open ? "rgba(50,207,124,.45)" : "rgba(255,92,115,.45)",
+      })));
+    } else entry.volumeSeries.setData([]);
+    if (selected.has("MA")) {
+      [[5, "#e5f453", "lime"], [10, "#47c7ff", "cyan"], [20, "#b58cff", "violet"]].forEach(([period, color, css]) => {
+        const data = klineLine(candles, period, (candle) => candle.close); addLine(data, color); addLegend("MA" + period, data, css);
+      });
+    }
+    if (selected.has("EMA")) {
+      [[12, "#47c7ff", "cyan"], [26, "#ffad5c", "orange"]].forEach(([period, color, css]) => {
+        const data = klineEma(candles, period); addLine(data, color); addLegend("EMA" + period, data, css);
+      });
+    }
+    if (selected.has("BOLL")) {
+      const boll = klineBoll(candles);
+      addLine(boll.middle, "#e5f453"); addLine(boll.upper, "#47c7ff"); addLine(boll.lower, "#b58cff");
+      addLegend("BOLL", boll.middle, "lime"); addLegend("UP", boll.upper, "cyan"); addLegend("LOW", boll.lower, "violet");
+    }
+    if (selected.has("ST")) {
+      const trend = klineSuperTrend(candles); addLine(trend, "#ffad5c"); addLegend("ST(14,3)", trend, "orange");
+    }
+    const lowerHeight = subIndicators.length ? Math.min(0.18, 0.58 / subIndicators.length) : 0;
+    let lowerBottom = 0.04;
+    [...subIndicators].reverse().forEach((name) => {
+      const scaleId = name.toLowerCase();
+      entry.chart.priceScale(scaleId).applyOptions({ visible: true, borderColor: "#303334", scaleMargins: { top: 1 - lowerBottom - lowerHeight, bottom: lowerBottom } });
+      lowerBottom += lowerHeight;
+    });
+    if (!selected.has("VOL")) entry.chart.priceScale("volume").applyOptions({ visible: false, scaleMargins: { top: 1, bottom: 0 } });
+    if (selected.has("MACD")) {
+      const macd = klineMacd(candles);
+      const histogram = entry.chart.addHistogramSeries({ priceScaleId: "macd", lastValueVisible: false, priceLineVisible: false });
+      histogram.setData(macd.histogram); entry.indicatorSeries.push(histogram);
+      addLine(macd.dif, "#47c7ff", "macd"); addLine(macd.signal, "#ffad5c", "macd");
+      addLegend("DIF", macd.dif, "cyan"); addLegend("DEA", macd.signal, "orange");
+    }
+    if (selected.has("KDJ")) {
+      const kdj = klineKdj(candles);
+      addLine(kdj.k, "#e5f453", "kdj"); addLine(kdj.d, "#47c7ff", "kdj"); addLine(kdj.j, "#b58cff", "kdj");
+      addLegend("K", kdj.k, "lime"); addLegend("D", kdj.d, "cyan"); addLegend("J", kdj.j, "violet");
+    }
+    if (selected.has("RSI")) {
+      const rsi = klineRsi(candles); addLine(rsi, "#b58cff", "rsi"); addLegend("RSI14", rsi, "violet");
+    }
+    entry.chart.priceScale("right").applyOptions({ scaleMargins: { top: 0.08, bottom: Math.min(0.7, lowerBottom + 0.02) } });
+    const last = candles[candles.length - 1];
+    const legendHost = $('[data-perps-chart-legend]');
+    if (legendHost) legendHost.innerHTML = "<b>O " + escapeHtml(formatPerpPrice(last.open)) + "</b><b>H " + escapeHtml(formatPerpPrice(last.high)) + "</b><b>L " + escapeHtml(formatPerpPrice(last.low)) + "</b><b>C " + escapeHtml(formatPerpPrice(last.close)) + "</b>" + legend.join("");
+    entry.chart.applyOptions?.({ width: host.clientWidth || 720, height: chartHeight });
+    const renderKey = state.selectedPerpMarketId + ":" + state.perpChartInterval;
+    if (created || entry.renderKey !== renderKey) entry.chart.timeScale().fitContent();
+    entry.renderKey = renderKey;
   };
   const perpReadVersions = new Map();
   const beginPerpRead = (key, bindMarket = true) => {
@@ -1193,13 +1371,32 @@
       }
       const orderBox = $('[data-perps-order-box]');
       if (orderBox) {
-        const waiting = Boolean(state.perpSubmitting && state.perpKeeperWaking);
+        const waiting = Boolean(state.perpSubmitting);
         orderBox.classList.toggle('is-waiting', waiting);
         orderBox.setAttribute('aria-busy', waiting ? 'true' : 'false');
-        text('[data-perps-wait-title]', uiCopy('正在准备运维服务', 'Preparing operations'));
-        text('[data-perps-wait-detail]', state.perpKeeperWakeAttempt > 0
-          ? uiCopy(`正在进行第 ${state.perpKeeperWakeAttempt}/3 次就绪检查，通常共需 5–30 秒；完成后自动继续，请勿重复点击。`, `Readiness check ${state.perpKeeperWakeAttempt}/3 is running. This usually takes 5–30 seconds; preparation will continue automatically.`)
-          : uiCopy('正在提交启动请求，通常需要 5–30 秒；完成后自动继续本次开仓，请勿重复点击。', 'Sending the startup request. This usually takes 5–30 seconds; preparation will continue automatically.'));
+        const waitingForClose = state.perpModernAction === 'close_position';
+        const actionLabel = waitingForClose ? '平仓' : '开仓';
+        const actionLabelEn = waitingForClose ? 'close' : 'open';
+        const phaseTitle = state.perpKeeperWaking ? `正在准备${actionLabel}服务` : state.perpOperationPhase === 'confirming' ? `${actionLabel}交易已广播` : state.perpOperationPhase === 'wallet' ? '等待钱包确认' : '正在准备链上参数';
+        const phaseTitleEn = state.perpKeeperWaking ? `Preparing ${actionLabelEn} service` : state.perpOperationPhase === 'confirming' ? `${actionLabelEn === 'close' ? 'Close' : 'Open'} transaction broadcast` : state.perpOperationPhase === 'wallet' ? 'Waiting for wallet confirmation' : 'Preparing transaction parameters';
+        const phaseDetail = state.perpKeeperWaking
+          ? state.perpKeeperWakeAttempt > 0
+            ? `后台正在进行第 ${state.perpKeeperWakeAttempt}/3 次就绪检查，通常共需 5–30 秒；完成后会自动继续。当前交易尚未发送，请勿重复点击。`
+            : `后台正在启动服务，通常需要 5–30 秒；完成后会自动继续本次${actionLabel}。当前交易尚未发送，请勿重复点击。`
+          : state.perpOperationPhase === 'confirming'
+            ? `本次${actionLabel}交易已经发送，正在等待链上确认。为避免重复交易，确认完成前相关按钮已锁定。`
+            : state.perpOperationPhase === 'wallet'
+              ? `请在钱包中核对并确认本次${actionLabel}。完成或取消前相关按钮已锁定。`
+              : `后台正在校验行情、仓位和交易参数。本次${actionLabel}交易尚未发送，完成前请勿重复操作。`;
+        const phaseDetailEn = state.perpKeeperWaking
+          ? `The service is preparing and will continue automatically, usually within 5–30 seconds. No ${actionLabelEn} transaction has been sent; do not click again.`
+          : state.perpOperationPhase === 'confirming'
+            ? `The ${actionLabelEn} transaction was sent and is waiting for on-chain confirmation. Related controls are locked to prevent a duplicate transaction.`
+            : state.perpOperationPhase === 'wallet'
+              ? `Review and confirm this ${actionLabelEn} in your wallet. Related controls remain locked until you confirm or cancel.`
+              : `The service is checking market, position, and transaction parameters. No ${actionLabelEn} transaction has been sent.`;
+        text('[data-perps-wait-title]', uiCopy(phaseTitle, phaseTitleEn));
+        text('[data-perps-wait-detail]', uiCopy(phaseDetail, phaseDetailEn));
         orderBox.querySelectorAll('button, input, select, textarea').forEach((control) => {
           if (waiting) {
             if (!control.hasAttribute('data-perps-wait-was-disabled')) {
@@ -1211,6 +1408,20 @@
             control.removeAttribute('data-perps-wait-was-disabled');
           }
         });
+      }
+      $$('[data-modern-perp-close], [data-perps-side], [data-perps-order], [data-perps-use-market-price]').forEach((control) => {
+        if (state.perpSubmitting) {
+          if (!control.hasAttribute('data-perps-submit-was-disabled')) control.setAttribute('data-perps-submit-was-disabled', control.disabled ? '1' : '0');
+          control.disabled = true;
+        } else if (control.hasAttribute('data-perps-submit-was-disabled')) {
+          control.disabled = control.getAttribute('data-perps-submit-was-disabled') === '1';
+          control.removeAttribute('data-perps-submit-was-disabled');
+        }
+      });
+      const operationNotice = $('[data-perps-operation-notice]');
+      if (operationNotice) {
+        operationNotice.hidden = !state.perpOperationNotice;
+        operationNotice.textContent = state.perpOperationNotice;
       }
       renderPerpetualChart();
     }
@@ -1488,9 +1699,12 @@
       if (!String(error?.message || error).includes('perpetual keeper is warming up')) throw error;
     }
     state.perpKeeperWaking = true;
+    state.perpOperationPhase = 'service';
     state.perpKeeperWakeAttempt = 0;
     renderPerpetual();
     try {
+      const isOpening = request.action === 'open_position';
+      const actionLabel = request.action === 'close_position' ? '平仓' : isOpening ? '开仓' : '操作';
       for (const [index, delay] of [5000, 10000, 15000].entries()) {
         state.perpKeeperWakeAttempt = index + 1;
         renderPerpetual();
@@ -1499,19 +1713,19 @@
         state.perpConfig = await api('v1/pump/perpetual/config');
         assertContext();
         if (state.perpConfig?.operationsState === 'degraded') {
-          throw new Error('永续运维服务异常，已停止自动重试；本次未发送开仓交易');
+          throw new Error(`永续${actionLabel}暂未完成：后台服务状态异常，已停止自动重试；请稍后再试。本次未发送${actionLabel}交易`);
         }
-        if (state.perpConfig?.chainOpeningsPaused) {
+        if (isOpening && state.perpConfig?.chainOpeningsPaused) {
           throw new Error('永续合约已暂停开仓；本次未发送开仓交易');
         }
-        if (state.perpConfig?.operationsReady && !state.perpConfig?.openingsPaused) {
+        if (state.perpConfig?.operationsReady && (!isOpening || !state.perpConfig?.openingsPaused)) {
           await ensureNoPendingPerpetualTransaction(request.wallet_address, assertContext);
           const prepared = await prepare();
           assertContext();
           return prepared;
         }
       }
-      throw new Error('永续运维服务尚未就绪，请稍后重试；本次未发送开仓交易');
+      throw new Error(`永续${actionLabel}暂未完成：后台服务尚未就绪，正在继续准备；请稍后再试。本次未发送${actionLabel}交易`);
     } finally {
       state.perpKeeperWaking = false;
       state.perpKeeperWakeAttempt = 0;
@@ -1626,7 +1840,13 @@
     const market = selectedPerpMarket();
     if (!market) throw new Error("永续市场已变化，请重新加载参数");
     validatePreparedPerpetual(state.preparedPerpAction, market, state.preparedPerpRequest);
-    await executePreparedPerpetual(state.preparedPerpAction, market, state.preparedPerpRequest);
+    state.perpOperationPhase = 'wallet';
+    renderPerpetual();
+    await executePreparedPerpetual(state.preparedPerpAction, market, state.preparedPerpRequest, () => {
+      state.perpCoreBroadcast = true;
+      state.perpOperationPhase = 'confirming';
+      renderPerpetual();
+    });
     state.preparedPerpAction = null;
     state.preparedPerpRequest = null;
     state.perpModernAction = "open_position";
@@ -1644,13 +1864,25 @@
   };
   const submitPerpetualAction = async () => {
     if (state.perpSubmitting) return;
+    const actionAtStart = state.perpModernAction;
+    state.perpCoreBroadcast = false;
+    state.perpOperationPhase = 'preparing';
+    state.perpOperationNotice = "";
     state.perpSubmitting = true;
     renderPerpetual();
     try {
       await preparePerpetualAction();
       await executePerpetualAction();
+    } catch (error) {
+      if (!state.perpCoreBroadcast) {
+        const label = actionAtStart === 'close_position' ? '平仓' : '开仓';
+        const reason = String(error?.message || error || '后台正在准备，请稍后再试').trim();
+        state.perpOperationNotice = `永续${label}未完成：${reason}。本次${label}交易未发送，请稍后再试。`;
+      }
+      throw error;
     } finally {
       state.perpSubmitting = false;
+      state.perpOperationPhase = '';
       renderPerpetual();
     }
   };
@@ -5776,11 +6008,13 @@
   };
   let actionBackScreen = 'profile';
   const mainScreens = ['discover', 'live', 'rank', 'create-mode', 'profile'];
+  const setGlobalMenuOpen = (open) => {
+    root.classList.toggle('navigation-open', open);
+    $('[data-global-menu-toggle]')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
   const applyScreenChrome = (name) => {
     $$('[data-panel]').forEach(panel => panel.classList.toggle('has-bottom-nav', panel.dataset.panel === name && mainScreens.includes(name)));
     $('.bottom-nav')?.classList.toggle('visible', mainScreens.includes(name));
-    // The persistent contact footer must never sit above the token-detail
-    // Buy/Sell CTA or receive taps intended for that transaction control.
     $('.official-contact-footer')?.toggleAttribute('hidden', name === 'detail');
   };
   const show = (name) => {
@@ -5798,6 +6032,8 @@
     $$(".screen-switcher [data-open]").forEach((button) =>
       button.setAttribute("aria-pressed", button.dataset.open === name ? "true" : "false"),
     );
+    const activeMenuButton = $('.screen-switcher [data-open][aria-pressed="true"]');
+    text('[data-global-menu-label]', activeMenuButton?.textContent?.trim() || uiCopy('页面', 'Menu'));
     $$('[data-nav]').forEach((button) => button.classList.toggle("active", button.dataset.nav === name));
     applyScreenChrome(name);
     target.scrollTop = 0;
@@ -5939,7 +6175,10 @@
     $("[data-perp-submit]")?.addEventListener("click", () => handlePerpetualSubmit().catch((error) => toastError(error, "永续操作失败")));
     $("#perps-submit")?.addEventListener("click", (event) => {
       event.preventDefault();
-      handlePerpetualSubmit().catch((error) => toastError(error, "永续操作失败"));
+      const closing = state.perpModernAction === 'close_position';
+      handlePerpetualSubmit().catch((error) => toastError(error, closing
+        ? "平仓暂未完成，后台可能仍在准备；请稍等片刻后再试"
+        : "开仓暂未完成，后台可能仍在准备；请稍等片刻后再试"));
     });
     const scrollToPerpetualOrderForm = () => {
       const scroll = () => $('[data-panel="perps"] .perps-order-column')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
@@ -5947,6 +6186,15 @@
       else window.setTimeout(scroll, 0);
     };
     root.addEventListener("click", (event) => {
+      const menuToggle = event.target.closest('[data-global-menu-toggle]');
+      if (menuToggle) {
+        event.preventDefault();
+        setGlobalMenuOpen(!root.classList.contains('navigation-open'));
+        return;
+      }
+      if (root.classList.contains('navigation-open') && !event.target.closest('.screen-switcher, .official-contact-footer')) {
+        setGlobalMenuOpen(false);
+      }
       const shortcut = event.target.closest('[data-perp-shortcut]');
       if (shortcut) {
         event.preventDefault();
@@ -5985,6 +6233,7 @@
           $$('[data-perps-side]').forEach(button => button.classList.toggle('active', button.dataset.perpsSide === openButton.dataset.openPerpsSide));
         }
         show(openButton.dataset.open);
+        if (openButton.closest('.screen-switcher')) setGlobalMenuOpen(false);
         if (openButton.dataset.side) applySide(openButton.dataset.side === "sell");
         if (openButton.dataset.perpMarketId != null) {
           void Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualCandles()]).catch((error) => toastError(error, "永续市场读取失败"));
@@ -6094,6 +6343,19 @@
         void loadPerpetualCandles().catch((error) => toastError(error, "永续 K 线读取失败"));
         return;
       }
+      const indicatorButton = event.target.closest('[data-perps-indicator]');
+      if (indicatorButton) {
+        event.preventDefault();
+        const indicator = String(indicatorButton.dataset.perpsIndicator || '').toUpperCase();
+        const supported = ['MA', 'EMA', 'BOLL', 'ST', 'VOL', 'MACD', 'KDJ', 'RSI'];
+        if (!supported.includes(indicator)) return;
+        const active = new Set(state.perpChartIndicators);
+        if (active.has(indicator)) active.delete(indicator); else active.add(indicator);
+        state.perpChartIndicators = supported.filter((name) => active.has(name));
+        $$('[data-perps-indicator]').forEach((node) => node.classList.toggle('active', active.has(String(node.dataset.perpsIndicator || '').toUpperCase())));
+        renderPerpetualChart();
+        return;
+      }
       const sideButton = event.target.closest("[data-perps-side]");
       if (sideButton) {
         state.perpModernAction = "open_position";
@@ -6146,7 +6408,7 @@
       if (event.target.closest("[data-modern-perp-close]")) {
         state.perpModernAction = "close_position";
         renderPerpetual();
-        submitPerpetualAction().catch((error) => toastError(error, "永续平仓失败"));
+        submitPerpetualAction().catch((error) => toastError(error, "平仓暂未完成，后台可能仍在准备；请稍等片刻后再试"));
       }
     });
     $("#perps-market-search")?.addEventListener("input", (event) => {
