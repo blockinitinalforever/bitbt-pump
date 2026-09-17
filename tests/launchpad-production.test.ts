@@ -193,6 +193,18 @@ test("perpetual chart exposes cached 5m and 10m candles with working main and lo
   assert.match(bridge, /entry\.dataKey === dataKey/);
 });
 
+test("my perpetual position labels direction and refreshes live PnL from the market WebSocket", () => {
+  assert.match(bridge, /uiCopy\("我的多仓", "My long"\)/);
+  assert.match(bridge, /uiCopy\("我的空仓", "My short"\)/);
+  assert.match(bridge, /实时浮盈（含资金费）/);
+  assert.match(bridge, /实时浮亏（含资金费）/);
+  assert.match(bridge, /const pnlDisplay = `\$\{pnlRaw > 0n \? '\+' : ''\}\$\{pnlValue\}/);
+  assert.match(bridge, /payload\?\.type === 'perpetual_kline_updated'/);
+  assert.match(bridge, /schedulePerpetualPositionStreamRefresh\(\)/);
+  assert.match(bridge, /await loadPerpetualPosition\(\)/);
+  assert.match(bridge, /perpPositionStreamRefreshInFlight/);
+});
+
 test("launchpad token charts reuse the perpetual periods and technical indicators", () => {
   for (const [seconds, label] of [[60, "1M"], [300, "5M"], [600, "10M"], [900, "15M"], [3600, "1H"], [7200, "2H"], [14400, "4H"], [86400, "1D"]] as const) {
     assert.match(html, new RegExp(`data-chart-interval="${seconds}"[^>]*>${label}`));

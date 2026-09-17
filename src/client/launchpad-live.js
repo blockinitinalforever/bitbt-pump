@@ -163,6 +163,9 @@
   let marketSocketRetry = 0;
   let marketSocketTimer = null;
   let perpCandlesRefreshPromise = null;
+  let perpPositionStreamRefreshTimer = null;
+  let perpPositionStreamRefreshInFlight = false;
+  let perpPositionStreamRefreshQueued = false;
   let marketRefreshTimer = null;
   let pendingSelectedMarketChange = false;
   let lastMarketEventRefreshAt = 0;
@@ -1340,11 +1343,20 @@
       const modernPosition = $('[data-panel="perps"] [data-perps-panel="positions"]');
       if (modernPosition) {
         const decimals = Number(market?.quoteDecimals || 18);
+        const pnlRaw = BigInt(state.perpPosition?.currentPnlRaw || '0');
+        const pnlValue = formatUnits(pnlRaw, decimals);
+        const pnlDisplay = `${pnlRaw > 0n ? '+' : ''}${pnlValue} ${market?.quoteTokenSymbol || 'QUOTE'}`;
+        const pnlClass = pnlRaw > 0n ? 'up' : pnlRaw < 0n ? 'down' : '';
+        const pnlLabel = pnlRaw > 0n
+          ? uiCopy('实时浮盈（含资金费）', 'Live unrealized profit (incl. funding)')
+          : pnlRaw < 0n
+            ? uiCopy('实时浮亏（含资金费）', 'Live unrealized loss (incl. funding)')
+            : uiCopy('实时未实现盈亏（含资金费）', 'Live unrealized PnL (incl. funding)');
         modernPosition.innerHTML = !state.account
           ? uiMarkup`<p class="footer-note">连接钱包后读取当前真实仓位。</p>`
           : !state.perpPosition?.open
             ? uiMarkup`<p class="footer-note">当前钱包在该市场没有未平仓仓位。</p>`
-            : uiMarkup`<div class="perps-position-head"><div class="perps-position-name">${perpetualLogoMarkup(perpetualBaseLogo(market), market?.tokenSymbol)}<div><strong>${escapeHtml(perpetualPairLabel(market))} <span class="tag lime">${state.perpPosition.isLong ? uiCopy("多", "Long") : uiCopy("空", "Short")}</span></strong><small>逐仓 · ${escapeHtml(market?.quoteTokenSymbol || 'Quote Token')} 本位</small></div></div><div class="perps-pnl"><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.currentPnlRaw || '0'), decimals))}</strong><small>当前未实现盈亏（含资金费）</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
+            : uiMarkup`<div class="perps-position-head"><div class="perps-position-name">${perpetualLogoMarkup(perpetualBaseLogo(market), market?.tokenSymbol)}<div><strong>${escapeHtml(perpetualPairLabel(market))} <span class="tag lime">${state.perpPosition.isLong ? uiCopy("我的多仓", "My long") : uiCopy("我的空仓", "My short")}</span></strong><small>逐仓 · ${escapeHtml(market?.quoteTokenSymbol || 'Quote Token')} 本位</small></div></div><div class="perps-pnl"><strong class="${pnlClass}">${escapeHtml(pnlDisplay)}</strong><small>${pnlLabel}</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
       }
       const orders = $('[data-panel="perps"] [data-perps-panel="orders"]');
       if (orders) orders.innerHTML = '<p class="footer-note">当前合约仅支持钱包签名后立即上链的市价操作，没有待成交挂单。</p>';
@@ -1516,6 +1528,25 @@
     state.perpPosition = position;
     renderPerpetual();
     setPerpReadError('position');
+  };
+  const schedulePerpetualPositionStreamRefresh = () => {
+    if (!state.account || !state.perpPosition?.open || !perpetualPanelActive() || document.visibilityState === 'hidden') return;
+    perpPositionStreamRefreshQueued = true;
+    if (perpPositionStreamRefreshTimer || perpPositionStreamRefreshInFlight) return;
+    perpPositionStreamRefreshTimer = window.setTimeout(async () => {
+      perpPositionStreamRefreshTimer = null;
+      if (!perpPositionStreamRefreshQueued) return;
+      perpPositionStreamRefreshQueued = false;
+      perpPositionStreamRefreshInFlight = true;
+      try {
+        await loadPerpetualPosition();
+      } catch {
+        // Keep the last rendered value. The normal read-error state tells the user the live refresh failed.
+      } finally {
+        perpPositionStreamRefreshInFlight = false;
+        if (perpPositionStreamRefreshQueued) schedulePerpetualPositionStreamRefresh();
+      }
+    }, 500);
   };
   const loadPerpetualWalletBalance = async () => {
     const current = beginPerpRead('balance');
@@ -6793,6 +6824,7 @@
     if (payload?.type === 'perpetual_kline_updated') {
       if (perpetualPanelActive() && eventToken === String(selectedPerpMarket()?.tokenAddress || '').toLowerCase()) {
         void loadPerpetualCandles().catch(() => {});
+        schedulePerpetualPositionStreamRefresh();
       }
       return;
     }
@@ -6830,7 +6862,10 @@
       if (marketSocket !== socket) return;
       marketSocketRetry = 0;
       text("[data-market-stream-status]", `${selectedNetwork().shortName} 实时数据流已连接`);
-      if (perpetualPanelActive()) void loadPerpetualCandles().catch(() => {});
+      if (perpetualPanelActive()) {
+        void loadPerpetualCandles().catch(() => {});
+        schedulePerpetualPositionStreamRefresh();
+      }
     });
     socket.addEventListener("message", handlePumpSocketMessage);
     socket.addEventListener("close", () => {
