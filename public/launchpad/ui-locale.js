@@ -971,6 +971,8 @@
       if (currentBalance) return `Insufficient ${currentBalance[1]} balance: available ${currentBalance[2]}. Add funds for the launch fee and Gas, then retry.`;
       const buyBalance = raw.match(/^(.+) 余额不足：初始买入需要 (.+)$/);
       if (buyBalance) return `Insufficient ${buyBalance[1]} balance: the initial buy requires ${buyBalance[2]}.`;
+      const spotLiquidity = raw.match(/^该代币在已支持的 PancakeSwap 池中流动性不足；最低需要 (.+) USD$/);
+      if (spotLiquidity) return `This token has insufficient liquidity in supported PancakeSwap pools; at least ${spotLiquidity[1]} USD is required.`;
       // Unknown API diagnostics must remain available, not be replaced with
       // a generic error or guessed cause. Their original numbers/addresses stay intact.
       return /[\u3400-\u9fff]/.test(raw) ? `Reported details (original):\n${raw}` : raw;

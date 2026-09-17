@@ -598,6 +598,13 @@
     if (/open interest limit exceeded/i.test(message)) return "开仓失败：市场总未平仓量已达到上限，请减小仓位或等待其他仓位关闭";
     if (/directional exposure limit exceeded/i.test(message)) return "开仓失败：当前方向的多空敞口已达到上限，请减小仓位或选择另一方向";
     if (/utilization limit exceeded/i.test(message)) return "开仓失败：资金池可用流动性不足，请减小仓位";
+    if (/PancakeSwap.*流动性不足/i.test(message)) {
+      const reported = message.match(/最低(?:需要|要求)\s*([\d,.]+)\s*USD/i)?.[1];
+      const minimum = reported || String(state.perpConfig?.minimumSpotLiquidityUsd || "").trim();
+      return minimum
+        ? `该代币在已支持的 PancakeSwap 池中流动性不足；最低需要 ${minimum} USD`
+        : "该代币在已支持的 PancakeSwap 池中流动性不足";
+    }
     if (/perpetual market is in reduce-only mode/i.test(message)) return "市场已限制新增风险，当前仅允许符合条件的平仓或结算；请查看市场状态";
     if (/Perpetual market data temporarily unavailable/i.test(message)) return "市场行情暂时无法更新，本次未准备交易；请稍后重试，旧快照不会用于签名";
     if (/perpetual quote expired during preparation/i.test(message)) return "准备交易耗时过长，报价已过期；请重新确认，本次没有发送交易";

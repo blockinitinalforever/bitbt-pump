@@ -141,6 +141,8 @@ test('all fixed friendly errors have English copy; numeric diagnostics and unkno
   assert.equal(locale.message(limit,'en'),'Position limit exceeded: 100 × 10 = 1000; current limit: 100. Reduce collateral to at most 10, or reduce leverage.');
   const balance='BNB 余额不足：当前 0.001 BNB，发射费和预估 Gas 至少需要 0.012 BNB，还差 0.011 BNB';
   assert.equal(locale.message(balance,'en'),'Insufficient BNB balance: available 0.001 BNB; launch fee and estimated Gas require at least 0.012 BNB; shortfall 0.011 BNB.');
+  const spotLiquidity='该代币在已支持的 PancakeSwap 池中流动性不足；最低需要 10,000 USD';
+  assert.equal(locale.message(spotLiquidity,'en'),'This token has insufficient liquidity in supported PancakeSwap pools; at least 10,000 USD is required.');
   const unknown='未知错误 0x1234 金额 0.003';
   assert.equal(locale.message(unknown,'en'),'Reported details (original):\n'+unknown);
   assert.equal(locale.message('RPC reverted: 0x1234','en'),'RPC reverted: 0x1234');
