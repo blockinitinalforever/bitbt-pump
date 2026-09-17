@@ -119,6 +119,7 @@
     provider: null,
     balances: { quote: null, token: null, gas: null },
     chartInterval: 300,
+    chartIndicators: ["MA", "VOL"],
     busy: false,
     launchBusy: false,
     vaultBusy: false,
@@ -1082,7 +1083,7 @@
     const lowerHeight = subIndicators.length ? Math.min(0.18, 0.58 / subIndicators.length) : 0;
     let lowerBottom = 0.04;
     [...subIndicators].reverse().forEach((name) => {
-      const scaleId = name.toLowerCase();
+      const scaleId = name === "VOL" ? "volume" : name.toLowerCase();
       entry.chart.priceScale(scaleId).applyOptions({ visible: true, borderColor: "#303334", scaleMargins: { top: 1 - lowerBottom - lowerHeight, bottom: lowerBottom } });
       lowerBottom += lowerHeight;
     });
@@ -4797,22 +4798,29 @@
       return;
     }
     setChartEmpty("", false);
-    const volumes = candles.map((candle) => ({
-      time: candle.time,
-      value: Number.isFinite(candle.volume) ? candle.volume : 0,
-      color: candle.close >= candle.open ? "rgba(50,207,124,.45)" : "rgba(255,92,115,.45)",
-    }));
+    const selected = new Set(state.chartIndicators);
+    const smallestPrice = Math.min(...candles.map((candle) => candle.low));
+    const pricePrecision = smallestPrice >= 1 ? 4 : Math.min(14, Math.max(6, Math.ceil(-Math.log10(smallestPrice)) + 4));
+    const chartPriceFormat = { type: 'price', precision: pricePrecision, minMove: 10 ** -pricePrecision };
+    const subIndicators = ["VOL", "MACD", "KDJ", "RSI"].filter((name) => selected.has(name));
+    const viewportWidth = Number(globalThis.innerWidth || 1200);
+    const baseHeight = viewportWidth >= 1440 ? 390 : viewportWidth <= 440 ? 250 : viewportWidth <= 760 ? 280 : viewportWidth <= 1100 ? 320 : 260;
+    const chartHeight = Math.min(520, baseHeight + Math.max(0, subIndicators.length - 1) * 82);
     ["#launch-kline", "#trade-kline"].forEach((selector) => {
       const host = $(selector);
       if (!host || !candles.length) return;
+      const wrap = host.parentElement;
+      wrap?.classList.toggle("has-sub-indicator", subIndicators.length > 1);
+      if (wrap) wrap.style.height = chartHeight + "px";
       let entry = charts.get(selector);
+      let created = false;
       if (!entry || entry.host !== host) {
         entry?.chart.remove?.();
         host.replaceChildren();
         const chart = window.LightweightCharts.createChart(host, {
           localization: chartLocalization(),
           width: host.clientWidth || 640,
-          height: 260,
+          height: chartHeight,
           layout: {
             background: { type: "solid", color: "#0a0b0c" },
             textColor: "#777c78",
@@ -4834,19 +4842,74 @@
           borderDownColor: "#ff5c73",
           wickUpColor: "#32cf7c",
           wickDownColor: "#ff5c73",
+          priceFormat: chartPriceFormat,
         });
         const volumeSeries = chart.addHistogramSeries({
           priceFormat: { type: "volume" },
-          priceScaleId: "",
+          priceScaleId: "volume",
+          lastValueVisible: false,
+          priceLineVisible: false,
         });
-        volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
-        entry = { host, chart, series, volumeSeries };
+        entry = { host, chart, series, volumeSeries, indicatorSeries: [], renderKey: "", dataKey: "" };
         charts.set(selector, entry);
+        created = true;
       }
-      entry.series.setData(candles);
-      entry.volumeSeries.setData(volumes);
-      entry.chart.applyOptions?.({ width: host.clientWidth || 640 });
-      entry.chart.timeScale().fitContent();
+      const newest = candles[candles.length - 1];
+      const dataKey = [tokenAddress(state.selected), state.chartInterval, state.chartIndicators.join(','), candles.length, newest.time, newest.open, newest.high, newest.low, newest.close, newest.volume].join(':');
+      if (!created && entry.dataKey === dataKey) {
+        entry.chart.applyOptions?.({ width: host.clientWidth || 640, height: chartHeight });
+        return;
+      }
+      entry.dataKey = dataKey;
+      entry.indicatorSeries.forEach((series) => { try { entry.chart.removeSeries(series); } catch {} });
+      entry.indicatorSeries = [];
+      const addLine = (data, color, priceScaleId = "right") => {
+        const series = entry.chart.addLineSeries({ color, lineWidth: 1, priceScaleId, priceFormat: priceScaleId === 'right' ? chartPriceFormat : { type: 'price', precision: 6, minMove: 0.000001 }, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+        series.setData(data);
+        entry.indicatorSeries.push(series);
+      };
+      const legend = [];
+      const addLegend = (name, data, css = "") => {
+        const value = lastKlineValue(data);
+        if (Number.isFinite(value)) legend.push('<b class="' + css + '">' + name + " " + escapeHtml(formatPerpPrice(value)) + "</b>");
+      };
+      entry.series.applyOptions({ priceFormat: chartPriceFormat });
+      entry.series.setData(candles.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
+      if (selected.has("VOL")) {
+        entry.volumeSeries.setData(candles.map((candle) => ({ time: candle.time, value: Number.isFinite(candle.volume) ? candle.volume : 0, color: candle.close >= candle.open ? "rgba(50,207,124,.45)" : "rgba(255,92,115,.45)" })));
+      } else entry.volumeSeries.setData([]);
+      if (selected.has("MA")) {
+        [[5, "#e5f453", "lime"], [10, "#47c7ff", "cyan"], [20, "#b58cff", "violet"]].forEach(([period, color, css]) => { const data = klineLine(candles, period, (candle) => candle.close); addLine(data, color); addLegend("MA" + period, data, css); });
+      }
+      if (selected.has("EMA")) {
+        [[12, "#47c7ff", "cyan"], [26, "#ffad5c", "orange"]].forEach(([period, color, css]) => { const data = klineEma(candles, period); addLine(data, color); addLegend("EMA" + period, data, css); });
+      }
+      if (selected.has("BOLL")) {
+        const boll = klineBoll(candles); addLine(boll.middle, "#e5f453"); addLine(boll.upper, "#47c7ff"); addLine(boll.lower, "#b58cff"); addLegend("BOLL", boll.middle, "lime"); addLegend("UP", boll.upper, "cyan"); addLegend("LOW", boll.lower, "violet");
+      }
+      if (selected.has("ST")) { const trend = klineSuperTrend(candles); addLine(trend, "#ffad5c"); addLegend("ST(14,3)", trend, "orange"); }
+      const lowerHeight = subIndicators.length ? Math.min(0.18, 0.58 / subIndicators.length) : 0;
+      let lowerBottom = 0.04;
+      [...subIndicators].reverse().forEach((name) => {
+        const scaleId = name === "VOL" ? "volume" : name.toLowerCase();
+        entry.chart.priceScale(scaleId).applyOptions({ visible: true, borderColor: "#303334", scaleMargins: { top: 1 - lowerBottom - lowerHeight, bottom: lowerBottom } });
+        lowerBottom += lowerHeight;
+      });
+      if (!selected.has("VOL")) entry.chart.priceScale("volume").applyOptions({ visible: false, scaleMargins: { top: 1, bottom: 0 } });
+      if (selected.has("MACD")) {
+        const macd = klineMacd(candles); const histogram = entry.chart.addHistogramSeries({ priceScaleId: "macd", lastValueVisible: false, priceLineVisible: false }); histogram.setData(macd.histogram); entry.indicatorSeries.push(histogram); addLine(macd.dif, "#47c7ff", "macd"); addLine(macd.signal, "#ffad5c", "macd"); addLegend("DIF", macd.dif, "cyan"); addLegend("DEA", macd.signal, "orange");
+      }
+      if (selected.has("KDJ")) {
+        const kdj = klineKdj(candles); addLine(kdj.k, "#e5f453", "kdj"); addLine(kdj.d, "#47c7ff", "kdj"); addLine(kdj.j, "#b58cff", "kdj"); addLegend("K", kdj.k, "lime"); addLegend("D", kdj.d, "cyan"); addLegend("J", kdj.j, "violet");
+      }
+      if (selected.has("RSI")) { const rsi = klineRsi(candles); addLine(rsi, "#b58cff", "rsi"); addLegend("RSI14", rsi, "violet"); }
+      entry.chart.priceScale("right").applyOptions({ scaleMargins: { top: 0.08, bottom: Math.min(0.7, lowerBottom + 0.02) } });
+      const legendHost = wrap?.previousElementSibling?.matches?.('[data-chart-legend]') ? wrap.previousElementSibling : null;
+      if (legendHost) legendHost.innerHTML = "<b>O " + escapeHtml(formatPerpPrice(newest.open)) + "</b><b>H " + escapeHtml(formatPerpPrice(newest.high)) + "</b><b>L " + escapeHtml(formatPerpPrice(newest.low)) + "</b><b>C " + escapeHtml(formatPerpPrice(newest.close)) + "</b>" + legend.join("");
+      entry.chart.applyOptions?.({ width: host.clientWidth || 640, height: chartHeight });
+      const renderKey = tokenAddress(state.selected) + ":" + state.chartInterval;
+      if (created || entry.renderKey !== renderKey) entry.chart.timeScale().fitContent();
+      entry.renderKey = renderKey;
     });
   };
   const renderProjectSummary = (detail) => {
@@ -6011,6 +6074,9 @@
   const setGlobalMenuOpen = (open) => {
     root.classList.toggle('navigation-open', open);
     $('[data-global-menu-toggle]')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const contacts = $('.official-contact-footer');
+    if (open) contacts?.removeAttribute('hidden');
+    else contacts?.toggleAttribute('hidden', $('[data-panel="detail"]')?.classList.contains('active'));
   };
   const applyScreenChrome = (name) => {
     $$('[data-panel]').forEach(panel => panel.classList.toggle('has-bottom-nav', panel.dataset.panel === name && mainScreens.includes(name)));
@@ -6489,10 +6555,31 @@
     $$("[data-chart-interval]").forEach((node) =>
       node.addEventListener("click", () => {
         const interval = Number(node.dataset.chartInterval);
-        if (![60, 300, 900, 3600, 14400, 86400].includes(interval)) return;
+        if (![60, 300, 600, 900, 3600, 7200, 14400, 86400].includes(interval)) return;
         state.chartInterval = interval;
         $$("[data-chart-interval]").forEach((choice) => choice.classList.toggle("active", Number(choice.dataset.chartInterval) === interval));
         void reloadCandles().catch((error) => toastError(error, "K 线加载失败，请稍后重试"));
+      }),
+    );
+    $$("[data-chart-indicator]").forEach((node) =>
+      node.addEventListener("click", () => {
+        const indicator = String(node.dataset.chartIndicator || '').toUpperCase();
+        const supported = ['MA', 'EMA', 'BOLL', 'ST', 'VOL', 'MACD', 'KDJ', 'RSI'];
+        if (!supported.includes(indicator)) return;
+        const active = new Set(state.chartIndicators);
+        if (active.has(indicator)) active.delete(indicator); else active.add(indicator);
+        state.chartIndicators = supported.filter((name) => active.has(name));
+        $$("[data-chart-indicator]").forEach((choice) => choice.classList.toggle("active", active.has(String(choice.dataset.chartIndicator || '').toUpperCase())));
+        drawCharts();
+      }),
+    );
+    $$("[data-kline-more]").forEach((node) =>
+      node.addEventListener("click", () => {
+        const row = node.closest('.kline-time-row');
+        const expanded = !row?.classList.contains('expanded');
+        row?.classList.toggle('expanded', expanded);
+        node.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        node.textContent = expanded ? uiCopy('收起', 'Less') : uiCopy('更多', 'More');
       }),
     );
     $$("[data-trade-side]").forEach((node) => node.addEventListener("click", () => applySide(node.dataset.tradeSide === "sell")));

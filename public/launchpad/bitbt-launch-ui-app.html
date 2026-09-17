@@ -310,7 +310,7 @@
 <style id="bitbt-live-extensions">
 @media(max-width:560px){.connect-global{width:auto;min-width:96px;max-width:128px;padding:0 9px}.connect-global .ico{display:block;flex:0 0 auto}.connect-global span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .perps-order-box{position:relative}.perps-order-box.is-waiting>:not(.perps-wait-overlay){opacity:.28;filter:grayscale(.65);pointer-events:none;user-select:none}.perps-wait-overlay{display:none;position:absolute;z-index:12;inset:0;align-items:center;justify-content:center;padding:24px;border-radius:15px;background:rgba(8,10,10,.78);backdrop-filter:blur(3px);text-align:center}.perps-order-box.is-waiting .perps-wait-overlay{display:flex}.perps-wait-overlay>div{max-width:270px}.perps-wait-spinner{display:block;width:28px;height:28px;margin:0 auto 12px;border:3px solid rgba(229,244,83,.2);border-top-color:var(--lime);border-radius:50%;animation:perps-wait-spin .8s linear infinite}.perps-wait-overlay strong,.perps-wait-overlay small{display:block}.perps-wait-overlay strong{color:#f4f5ef;font-size:13px}.perps-wait-overlay small{margin-top:8px;color:#b3b99f;font-size:10px;line-height:1.55}@keyframes perps-wait-spin{to{transform:rotate(360deg)}}
-.perps-indicators{display:flex;align-items:center;gap:5px;min-height:36px;padding:5px 8px;border-top:1px solid #242728;border-bottom:1px solid #242728;overflow-x:auto;scrollbar-width:thin}.perps-indicators span{flex:0 0 auto;color:#686d6a;font-size:8px;text-transform:uppercase}.perps-indicators button{flex:0 0 auto;border:1px solid transparent;border-radius:5px;background:transparent;color:#7c817e;padding:5px 7px;font:9px/1 "IBM Plex Sans",sans-serif}.perps-indicators button:hover{color:#e5f453}.perps-indicators button.active{border-color:rgba(229,244,83,.35);background:rgba(229,244,83,.1);color:#e5f453}.perps-chart-legend{display:flex;flex-wrap:wrap;gap:4px 10px;min-height:20px;padding:4px 9px;background:#0a0b0c;color:#858b87;font:9px/1.3 "IBM Plex Sans",sans-serif}.perps-chart-legend b{font-weight:500}.perps-chart-legend .lime{color:#e5f453}.perps-chart-legend .cyan{color:#47c7ff}.perps-chart-legend .violet{color:#b58cff}.perps-chart-legend .orange{color:#ffad5c}@media(max-width:760px){.perps-indicators{padding-inline:5px}.terminal-chart-shell .chart-wrap.has-sub-indicator{height:330px}}
+.kline-time-row{align-items:center;overflow-x:auto;scrollbar-width:thin}.kline-time-row .kline-time-label{flex:0 0 auto;padding:0 4px;color:#686d6a;font:8px/1 "IBM Plex Sans",sans-serif}.kline-time-row .kline-extra{display:none}.kline-time-row.expanded .kline-extra{display:block}.kline-time-row .kline-more{margin-left:auto;color:#a6aaa6}.kline-time-row.expanded .kline-more{color:var(--lime)}.kline-indicators{display:flex;align-items:center;gap:5px;min-height:36px;padding:5px 8px;border-top:1px solid #242728;border-bottom:1px solid #242728;overflow-x:auto;scrollbar-width:thin}.kline-indicators span{flex:0 0 auto;color:#686d6a;font-size:8px;text-transform:uppercase}.kline-indicators button{flex:0 0 auto;border:1px solid transparent;border-radius:5px;background:transparent;color:#7c817e;padding:5px 7px;font:9px/1 "IBM Plex Sans",sans-serif}.kline-indicators button:hover{color:#e5f453}.kline-indicators button.active{border-color:rgba(229,244,83,.35);background:rgba(229,244,83,.1);color:#e5f453}.kline-chart-legend{display:flex;flex-wrap:wrap;gap:4px 10px;min-height:20px;padding:4px 9px;background:#0a0b0c;color:#858b87;font:9px/1.3 "IBM Plex Sans",sans-serif}.kline-chart-legend b{font-weight:500}.kline-chart-legend .lime{color:#e5f453}.kline-chart-legend .cyan{color:#47c7ff}.kline-chart-legend .violet{color:#b58cff}.kline-chart-legend .orange{color:#ffad5c}@media(max-width:760px){.kline-indicators{padding-inline:5px}.terminal-chart-shell .chart-wrap.has-sub-indicator{height:330px}}
 .perps-operation-notice{margin:0 0 10px;padding:9px 10px;border:1px solid #725d25;border-radius:7px;background:#27220f;color:#f2d26c;font:10px/1.5 "IBM Plex Sans",sans-serif}
   .perps-price-refresh{border:0;background:transparent;color:#ffd21c;font:9px/1.3 "IBM Plex Sans",sans-serif;cursor:pointer}.perps-price-explanation{display:block;margin-top:7px;color:#818681;font:9px/1.4 "IBM Plex Sans",sans-serif}
   .perps-pending-record{padding:10px;margin:10px 0;border:1px solid #74621b;border-radius:9px;color:#f2d778;font-size:11px;overflow-wrap:anywhere}.perps-pending-record[hidden]{display:none}.perps-pending-record button{display:block;margin-top:7px;border:1px solid #74621b;border-radius:5px;background:#211d0e;color:#f2d778;padding:6px 9px;cursor:pointer}
@@ -785,9 +785,9 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 
 /* Compact global navigation: the selected page stays visible while all routes and official contacts open vertically on demand. */
 .global-menu-toggle{height:38px;display:inline-flex;align-items:center;gap:7px;border:1px solid #343738;border-radius:9px;background:#151718;color:#dfe3df;padding:0 10px;font-size:10px}.global-menu-toggle[aria-expanded="true"]{border-color:var(--lime);color:var(--lime)}
-.launch-stage>.screen-switcher{display:none;position:absolute;z-index:80;top:67px;right:20px;width:min(280px,calc(100% - 32px));padding:7px;border:1px solid #343738;border-radius:12px;background:#111314;box-shadow:0 16px 44px rgba(0,0,0,.45);overflow:visible}.launch-stage.navigation-open>.screen-switcher{display:grid;gap:3px}.launch-stage>.screen-switcher button{width:100%;min-height:40px;border:0;border-radius:7px;padding:9px 11px;text-align:left}.launch-stage>.screen-switcher button[aria-pressed="true"]{background:#252a27;color:var(--lime)}.launch-stage>.screen-switcher button[aria-pressed="true"]:after{display:none}
-.launch-stage>.official-contact-footer{display:none;position:absolute!important;z-index:80!important;top:337px!important;right:20px!important;bottom:auto!important;left:auto!important;width:min(280px,calc(100% - 32px));padding:7px;border:1px solid #343738;border-top:0;border-radius:0 0 12px 12px;background:#111314;box-shadow:0 16px 44px rgba(0,0,0,.45)}.launch-stage.navigation-open>.official-contact-footer{display:block}.launch-stage>.official-contact-footer .official-contact-bar{display:grid;grid-template-columns:1fr 1fr;gap:4px;border:0;padding:0;background:transparent}.launch-stage>.official-contact-footer .official-contact-bar a{min-width:0;border:0;border-radius:7px;background:#1b1e1f;padding:8px}.launch-stage>.official-contact-footer .official-contact-bar strong{display:none}.launch-stage>.official-contact-footer .official-contact-bar span{font-size:9px}
-@media(max-width:760px){.global-menu-toggle{width:38px;padding:0;justify-content:center}.global-menu-toggle .ico{display:inline-block}.global-menu-toggle span{display:none}.launch-stage>.screen-switcher{top:66px;right:10px}.launch-stage>.official-contact-footer{top:336px!important;right:10px!important}.workbench{height:calc(100vh - 66px);height:calc(100dvh - 66px)}.studio-head{flex-shrink:0}.screen-switcher{height:auto}.studio-actions{gap:4px}}
+.launch-stage>.screen-switcher{display:none;position:absolute;z-index:80;top:67px;right:20px;width:min(224px,calc(100% - 24px));padding:6px;border:1px solid #343738;border-radius:10px 10px 0 0;background:#111314;box-shadow:0 16px 44px rgba(0,0,0,.45);overflow:visible}.launch-stage.navigation-open>.screen-switcher{display:grid;gap:2px}.launch-stage>.screen-switcher button{width:100%;min-height:34px;border:0;border-radius:6px;padding:7px 10px;text-align:left;font-size:10px}.launch-stage>.screen-switcher button[aria-pressed="true"]{background:#252a27;color:var(--lime)}.launch-stage>.screen-switcher button[aria-pressed="true"]:after{display:none}
+.launch-stage>.official-contact-footer{display:none;position:absolute!important;z-index:80!important;top:285px!important;right:20px!important;bottom:auto!important;left:auto!important;width:min(224px,calc(100% - 24px));padding:6px;border:1px solid #343738;border-top:0;border-radius:0 0 10px 10px;background:#111314;box-shadow:0 16px 44px rgba(0,0,0,.45)}.launch-stage.navigation-open>.official-contact-footer{display:block}.launch-stage>.official-contact-footer .official-contact-bar{display:grid;grid-template-columns:1fr 1fr;gap:4px;border:0;padding:0;background:transparent}.launch-stage>.official-contact-footer .official-contact-bar a{min-width:0;min-height:34px;border:0;border-radius:6px;background:#1b1e1f;padding:7px;gap:6px}.launch-stage>.official-contact-footer .official-contact-bar a:hover{background:#262a29;color:var(--lime)}.launch-stage>.official-contact-footer .official-contact-bar strong{display:none}.launch-stage>.official-contact-footer .official-contact-bar span{font-size:8px;white-space:nowrap}
+@media(max-width:760px){.global-menu-toggle{width:38px;padding:0;justify-content:center}.global-menu-toggle .ico{display:inline-block}.global-menu-toggle span{display:none}.launch-stage>.screen-switcher{top:66px;right:10px}.launch-stage>.official-contact-footer{top:284px!important;right:10px!important}.workbench{height:calc(100vh - 66px);height:calc(100dvh - 66px)}.studio-head{flex-shrink:0}.screen-switcher{height:auto}.studio-actions{gap:4px}}
 
       body.runtime-pending #bitbt-launch {
         visibility: hidden;
@@ -1250,16 +1250,16 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                         ><span data-perps-symbol>—</span></strong
                       ><span>现货成交 K 线 · Oracle 标记价独立展示</span>
                     </div>
-                    <div class="time-row">
-                      <button data-perps-chart-interval="60">1M</button><button class="active" data-perps-chart-interval="300">5M</button><button data-perps-chart-interval="600">10M</button
-                      ><button data-perps-chart-interval="900">15M</button><button data-perps-chart-interval="3600">1H</button><button data-perps-chart-interval="7200">2H</button><button data-perps-chart-interval="14400">4H</button
-                      ><button data-perps-chart-interval="86400">1D</button>
+                    <div class="time-row kline-time-row">
+                      <span class="kline-time-label">周期</span><button data-perps-chart-interval="60">1M</button><button class="active" data-perps-chart-interval="300">5M</button><button data-perps-chart-interval="600">10M</button
+                      ><button data-perps-chart-interval="900">15M</button><button class="kline-extra" data-perps-chart-interval="3600">1H</button><button class="kline-extra" data-perps-chart-interval="7200">2H</button><button class="kline-extra" data-perps-chart-interval="14400">4H</button
+                      ><button class="kline-extra" data-perps-chart-interval="86400">1D</button><button class="kline-more" type="button" data-kline-more aria-expanded="false">更多</button>
                     </div>
-                    <div class="perps-indicators" aria-label="K 线指标">
+                    <div class="kline-indicators" aria-label="K 线指标">
                       <span>主图</span><button class="active" data-perps-indicator="MA">MA</button><button data-perps-indicator="EMA">EMA</button><button data-perps-indicator="BOLL">BOLL</button><button data-perps-indicator="ST">SuperTrend</button>
                       <span>副图</span><button class="active" data-perps-indicator="VOL">VOL</button><button data-perps-indicator="MACD">MACD</button><button data-perps-indicator="KDJ">KDJ</button><button data-perps-indicator="RSI">RSI</button>
                     </div>
-                    <div class="perps-chart-legend" data-perps-chart-legend aria-live="polite">MA · VOL</div>
+                    <div class="kline-chart-legend" data-perps-chart-legend aria-live="polite">MA · VOL</div>
                     <div class="chart-wrap">
                       <div class="chart-fallback">正在载入永续合约 K 线…</div>
                       <div class="chart" id="perps-kline"></div>
@@ -2484,14 +2484,12 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
               </div>
 
               <div class="stats-grid"><div><span>24H VOL</span><strong data-active-volume="">—</strong></div><div><span>LIQUIDITY</span><strong data-active-liquidity="">—</strong></div><div><span>HOLDERS</span><strong data-detail-holder-total="">—</strong></div><div><span>TOP 10</span><strong data-detail-top-ten="">—</strong></div></div>
-              <div class="time-row">
-                <button data-chart-interval="60">1M</button>
-                <button class="active" data-chart-interval="300">5M</button>
-                <button data-chart-interval="900">15M</button>
-                <button data-chart-interval="3600">1H</button>
-                <button data-chart-interval="14400">4H</button>
-                <button data-chart-interval="86400">1D</button>
+              <div class="time-row kline-time-row">
+                <span class="kline-time-label">周期</span><button data-chart-interval="60">1M</button><button class="active" data-chart-interval="300">5M</button><button data-chart-interval="600">10M</button><button data-chart-interval="900">15M</button>
+                <button class="kline-extra" data-chart-interval="3600">1H</button><button class="kline-extra" data-chart-interval="7200">2H</button><button class="kline-extra" data-chart-interval="14400">4H</button><button class="kline-extra" data-chart-interval="86400">1D</button><button class="kline-more" type="button" data-kline-more aria-expanded="false">更多</button>
               </div>
+              <div class="kline-indicators" aria-label="K 线指标"><span>主图</span><button class="active" data-chart-indicator="MA">MA</button><button data-chart-indicator="EMA">EMA</button><button data-chart-indicator="BOLL">BOLL</button><button data-chart-indicator="ST">SuperTrend</button><span>副图</span><button class="active" data-chart-indicator="VOL">VOL</button><button data-chart-indicator="MACD">MACD</button><button data-chart-indicator="KDJ">KDJ</button><button data-chart-indicator="RSI">RSI</button></div>
+              <div class="kline-chart-legend" data-chart-legend aria-live="polite">MA · VOL</div>
               <div class="chart-wrap">
                 <div class="chart-fallback" data-chart-empty="">正在读取真实成交 K 线…</div>
                 <div class="chart" id="launch-kline"></div>
@@ -2696,14 +2694,12 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
                       </strong>
                       <span>真实链上成交聚合</span>
                     </div>
-                    <div class="time-row">
-                      <button data-chart-interval="60">1M</button>
-                      <button class="active" data-chart-interval="300">5M</button>
-                      <button data-chart-interval="900">15M</button>
-                      <button data-chart-interval="3600">1H</button>
-                      <button data-chart-interval="14400">4H</button>
-                      <button data-chart-interval="86400">1D</button>
+                    <div class="time-row kline-time-row">
+                      <span class="kline-time-label">周期</span><button data-chart-interval="60">1M</button><button class="active" data-chart-interval="300">5M</button><button data-chart-interval="600">10M</button><button data-chart-interval="900">15M</button>
+                      <button class="kline-extra" data-chart-interval="3600">1H</button><button class="kline-extra" data-chart-interval="7200">2H</button><button class="kline-extra" data-chart-interval="14400">4H</button><button class="kline-extra" data-chart-interval="86400">1D</button><button class="kline-more" type="button" data-kline-more aria-expanded="false">更多</button>
                     </div>
+                    <div class="kline-indicators" aria-label="K 线指标"><span>主图</span><button class="active" data-chart-indicator="MA">MA</button><button data-chart-indicator="EMA">EMA</button><button data-chart-indicator="BOLL">BOLL</button><button data-chart-indicator="ST">SuperTrend</button><span>副图</span><button class="active" data-chart-indicator="VOL">VOL</button><button data-chart-indicator="MACD">MACD</button><button data-chart-indicator="KDJ">KDJ</button><button data-chart-indicator="RSI">RSI</button></div>
+                    <div class="kline-chart-legend" data-chart-legend aria-live="polite">MA · VOL</div>
                     <div class="chart-wrap">
                       <div class="chart-fallback" data-chart-empty>正在读取真实成交 K 线…</div>
                       <div class="chart" id="trade-kline"></div>

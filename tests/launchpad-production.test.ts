@@ -193,6 +193,19 @@ test("perpetual chart exposes cached 5m and 10m candles with working main and lo
   assert.match(bridge, /entry\.dataKey === dataKey/);
 });
 
+test("launchpad token charts reuse the perpetual periods and technical indicators", () => {
+  for (const [seconds, label] of [[60, "1M"], [300, "5M"], [600, "10M"], [900, "15M"], [3600, "1H"], [7200, "2H"], [14400, "4H"], [86400, "1D"]] as const) {
+    assert.match(html, new RegExp(`data-chart-interval="${seconds}"[^>]*>${label}`));
+  }
+  for (const indicator of ["MA", "EMA", "BOLL", "ST", "VOL", "MACD", "KDJ", "RSI"]) {
+    assert.match(html, new RegExp(`data-chart-indicator="${indicator}"`));
+  }
+  assert.match(html, /data-kline-more[^>]*>更多/);
+  assert.match(bridge, /state\.chartIndicators/);
+  assert.match(bridge, /name === "VOL" \? "volume" : name\.toLowerCase\(\)/);
+  assert.match(bridge, /entry\.renderKey !== renderKey/);
+});
+
 test("unbroadcast open and close attempts remain visible in the order panel", () => {
   assert.match(html, /data-perps-operation-notice[^>]*role="alert"/);
   assert.match(bridge, /本次.*交易未发送，请稍后再试/);
