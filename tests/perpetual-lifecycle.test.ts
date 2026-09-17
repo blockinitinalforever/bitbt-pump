@@ -99,7 +99,7 @@ test('VM: warming keeper polls read-only config then sends at most one more prep
   await assert.rejects(context.prepare({wallet_address:wallet}),/禁止重复发送/);
   assert.equal(posts,2);
 });
-test('VM: keeper timeout makes only three read-only status checks', async () => {
+test('VM: keeper keeps polling read-only status for up to three minutes', async () => {
   const code = pendingGuard + source.slice(source.indexOf('  const preparePerpetualWhenReady ='), source.indexOf('  const preparePerpetualAction ='));
   let posts = 0;
   let polls = 0;
@@ -110,8 +110,28 @@ test('VM: keeper timeout makes only three read-only status checks', async () => 
   };
   vm.createContext(context);
   vm.runInContext(code+'\nglobalThis.prepare = preparePerpetualWhenReady;',context);
-  await assert.rejects(context.prepare({wallet_address:wallet}),/尚未就绪/);
+  await assert.rejects(context.prepare({wallet_address:wallet}),/未就绪/);
   assert.equal(posts,1);
+  assert.equal(polls,36);
+});
+test('VM: ready config keeps waiting when prepare briefly still reports warming', async () => {
+  const code = pendingGuard + source.slice(source.indexOf('  const preparePerpetualWhenReady ='), source.indexOf('  const preparePerpetualAction ='));
+  let posts = 0;
+  let polls = 0;
+  const context: any = {
+    state:{perpConfig:{contractAddress:'proxy'}},readLocalPreference:()=>'',writeLocalPreference:()=>{},
+    renderPerpetual:()=>{},window:{setTimeout:(callback:()=>void)=>callback()},
+    api:async(url:string)=>{
+      if(url.endsWith('/config')){polls++;return {contractAddress:'proxy',operationsReady:true,openingsPaused:false};}
+      posts++;
+      if(posts < 4) throw Error('perpetual keeper is warming up; retry shortly');
+      return {transactions:[]};
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(code+'\nglobalThis.prepare = preparePerpetualWhenReady;',context);
+  await context.prepare({wallet_address:wallet,action:'open_position'});
+  assert.equal(posts,4);
   assert.equal(polls,3);
 });
 test('VM: degraded keeper stops status polling after one check', async () => {
