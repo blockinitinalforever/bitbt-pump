@@ -62,6 +62,7 @@
     preparedPerpRequest: null,
     perpSubmitting: false,
     perpKeeperWaking: false,
+    perpKeeperWakeAttempt: 0,
     perpModernAction: "open_position",
     perpCandles: [],
     perpChartInterval: 300,
@@ -1190,6 +1191,27 @@
         submit.textContent = state.perpKeeperWaking ? uiCopy('运维服务启动中，请稍候…', 'Starting operations, please wait…') : state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : !market ? uiCopy('请选择市场', 'Select market') : state.perpModernAction === 'close_position' ? uiCopy(`确认平仓 ${perpetualPairLabel(market)}`, `Close ${perpetualPairLabel(market)}`) : uiCopy(`确认开${isShort ? '空' : '多'} ${perpetualPairLabel(market)}`, `${isShort ? 'Short' : 'Long'} ${perpetualPairLabel(market)}`);
         submit.removeAttribute('data-toast');
       }
+      const orderBox = $('[data-perps-order-box]');
+      if (orderBox) {
+        const waiting = Boolean(state.perpSubmitting && state.perpKeeperWaking);
+        orderBox.classList.toggle('is-waiting', waiting);
+        orderBox.setAttribute('aria-busy', waiting ? 'true' : 'false');
+        text('[data-perps-wait-title]', uiCopy('正在准备运维服务', 'Preparing operations'));
+        text('[data-perps-wait-detail]', state.perpKeeperWakeAttempt > 0
+          ? uiCopy(`正在进行第 ${state.perpKeeperWakeAttempt}/3 次就绪检查，通常共需 5–30 秒；完成后自动继续，请勿重复点击。`, `Readiness check ${state.perpKeeperWakeAttempt}/3 is running. This usually takes 5–30 seconds; preparation will continue automatically.`)
+          : uiCopy('正在提交启动请求，通常需要 5–30 秒；完成后自动继续本次开仓，请勿重复点击。', 'Sending the startup request. This usually takes 5–30 seconds; preparation will continue automatically.'));
+        orderBox.querySelectorAll('button, input, select, textarea').forEach((control) => {
+          if (waiting) {
+            if (!control.hasAttribute('data-perps-wait-was-disabled')) {
+              control.setAttribute('data-perps-wait-was-disabled', control.disabled ? '1' : '0');
+            }
+            control.disabled = true;
+          } else if (control.hasAttribute('data-perps-wait-was-disabled')) {
+            control.disabled = control.getAttribute('data-perps-wait-was-disabled') === '1';
+            control.removeAttribute('data-perps-wait-was-disabled');
+          }
+        });
+      }
       renderPerpetualChart();
     }
     if (market) {
@@ -1466,9 +1488,12 @@
       if (!String(error?.message || error).includes('perpetual keeper is warming up')) throw error;
     }
     state.perpKeeperWaking = true;
+    state.perpKeeperWakeAttempt = 0;
     renderPerpetual();
     try {
-      for (const delay of [5000, 10000, 15000]) {
+      for (const [index, delay] of [5000, 10000, 15000].entries()) {
+        state.perpKeeperWakeAttempt = index + 1;
+        renderPerpetual();
         await new Promise((resolve) => window.setTimeout(resolve, delay));
         assertContext();
         state.perpConfig = await api('v1/pump/perpetual/config');
@@ -1489,6 +1514,7 @@
       throw new Error('永续运维服务尚未就绪，请稍后重试；本次未发送开仓交易');
     } finally {
       state.perpKeeperWaking = false;
+      state.perpKeeperWakeAttempt = 0;
       renderPerpetual();
     }
   };
