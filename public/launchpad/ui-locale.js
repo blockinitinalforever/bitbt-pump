@@ -140,6 +140,7 @@
   "迁移阈值低于链上最低要求，请重新加载发币参数": "The migration threshold is below the on-chain minimum. Please reload the launch parameters.",
   "自定义迁移目标超出当前 Factory 允许范围，请按提示调整后重试": "The custom migration target is outside the Factory's allowed range. Adjust it and retry.",
   "开仓失败：保证金 × 杠杆超过当前市场的单仓名义价值上限，请降低保证金或杠杆": "Cannot open position: collateral × leverage exceeds the market's per-position notional limit. Reduce collateral or leverage.",
+  "同一市场已有反方向仓位，当前不能同时持有多仓和空仓；请先平掉现有仓位，再开另一方向": "An opposite-direction position is already open in this market. Long and short positions cannot be held simultaneously; close the existing position before opening the other direction.",
   "开仓失败：市场总未平仓量已达到上限，请减小仓位或等待其他仓位关闭": "Cannot open position: the market's open-interest limit has been reached. Reduce the position size or wait for other positions to close.",
   "开仓失败：当前方向的多空敞口已达到上限，请减小仓位或选择另一方向": "Cannot open position: this direction's exposure limit has been reached. Reduce the position size or choose the other direction.",
   "开仓失败：资金池可用流动性不足，请减小仓位": "Cannot open position: insufficient available pool liquidity. Reduce the position size.",

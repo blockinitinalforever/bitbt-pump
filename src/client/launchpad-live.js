@@ -591,6 +591,7 @@
     if (/Below min threshold/i.test(message)) return "迁移阈值低于链上最低要求，请重新加载发币参数";
     if (/migration_threshold_quote/i.test(message)) return "自定义迁移目标超出当前 Factory 允许范围，请按提示调整后重试";
     if (/position limit exceeded/i.test(message)) return "开仓失败：保证金 × 杠杆超过当前市场的单仓名义价值上限，请降低保证金或杠杆";
+    if (/close the existing opposite-direction position|opposite-direction position/i.test(message)) return "同一市场已有反方向仓位，当前不能同时持有多仓和空仓；请先平掉现有仓位，再开另一方向";
     if (/open interest limit exceeded/i.test(message)) return "开仓失败：市场总未平仓量已达到上限，请减小仓位或等待其他仓位关闭";
     if (/directional exposure limit exceeded/i.test(message)) return "开仓失败：当前方向的多空敞口已达到上限，请减小仓位或选择另一方向";
     if (/utilization limit exceeded/i.test(message)) return "开仓失败：资金池可用流动性不足，请减小仓位";
@@ -1776,6 +1777,11 @@
         throw new Error(`当前市场只允许 1–${leverageCap || '—'} 倍杠杆，请刷新市场参数后重试`);
       }
       body.is_long = modernPerps ? !$('[data-perps-side="short"]')?.classList.contains("active") : $("#perp-side")?.value !== "short";
+      if (state.perpPosition?.open && Boolean(state.perpPosition.isLong) !== body.is_long) {
+        const existingDirection = state.perpPosition.isLong ? '多仓' : '空仓';
+        const requestedDirection = body.is_long ? '多仓' : '空仓';
+        throw new Error(`同一市场已有${existingDirection}，不能同时再开${requestedDirection}；请先平掉现有${existingDirection}，再开${requestedDirection}`);
+      }
       if (modernPerps) {
         const oracle = BigInt(market.oraclePriceE18 || '0');
         if (market.dataStale || oracle <= 0n) throw new Error('当前预言机市价不可用，请刷新市场后重试');
