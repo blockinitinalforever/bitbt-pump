@@ -211,6 +211,9 @@ test("unbroadcast open and close attempts remain visible in the order panel", ()
   assert.match(bridge, /本次.*交易未发送，请稍后再试/);
   assert.match(bridge, /request\.action === 'close_position' \? '平仓'/);
   assert.match(bridge, /operationsReady && \(!isOpening \|\| !state\.perpConfig\?\.openingsPaused\)/);
+  assert.match(bridge, /state\.perpPosition\?\.open && Boolean\(state\.perpPosition\.isLong\) !== body\.is_long/);
+  assert.match(bridge, /请先平掉现有\$\{existingDirection\}/);
+  assert.match(bridge, /close the existing opposite-direction position/);
 });
 
 test("global routes and official channels open from one vertical menu", () => {
