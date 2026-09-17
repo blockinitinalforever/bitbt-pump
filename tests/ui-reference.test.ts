@@ -470,6 +470,11 @@ test('mobile wallet browsers never auto-zoom text entry controls', () => {
   assert.doesNotMatch(html, /maximum-scale\s*=\s*1|user-scalable\s*=\s*no/);
 });
 
+test('mobile connected wallet keeps the shortened address visible', () => {
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
+  assert.match(html, /<style id="bitbt-live-extensions">\s*@media\(max-width:560px\)[\s\S]*?\.connect-global span\s*\{display:block;[\s\S]*?text-overflow:ellipsis/);
+});
+
 test('every secondary workflow has an explicit return control', () => {
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
   const expectedParents: Record<string, string> = {

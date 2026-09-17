@@ -156,6 +156,7 @@
   let marketSocket = null;
   let marketSocketRetry = 0;
   let marketSocketTimer = null;
+  let perpCandlesRefreshPromise = null;
   let marketRefreshTimer = null;
   let pendingSelectedMarketChange = false;
   let lastMarketEventRefreshAt = 0;
@@ -958,6 +959,13 @@
     }
   };
   const loadPerpetualCandles = async () => {
+    if (perpCandlesRefreshPromise) return perpCandlesRefreshPromise;
+    perpCandlesRefreshPromise = loadPerpetualCandlesOnce().finally(() => {
+      perpCandlesRefreshPromise = null;
+    });
+    return perpCandlesRefreshPromise;
+  };
+  const loadPerpetualCandlesOnce = async () => {
     const current = beginPerpRead('candles');
     const market = selectedPerpMarket();
     const address = String(market?.tokenAddress || "").toLowerCase();
@@ -969,13 +977,19 @@
     const marketId = Number(market.marketId);
     const interval = state.perpChartInterval;
     let candles;
-    try { candles = await api(`v1/pump/candles?token_address=${encodeURIComponent(address)}&interval=${interval}&limit=1000`); }
+    const intervalName = ({ 60: '1m', 300: '5m', 600: '10m', 900: '15m', 3600: '1h', 7200: '2h', 14400: '4h', 86400: '1d' })[interval];
+    try {
+      candles = await api(`v1/market/kline?symbol=${encodeURIComponent(market.tokenSymbol || address)}&interval=${intervalName || '5m'}&limit=1000&contract_address=${encodeURIComponent(address)}&chain_id=bsc`);
+    }
     catch (error) {
       if (!current() || state.perpChartInterval !== interval) return;
       state.perpCandles = []; renderPerpetual(); setPerpReadError('candles', 'K 线加载失败，请稍后刷新'); throw error;
     }
     if (!current() || Number(selectedPerpMarket()?.marketId) !== marketId || state.perpChartInterval !== interval) return;
-    state.perpCandles = Array.isArray(candles) ? candles : [];
+    state.perpCandles = Array.isArray(candles)
+      ? candles.map((candle) => ({ ...candle, volume_quote: candle.volume_quote ?? candle.volume ?? 0 }))
+        .sort((left, right) => Number(left.open_time) - Number(right.open_time))
+      : [];
     renderPerpetual();
     setPerpReadError('candles');
   };
@@ -6379,7 +6393,14 @@
     } catch {
       return;
     }
-    if (payload?.type !== "pump_trade" || !/^0x[0-9a-fA-F]{40}$/.test(String(payload.token_address || ""))) return;
+    const eventToken = String(payload?.token_address || '').toLowerCase();
+    if (payload?.type === 'perpetual_kline_updated') {
+      if (perpetualPanelActive() && eventToken === String(selectedPerpMarket()?.tokenAddress || '').toLowerCase()) {
+        void loadPerpetualCandles().catch(() => {});
+      }
+      return;
+    }
+    if (payload?.type !== "pump_trade" || !/^0x[0-9a-fA-F]{40}$/.test(eventToken)) return;
     state.marketActivity = [
       {
         activity_type: payload.side,
@@ -6413,6 +6434,7 @@
       if (marketSocket !== socket) return;
       marketSocketRetry = 0;
       text("[data-market-stream-status]", `${selectedNetwork().shortName} 实时数据流已连接`);
+      if (perpetualPanelActive()) void loadPerpetualCandles().catch(() => {});
     });
     socket.addEventListener("message", handlePumpSocketMessage);
     socket.addEventListener("close", () => {
