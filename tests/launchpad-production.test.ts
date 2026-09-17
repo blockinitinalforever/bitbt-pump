@@ -139,7 +139,8 @@ test("personal perpetual activity is SIWE-gated and never publicly cached", () =
 });
 
 test("perpetual terminal binds live candles, indexed activity, honest order capability, and wallet-created pools", () => {
-  assert.match(bridge, /v1\/pump\/candles\?token_address=/);
+  assert.match(bridge, /v1\/market\/kline\?symbol=/);
+  assert.match(bridge, /perpetual_kline_updated/);
   assert.match(bridge, /renderPerpetualChart/);
   assert.match(bridge, /market\?\.oraclePriceE18/);
   assert.match(bridge, /text\('\[data-perps-mark\]', formatPerpPrice\(oraclePrice\)\)/);
@@ -168,7 +169,7 @@ test("perpetual terminal renders spot candles, oracle mark price, and indexed ac
     if (url.includes("v1/pump/perpetual/config")) return { ok: true, json: async () => ({ data: { enabled: true, operationsReady: true, openingsPaused: false, maxLeverage: 20, feePercent: "0.05%" } }) };
     if (url.includes("v1/pump/perpetual/markets")) return { ok: true, json: async () => ({ data: [{ marketId: 7, tokenAddress, tokenName: "Code Token", tokenSymbol: "CODET", displayName: "CODET/tBTUSD", quoteTokenAddress: "0x2222222222222222222222222222222222222222", quoteTokenSymbol: "tBTUSD", quoteDecimals: 18, oraclePriceE18: "2500000000000000000", liquidityRaw: "1000000000000000000000", lockedNotionalRaw: "40000000000000000000", longNotionalRaw: "25000000000000000000", shortNotionalRaw: "15000000000000000000", maxPositionNotionalRaw: "100000000000000000000", maxOpenInterestRaw: "500000000000000000000", minKeeperRewardRaw: "100000000000000000", platformFeeClaimableRaw: "0", platformFeeLiabilityRaw: "0", maxLeverage: 20, maxFundingRatePpmPerDay: 1000, enabled: true, closeOnly: false }] }) };
     if (url.includes("v1/pump/perpetual/activity")) return { ok: true, json: async () => ({ data: [{ marketId: 7, trader: "0x3333333333333333333333333333333333333333", isOpen: true, isLong: true, collateralRaw: "10000000000000000000", notionalRaw: "20000000000000000000", entryPriceE18: "2400000000000000000", openedAt: 1_789_000_000 }] }) };
-    if (url.includes("v1/pump/candles")) return { ok: true, json: async () => ({ data: [{ open_time: 1_789_000_000, open: "1", high: "1.2", low: "0.9", close: "1.1", volume_quote: "12" }, { open_time: 1_789_000_060, open: "1.1", high: "1.4", low: "1", close: "1.25", volume_quote: "15" }] }) };
+    if (url.includes("v1/market/kline")) return { ok: true, json: async () => ({ data: [{ open_time: 1_789_000_000, open: "1", high: "1.2", low: "0.9", close: "1.1", volume: "12" }, { open_time: 1_789_000_060, open: "1.1", high: "1.4", low: "1", close: "1.25", volume: "15" }] }) };
     if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: {} } }) };
     if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [] }) };
     if (url.includes("v1/pump/trades") || url.includes("v1/pump/announcements") || url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
