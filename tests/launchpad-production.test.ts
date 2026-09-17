@@ -160,6 +160,17 @@ test("perpetual terminal binds live candles, indexed activity, honest order capa
   assert.match(html, /data-perps-mode disabled title="当前合约仅支持逐仓"/);
 });
 
+test("keeper warm-up locks and visibly masks every order control until preparation resumes", () => {
+  assert.match(html, /data-perps-order-box/);
+  assert.match(html, /data-perps-wait-overlay[^>]*role="status"/);
+  assert.match(html, /通常需要 5–30 秒/);
+  assert.match(bridge, /orderBox\.classList\.toggle\('is-waiting', waiting\)/);
+  assert.match(bridge, /orderBox\.querySelectorAll\('button, input, select, textarea'\)/);
+  assert.match(bridge, /control\.disabled = true/);
+  assert.match(bridge, /data-perps-wait-was-disabled/);
+  assert.match(bridge, /perpKeeperWakeAttempt = index \+ 1/);
+});
+
 test("perpetual terminal renders spot candles, oracle mark price, and indexed activity from separate live fields", async () => {
   const tokenAddress = "0x1111111111111111111111111111111111111111";
   const requests: string[] = [];
