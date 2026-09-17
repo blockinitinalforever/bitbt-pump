@@ -169,6 +169,43 @@ test("keeper warm-up locks and visibly masks every order control until preparati
   assert.match(bridge, /control\.disabled = true/);
   assert.match(bridge, /data-perps-wait-was-disabled/);
   assert.match(bridge, /perpKeeperWakeAttempt = index \+ 1/);
+  assert.match(bridge, /const waiting = Boolean\(state\.perpSubmitting\)/);
+  assert.match(bridge, /perpOperationPhase === 'confirming'/);
+  assert.match(bridge, /开仓交易已经发送，正在等待链上确认|本次.*交易已经发送/);
+  assert.match(bridge, /data-perps-submit-was-disabled/);
+  assert.match(bridge, /tag: "交易尚未发送"/);
+});
+
+test("perpetual chart exposes cached 5m and 10m candles with working main and lower indicators", () => {
+  for (const [seconds, label] of [[300, "5M"], [600, "10M"]] as const) {
+    assert.match(html, new RegExp(`data-perps-chart-interval="${seconds}"[^>]*>${label}`));
+  }
+  for (const indicator of ["MA", "EMA", "BOLL", "ST", "VOL", "MACD", "KDJ", "RSI"]) {
+    assert.match(html, new RegExp(`data-perps-indicator="${indicator}"`));
+  }
+  assert.match(bridge, /300:\s*'5m',\s*600:\s*'10m'/);
+  assert.match(bridge, /const klineBoll =/);
+  assert.match(bridge, /const klineSuperTrend =/);
+  assert.match(bridge, /const klineMacd =/);
+  assert.match(bridge, /const klineKdj =/);
+  assert.match(bridge, /const klineRsi =/);
+  assert.match(bridge, /event\.target\.closest\('\[data-perps-indicator\]'\)/);
+  assert.match(bridge, /entry\.dataKey === dataKey/);
+});
+
+test("unbroadcast open and close attempts remain visible in the order panel", () => {
+  assert.match(html, /data-perps-operation-notice[^>]*role="alert"/);
+  assert.match(bridge, /本次.*交易未发送，请稍后再试/);
+  assert.match(bridge, /request\.action === 'close_position' \? '平仓'/);
+  assert.match(bridge, /operationsReady && \(!isOpening \|\| !state\.perpConfig\?\.openingsPaused\)/);
+});
+
+test("global routes and official channels open from one vertical menu", () => {
+  assert.match(html, /data-global-menu-toggle/);
+  assert.match(html, /id="global-screen-menu"/);
+  assert.match(html, /launch-stage\.navigation-open>\.screen-switcher\{display:grid/);
+  assert.match(html, /launch-stage\.navigation-open>\.official-contact-footer\{display:block/);
+  assert.match(bridge, /setGlobalMenuOpen\(!root\.classList\.contains\('navigation-open'\)\)/);
 });
 
 test("perpetual terminal renders spot candles, oracle mark price, and indexed activity from separate live fields", async () => {
@@ -265,7 +302,8 @@ const boot = async (fetchImpl: (input: string, init?: RequestInit) => Promise<un
   delete windowContext.location;
   delete windowContext.navigator;
   delete windowContext.localStorage;
-  Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), }), addHistogramSeries: () => ({ setData: (data: unknown[]) => chartData.push(data), priceScale: () => ({ applyOptions: () => undefined }) }), applyOptions: () => undefined, remove: () => undefined, timeScale: () => ({ fitContent: () => undefined }) }) } });
+  const chartSeries = () => ({ setData: (data: unknown[]) => chartData.push(data), applyOptions: () => undefined, priceScale: () => ({ applyOptions: () => undefined }) });
+  Object.assign(window, windowContext, { LightweightCharts: { createChart: () => ({ addCandlestickSeries: chartSeries, addHistogramSeries: chartSeries, addLineSeries: chartSeries, removeSeries: () => undefined, priceScale: () => ({ applyOptions: () => undefined }), applyOptions: () => undefined, remove: () => undefined, timeScale: () => ({ fitContent: () => undefined }) }) } });
   vm.runInNewContext(bridge, context);
   await new Promise((resolve) => setTimeout(resolve, 20));
   return { window, providerCalls, untrustedProviderCalls, providerEvents, chartData, providerTransactions, historyPaths, clipboardWrites, storage };
