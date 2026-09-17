@@ -285,12 +285,12 @@ test('original account entries resolve to existing real features', () => {
   assert.ok(document.querySelector('[data-panel="profile"] [data-open="perpetual"]'), 'advanced perpetual operations must stay reachable');
 });
 
-test('mobile bottom navigation exactly matches the delivered five tabs and icons', () => {
-  const original = parseHTML(fs.readFileSync(referencePath, 'utf8')).document;
+test('mobile bottom navigation keeps five primary tabs and exposes perpetual trading directly', () => {
   const current = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8')).document;
-  assert.equal(current.querySelector('.bottom-nav')!.outerHTML, original.querySelector('.bottom-nav')!.outerHTML);
   assert.equal(current.querySelectorAll('.bottom-nav > button').length, 5);
-  assert.ok(current.querySelector('.screen-switcher [data-open="perps"]'), 'perpetual entry must stay reachable');
+  assert.ok(current.querySelector('.bottom-nav [data-nav="discover"]'));
+  assert.ok(current.querySelector('.bottom-nav [data-nav="perps"]'));
+  assert.ok(current.querySelector('.screen-switcher [data-open="live"]'), 'live route must stay reachable from the complete menu');
 });
 
 test('mobile bottom stack keeps tabs last and removes the contact footer from the detail CTA state', () => {
@@ -313,18 +313,18 @@ test('mobile bottom stack keeps tabs last and removes the contact footer from th
   assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), false);
 });
 
-test('bottom navigation visibility follows the original five main screens, not transaction subpages', () => {
+test('bottom navigation visibility follows the five mobile primary screens, not transaction subpages', () => {
   const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
   const {document} = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
   const start = source.indexOf('  const mainScreens =');
   const end = source.indexOf('  const show =', start);
   const apply = vm.runInNewContext(source.slice(start, end) + ';applyScreenChrome', {$:(s:string)=>document.querySelector(s),$$:(s:string)=>[...document.querySelectorAll(s)]});
-  for (const name of ['discover','live','rank','create-mode','profile']) {
+  for (const name of ['discover','perps','rank','create-mode','profile']) {
     apply(name);
     assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), true);
     assert.equal(document.querySelectorAll('.has-bottom-nav').length, 1);
   }
-  for (const name of ['detail','trade','perps','create-basic','create-economics','create-tax','create-review','perps-create-pool']) {
+  for (const name of ['detail','trade','live','create-basic','create-economics','create-tax','create-review','perps-create-pool']) {
     apply(name);
     assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), false);
     assert.equal(document.querySelectorAll('.has-bottom-nav').length, 0);

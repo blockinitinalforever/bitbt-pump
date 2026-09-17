@@ -1382,15 +1382,15 @@
         const phaseTitleEn = state.perpKeeperWaking ? `Preparing ${actionLabelEn} service` : state.perpOperationPhase === 'confirming' ? `${actionLabelEn === 'close' ? 'Close' : 'Open'} transaction broadcast` : state.perpOperationPhase === 'wallet' ? 'Waiting for wallet confirmation' : 'Preparing transaction parameters';
         const phaseDetail = state.perpKeeperWaking
           ? state.perpKeeperWakeAttempt > 0
-            ? `后台正在进行第 ${state.perpKeeperWakeAttempt}/3 次就绪检查，通常共需 5–30 秒；完成后会自动继续。当前交易尚未发送，请勿重复点击。`
-            : `后台正在启动服务，通常需要 5–30 秒；完成后会自动继续本次${actionLabel}。当前交易尚未发送，请勿重复点击。`
+            ? `后台正在进行第 ${state.perpKeeperWakeAttempt} 次就绪检查；页面会持续等待并在就绪后自动继续。当前交易尚未发送，请勿重复点击。`
+            : `后台正在启动服务；页面会持续等待并在就绪后自动继续本次${actionLabel}。当前交易尚未发送，请勿重复点击。`
           : state.perpOperationPhase === 'confirming'
             ? `本次${actionLabel}交易已经发送，正在等待链上确认。为避免重复交易，确认完成前相关按钮已锁定。`
             : state.perpOperationPhase === 'wallet'
               ? `请在钱包中核对并确认本次${actionLabel}。完成或取消前相关按钮已锁定。`
               : `后台正在校验行情、仓位和交易参数。本次${actionLabel}交易尚未发送，完成前请勿重复操作。`;
         const phaseDetailEn = state.perpKeeperWaking
-          ? `The service is preparing and will continue automatically, usually within 5–30 seconds. No ${actionLabelEn} transaction has been sent; do not click again.`
+          ? `The service is preparing. This page will keep waiting and continue automatically when ready. No ${actionLabelEn} transaction has been sent; do not click again.`
           : state.perpOperationPhase === 'confirming'
             ? `The ${actionLabelEn} transaction was sent and is waiting for on-chain confirmation. Related controls are locked to prevent a duplicate transaction.`
             : state.perpOperationPhase === 'wallet'
@@ -1706,12 +1706,18 @@
     try {
       const isOpening = request.action === 'open_position';
       const actionLabel = request.action === 'close_position' ? '平仓' : isOpening ? '开仓' : '操作';
-      for (const [index, delay] of [5000, 10000, 15000].entries()) {
-        state.perpKeeperWakeAttempt = index + 1;
+      const maximumReadyChecks = 36;
+      for (let attempt = 1; attempt <= maximumReadyChecks; attempt += 1) {
+        state.perpKeeperWakeAttempt = attempt;
         renderPerpetual();
-        await new Promise((resolve) => window.setTimeout(resolve, delay));
+        await new Promise((resolve) => window.setTimeout(resolve, 5000));
         assertContext();
-        state.perpConfig = await api('v1/pump/perpetual/config');
+        try {
+          state.perpConfig = await api('v1/pump/perpetual/config');
+        } catch (error) {
+          if (attempt === maximumReadyChecks) throw error;
+          continue;
+        }
         assertContext();
         if (state.perpConfig?.operationsState === 'degraded') {
           throw new Error(`永续${actionLabel}暂未完成：后台服务状态异常，已停止自动重试；请稍后再试。本次未发送${actionLabel}交易`);
@@ -1721,12 +1727,16 @@
         }
         if (state.perpConfig?.operationsReady && (!isOpening || !state.perpConfig?.openingsPaused)) {
           await ensureNoPendingPerpetualTransaction(request.wallet_address, assertContext);
-          const prepared = await prepare();
-          assertContext();
-          return prepared;
+          try {
+            const prepared = await prepare();
+            assertContext();
+            return prepared;
+          } catch (error) {
+            if (!String(error?.message || error).includes('perpetual keeper is warming up')) throw error;
+          }
         }
       }
-      throw new Error(`永续${actionLabel}暂未完成：后台服务尚未就绪，正在继续准备；请稍后再试。本次未发送${actionLabel}交易`);
+      throw new Error(`永续${actionLabel}暂未完成：后台服务等待超过 3 分钟仍未就绪；本次未发送${actionLabel}交易，请检查服务状态后重试`);
     } finally {
       state.perpKeeperWaking = false;
       state.perpKeeperWakeAttempt = 0;
@@ -6070,7 +6080,7 @@
     $$('[data-launch-result-share], [data-launch-result-open]').forEach(button => { button.disabled = !token; });
   };
   let actionBackScreen = 'profile';
-  const mainScreens = ['discover', 'live', 'rank', 'create-mode', 'profile'];
+  const mainScreens = ['discover', 'perps', 'rank', 'create-mode', 'profile'];
   const setGlobalMenuOpen = (open) => {
     root.classList.toggle('navigation-open', open);
     $('[data-global-menu-toggle]')?.setAttribute('aria-expanded', open ? 'true' : 'false');

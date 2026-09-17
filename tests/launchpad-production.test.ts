@@ -38,8 +38,8 @@ test("perpetual is a first-level desktop and mobile route that survives refresh"
   assert.match(html, /class="screen-switcher"[\s\S]*data-open="perps">MEME 永续合约/);
   const navigation = parseHTML(html).document.querySelector('.bottom-nav');
   assert.ok(navigation);
-  assert.deepEqual(Array.from(navigation.querySelectorAll('[data-nav]')).map(node => node.getAttribute('data-nav')), ['discover', 'live', 'create-mode', 'rank', 'profile']);
-  assert.match(html, /data-open="perps"/); // Still available from the original top-level entry.
+  assert.deepEqual(Array.from(navigation.querySelectorAll('[data-nav]')).map(node => node.getAttribute('data-nav')), ['discover', 'perps', 'create-mode', 'rank', 'profile']);
+  assert.match(html, /data-open="live"/); // Still available from the complete menu.
   assert.match(bridge, /const routeScreen = \(\) =>/);
   assert.match(bridge, /const initialScreen = routeScreen\(\);\s*if \(initialScreen\) show\(initialScreen\)/);
   assert.match(bridge, /data-nav[^\n]*classList\.toggle\("active"/);
@@ -163,12 +163,12 @@ test("perpetual terminal binds live candles, indexed activity, honest order capa
 test("keeper warm-up locks and visibly masks every order control until preparation resumes", () => {
   assert.match(html, /data-perps-order-box/);
   assert.match(html, /data-perps-wait-overlay[^>]*role="status"/);
-  assert.match(html, /通常需要 5–30 秒/);
+  assert.match(html, /页面会持续等待并在就绪后自动继续/);
   assert.match(bridge, /orderBox\.classList\.toggle\('is-waiting', waiting\)/);
   assert.match(bridge, /orderBox\.querySelectorAll\('button, input, select, textarea'\)/);
   assert.match(bridge, /control\.disabled = true/);
   assert.match(bridge, /data-perps-wait-was-disabled/);
-  assert.match(bridge, /perpKeeperWakeAttempt = index \+ 1/);
+  assert.match(bridge, /perpKeeperWakeAttempt = attempt/);
   assert.match(bridge, /const waiting = Boolean\(state\.perpSubmitting\)/);
   assert.match(bridge, /perpOperationPhase === 'confirming'/);
   assert.match(bridge, /开仓交易已经发送，正在等待链上确认|本次.*交易已经发送/);
