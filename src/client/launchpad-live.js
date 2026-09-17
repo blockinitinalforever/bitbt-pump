@@ -6274,6 +6274,11 @@
         setGlobalMenuOpen(!root.classList.contains('navigation-open'));
         return;
       }
+      if (event.target.closest('[data-global-menu-close]')) {
+        event.preventDefault();
+        setGlobalMenuOpen(false);
+        return;
+      }
       if (root.classList.contains('navigation-open') && !event.target.closest('.screen-switcher, .official-contact-footer')) {
         setGlobalMenuOpen(false);
       }
