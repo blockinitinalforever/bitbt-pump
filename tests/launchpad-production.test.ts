@@ -222,6 +222,10 @@ test("global routes and official channels open from one vertical menu", () => {
   assert.match(html, /launch-stage\.navigation-open>\.screen-switcher\{display:grid/);
   assert.match(html, /launch-stage\.navigation-open>\.official-contact-footer\{display:block/);
   assert.match(bridge, /setGlobalMenuOpen\(!root\.classList\.contains\('navigation-open'\)\)/);
+  assert.match(html, /data-global-menu-close[^>]*aria-label="关闭页面导航"/);
+  assert.match(html, /grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+  assert.match(html, /top:116px!important/);
+  assert.match(bridge, /event\.target\.closest\('\[data-global-menu-close\]'\)/);
 });
 
 test("perpetual terminal renders spot candles, oracle mark price, and indexed activity from separate live fields", async () => {
