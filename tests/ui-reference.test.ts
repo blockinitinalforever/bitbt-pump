@@ -492,6 +492,20 @@ test('v13 uses local icons instead of decorative Unicode glyphs', () => {
   assert.match(source, /assets\/icons\/lucide\/chevron-right\.svg/);
 });
 
+test('v13 exposes every top-level route on mobile and rebuilds the 24H ticker from live tokens', () => {
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app-v13.html', 'utf8');
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  for (const route of ['discover', 'perps', 'live', 'rank', 'create-mode', 'profile']) {
+    assert.match(html, new RegExp(`data-open="${route}"`));
+  }
+  assert.match(html, /data-global-menu-toggle/);
+  assert.match(html, /launch-stage\.navigation-open>\.screen-switcher\{display:grid/);
+  assert.match(html, /data-open="announcements"/);
+  assert.match(source, /const renderTrendTicker = \(\) =>/);
+  assert.match(source, /volume_usd_24h \?\? b\.volume_quote_24h/);
+  assert.match(source, /data-live-token/);
+});
+
 test('every secondary workflow has an explicit return control', () => {
   const { document } = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
   const expectedParents: Record<string, string> = {

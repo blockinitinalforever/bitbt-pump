@@ -2124,7 +2124,24 @@
       node.innerHTML = html || uiMarkup`<p class="footer-note">暂无真实 Pump 项目数据。</p>`;
     });
     bindLiveTokenSelection();
+    renderTrendTicker();
     renderRank();
+  };
+  const renderTrendTicker = () => {
+    const ticker = $('.trend-ticker');
+    if (!ticker || root.dataset.uiPreview !== 'v13') return;
+    const ranked = [...state.tokens]
+      .filter((token) => tokenAddress(token))
+      .sort((a, b) => number(b.volume_usd_24h ?? b.volume_quote_24h) - number(a.volume_usd_24h ?? a.volume_quote_24h)
+        || number(b.trade_count_24h) - number(a.trade_count_24h))
+      .slice(0, 3);
+    const rows = ranked.map((token, index) => {
+      const change = Number(token.price_change_24h_percent);
+      const hasChange = Number.isFinite(change);
+      return uiMarkup`<button type="button" data-live-token="${escapeHtml(tokenAddress(token))}"><b>#${index + 1}</b><img src="${escapeHtml(assetImage(token))}" alt="${escapeHtml(token.token_name || token.symbol || 'Token')}"><span>${escapeHtml(token.symbol || token.token_name || '—')}</span><em class="${change < 0 ? 'down' : 'up'}">${hasChange ? `${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}</em></button>`;
+    }).join('');
+    ticker.innerHTML = uiMarkup`<span class="trend-label"><i></i>${uiCopy('24H 热门', 'TRENDING 24H')}</span>${rows || `<span class="trend-empty">${uiCopy('暂无真实 24H 市场数据', 'No live 24H market data')}</span>`}<span class="trend-live"><i></i>${uiCopy('真实数据', 'LIVE DATA')}</span>`;
+    bindLiveTokenSelection();
   };
   const renderTradeConfig = () => {
     const quote = String(state.detail?.quote_token || "BNB").toUpperCase();
