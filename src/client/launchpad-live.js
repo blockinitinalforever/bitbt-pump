@@ -1277,15 +1277,15 @@
     const keeperSyncing = enabled && (config?.operationsState === "preparing" || (!config?.operationsState && !config?.operationsReady && Date.now() - perpUnreadySince < 60_000));
     text('[data-market-perp-count]', `${state.perpMarkets.length.toLocaleString('en-US')}${uiCopy(' 个', '')}`);
     text("[data-perp-menu-status]", enabled ? (keeperStandby ? uiCopy("按需待命", "Standby") : keeperSyncing ? uiCopy("准备中", "Preparing") : config?.openingsPaused ? uiCopy("只减仓", "Reduce only") : uiCopy("已开放", "Available")) : uiCopy("未开放", "Unavailable"));
-    text("[data-perp-status]", state.perpKeeperWaking ? uiCopy("永续运维服务正在启动，系统会自动继续准备；请勿重复点击，本次永续交易尚未发送。", "Perpetual operations are starting. Preparation will continue automatically; do not click again. This perpetual trade has not been sent.") : keeperStandby ? uiCopy("Keeper 按需待命，提交交易后自动准备；已有仓位仍受风控监测。", "Keeper is on standby and prepares on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("Keeper 正在续期链上心跳，请稍候；尚未发送用户交易。", "Keeper is renewing its on-chain heartbeat. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
+    text("[data-perp-status]", state.perpKeeperWaking ? uiCopy("正在准备上链条件，请稍后；本次交易尚未发送，请勿重复点击。", "Preparing on-chain conditions. Please wait; this transaction has not been sent.") : keeperStandby ? uiCopy("上链条件按需准备；提交后系统会自动继续，已有仓位仍受风控监测。", "On-chain conditions are prepared on demand; existing positions remain monitored.") : keeperSyncing ? uiCopy("正在准备上链条件，请稍后；尚未发送用户交易。", "Preparing on-chain conditions. No user transaction has been sent.") : config?.statusNote || uiCopy("正在读取永续合约状态…", "Loading perpetual status…"));
     const keeperHint = $('[data-perps-keeper-hint]');
     if (keeperHint) {
       const hint = state.perpKeeperWaking
-        ? uiCopy("运维服务正在启动，系统会自动继续；本次开仓交易尚未发送，请勿重复点击。", "Operations are starting. We will continue automatically; this opening trade has not been sent. Please do not click again.")
+        ? uiCopy("正在准备上链条件，请稍后；本次开仓交易尚未发送，请勿重复点击。", "Preparing on-chain conditions. This opening trade has not been sent; do not click again.")
         : keeperStandby
-          ? uiCopy("运维服务目前待命。点击开仓后可能需要短暂启动，期间不会请求签名或发送交易。", "Operations are on standby. Starting a trade may take a moment; no signature or transaction is sent while waiting.")
+          ? uiCopy("上链条件会在点击开仓后按需准备，期间不会请求签名或发送交易。", "On-chain conditions are prepared after you open a trade; no signature or transaction is sent while waiting.")
           : keeperSyncing
-            ? uiCopy("运维服务正在准备；系统会在就绪后继续，暂未发送开仓交易。", "Operations are preparing. We will continue when ready; no opening trade has been sent.")
+            ? uiCopy("正在准备上链条件；系统会在就绪后继续，暂未发送开仓交易。", "Preparing on-chain conditions. We will continue when ready; no opening trade has been sent.")
             : '';
       keeperHint.hidden = !enabled || state.perpModernAction !== 'open_position' || !hint;
       keeperHint.textContent = hint;
@@ -1410,14 +1410,41 @@
             ? uiMarkup`<p class="footer-note">当前钱包在该市场没有未平仓仓位。</p>`
             : uiMarkup`<div class="perps-position-head"><div class="perps-position-name">${perpetualLogoMarkup(perpetualBaseLogo(market), market?.tokenSymbol)}<div><strong>${escapeHtml(perpetualPairLabel(market))} <span class="tag lime">${state.perpPosition.isLong ? uiCopy("我的多仓", "My long") : uiCopy("我的空仓", "My short")}</span></strong><small>逐仓 · ${escapeHtml(market?.quoteTokenSymbol || 'Quote Token')} 本位</small></div></div><div class="perps-pnl"><strong class="${pnlClass}">${escapeHtml(pnlDisplay)}</strong><small>${pnlLabel}</small></div></div><div class="perps-position-grid"><div><span>名义仓位</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.notionalRaw || '0'), decimals))}</strong></div><div><span>开仓均价</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.entryPriceE18 || '0'), 18))}</strong></div><div><span>保证金</span><strong>${escapeHtml(formatUnits(BigInt(state.perpPosition.collateralRaw || '0'), decimals))}</strong></div><div><span>开仓时间</span><strong>${state.perpPosition.openedAt ? escapeHtml(formatDate(Number(state.perpPosition.openedAt) * 1000)) : '—'}</strong></div></div><div class="perps-position-actions"><button type="button" data-modern-perp-close>市价平仓</button></div>`;
       }
+      const positionTab = $('[data-panel="perps"] [data-perps-view="positions"]');
+      if (positionTab) positionTab.textContent = `${uiCopy('当前仓位', 'Current position')} (${state.perpPosition?.open ? 1 : 0})`;
+      const ordersTab = $('[data-panel="perps"] [data-perps-view="orders"]');
+      if (ordersTab) ordersTab.textContent = `${uiCopy('限价委托', 'Limit orders')} (0)`;
+      const triggersTab = $('[data-panel="perps"] [data-perps-view="triggers"]');
+      if (triggersTab) triggersTab.textContent = `${uiCopy('条件单', 'Trigger orders')} (0)`;
+      const onchainTab = $('[data-panel="perps"] [data-perps-view="onchain"]');
+      if (onchainTab) onchainTab.textContent = `${uiCopy('链上记录', 'On-chain records')} (${state.perpActivity.filter((item) => market && Number(item.marketId) === Number(market.marketId)).length})`;
       const orders = $('[data-panel="perps"] [data-perps-panel="orders"]');
-      if (orders) orders.innerHTML = '<p class="footer-note">当前合约仅支持钱包签名后立即上链的市价操作，没有待成交挂单。</p>';
+      if (orders) orders.innerHTML = uiCopy('<p class="footer-note"><b>限价单暂未开放。</b> 当前委托数量为 0；现阶段只支持钱包签名后立即上链的市价开仓和平仓，不会展示模拟挂单。</p>', '<p class="footer-note"><b>Limit orders are not available yet.</b> Open orders: 0. The contract currently supports wallet-signed market opens and closes only.</p>');
       const triggers = $('[data-panel="perps"] [data-perps-panel="triggers"]');
       if (triggers) triggers.innerHTML = uiCopy("<p class=\"footer-note\">当前合约未开放止盈止损条件单，界面不会伪造委托数据。</p>", "<p class=\"footer-note\">Stop-loss and take-profit orders are not supported by the current contract. No simulated orders are shown.</p>");
       const onchain = $('[data-panel="perps"] [data-perps-panel="onchain"]');
       if (onchain) {
-        const rows = perpMarketActivity(market).slice(0, 5).map((item) => uiMarkup`<div class="compact-order"><strong>${escapeHtml(market ? perpetualPairLabel(market) : `Market #${Number(item.marketId)}`)} <small class="${item.isOpen ? 'up' : ''}">${item.isOpen ? uiCopy("持仓中", "Open") : uiCopy("已平仓 / 已结算", "Closed / settled")}</small></strong><span>交易者<small>${escapeHtml(short(item.traderAddress || ''))}</small></span><span>区块<small>#${Number(item.blockNumber).toLocaleString('en-US')}</small></span><span>交易哈希<small>${escapeHtml(short(item.lastTxHash || ''))}</small></span><a class="secondary" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${item.lastTxHash}`)}" target="_blank" rel="noopener noreferrer">查看</a></div>`).join('');
-        onchain.innerHTML = rows || '<p class="footer-note">该市场当前没有已索引的真实链上仓位记录。</p>';
+        const decimals = Number(market?.quoteDecimals || 18);
+        const quote = market?.quoteTokenSymbol || 'QUOTE';
+        const personalActivity = state.perpActivity.filter((item) => market && Number(item.marketId) === Number(market.marketId));
+        const activity = (state.account ? personalActivity : perpMarketActivity(market)).slice(0, 5);
+        const rows = activity.map((item) => {
+          const settled = ['close', 'liquidate', 'expire'].includes(item.eventType);
+          const rawPnl = item.realizedPnlRaw == null ? '' : String(item.realizedPnlRaw);
+          const hasPnl = /^-?\d+$/.test(rawPnl);
+          const pnl = hasPnl ? BigInt(rawPnl) : 0n;
+          const rawReturn = item.settlementPayoutRaw == null ? '' : String(item.settlementPayoutRaw);
+          const hasReturn = /^\d+$/.test(rawReturn);
+          const result = hasPnl
+            ? `${pnl > 0n ? '+' : ''}${formatUnits(pnl, decimals)} ${quote}`
+            : item.eventType === 'liquidate' && hasReturn
+              ? `${formatUnits(BigInt(rawReturn), decimals)} ${quote}（清算返还）`
+              : settled ? uiCopy('等待结算数据回补', 'Settlement data pending') : uiCopy('未结算', 'Unsettled');
+          const resultClass = hasPnl ? (pnl > 0n ? 'up' : pnl < 0n ? 'down' : '') : '';
+          const eventLabel = item.currentPosition ? uiCopy('当前持仓', 'Current position') : ({ open: uiCopy('开仓', 'Opened'), close: uiCopy('平仓结算', 'Closed'), liquidate: uiCopy('清算', 'Liquidated'), expire: uiCopy('到期结算', 'Expired') }[item.eventType] || uiCopy('链上事件', 'On-chain event'));
+          return uiMarkup`<div class="compact-order"><strong>${escapeHtml(market ? perpetualPairLabel(market) : `Market #${Number(item.marketId)}`)} <small>${escapeHtml(eventLabel)}</small></strong><span>已实现收益<small class="${resultClass}">${escapeHtml(result)}</small></span><span>区块<small>#${Number(item.blockNumber).toLocaleString('en-US')}</small></span><span>交易哈希<small>${escapeHtml(short(item.lastTxHash || ''))}</small></span>${/^0x[0-9a-fA-F]{64}$/.test(String(item.lastTxHash || '')) ? `<a class="secondary" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${item.lastTxHash}`)}" target="_blank" rel="noopener noreferrer">查看</a>` : '<span></span>'}</div>`;
+        }).join('');
+        onchain.innerHTML = rows || `<p class="footer-note">${state.account ? uiCopy('该钱包在当前市场暂无已加载的链上开仓或结算记录。', 'No loaded on-chain open or settlement records for this wallet and market.') : uiCopy('连接钱包后读取个人链上开仓与已结算收益。', 'Connect your wallet to load personal opens and settled PnL.')}</p>`;
       }
       const submit = $('#perps-submit');
       const pendingRecord = $('[data-perps-pending-record]');
@@ -1432,7 +1459,7 @@
         const isShort = $('[data-perps-side="short"]')?.classList.contains('active');
         const needsWallet = !state.account;
         submit.disabled = state.perpSubmitting || (!needsWallet && (!enabled || !market || (state.perpModernAction === 'open_position' && Boolean(market?.closeOnly))));
-        submit.textContent = state.perpKeeperWaking ? uiCopy('运维服务启动中，请稍候…', 'Starting operations, please wait…') : state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : !market ? uiCopy('请选择市场', 'Select market') : state.perpModernAction === 'close_position' ? uiCopy(`确认平仓 ${perpetualPairLabel(market)}`, `Close ${perpetualPairLabel(market)}`) : uiCopy(`确认开${isShort ? '空' : '多'} ${perpetualPairLabel(market)}`, `${isShort ? 'Short' : 'Long'} ${perpetualPairLabel(market)}`);
+        submit.textContent = state.perpKeeperWaking ? uiCopy('正在准备上链条件，请稍后…', 'Preparing on-chain conditions, please wait…') : state.perpSubmitting ? uiCopy('正在准备链上参数…', 'Preparing transaction…') : !state.account ? uiCopy('连接钱包后开仓', 'Connect wallet to trade') : !market ? uiCopy('请选择市场', 'Select market') : state.perpModernAction === 'close_position' ? uiCopy(`确认平仓 ${perpetualPairLabel(market)}`, `Close ${perpetualPairLabel(market)}`) : uiCopy(`确认开${isShort ? '空' : '多'} ${perpetualPairLabel(market)}`, `${isShort ? 'Short' : 'Long'} ${perpetualPairLabel(market)}`);
         submit.removeAttribute('data-toast');
       }
       const orderBox = $('[data-perps-order-box]');
@@ -1443,12 +1470,12 @@
         const waitingForClose = state.perpModernAction === 'close_position';
         const actionLabel = waitingForClose ? '平仓' : '开仓';
         const actionLabelEn = waitingForClose ? 'close' : 'open';
-        const phaseTitle = state.perpKeeperWaking ? `正在准备${actionLabel}服务` : state.perpOperationPhase === 'confirming' ? `${actionLabel}交易已广播` : state.perpOperationPhase === 'wallet' ? '等待钱包确认' : '正在准备链上参数';
-        const phaseTitleEn = state.perpKeeperWaking ? `Preparing ${actionLabelEn} service` : state.perpOperationPhase === 'confirming' ? `${actionLabelEn === 'close' ? 'Close' : 'Open'} transaction broadcast` : state.perpOperationPhase === 'wallet' ? 'Waiting for wallet confirmation' : 'Preparing transaction parameters';
+        const phaseTitle = state.perpKeeperWaking ? '正在准备上链条件' : state.perpOperationPhase === 'confirming' ? `${actionLabel}交易已广播` : state.perpOperationPhase === 'wallet' ? '等待钱包确认' : '正在准备链上参数';
+        const phaseTitleEn = state.perpKeeperWaking ? 'Preparing on-chain conditions' : state.perpOperationPhase === 'confirming' ? `${actionLabelEn === 'close' ? 'Close' : 'Open'} transaction broadcast` : state.perpOperationPhase === 'wallet' ? 'Waiting for wallet confirmation' : 'Preparing transaction parameters';
         const phaseDetail = state.perpKeeperWaking
           ? state.perpKeeperWakeAttempt > 0
             ? `后台正在进行第 ${state.perpKeeperWakeAttempt} 次就绪检查；页面会持续等待并在就绪后自动继续。当前交易尚未发送，请勿重复点击。`
-            : `后台正在启动服务；页面会持续等待并在就绪后自动继续本次${actionLabel}。当前交易尚未发送，请勿重复点击。`
+            : `正在准备本次${actionLabel}所需的上链条件；页面会在就绪后自动继续。当前交易尚未发送，请勿重复点击。`
           : state.perpOperationPhase === 'confirming'
             ? `本次${actionLabel}交易已经发送，正在等待链上确认。为避免重复交易，确认完成前相关按钮已锁定。`
             : state.perpOperationPhase === 'wallet'
@@ -6758,6 +6785,7 @@
         const view = viewButton.dataset.perpsView;
         $$('[data-perps-view]').forEach((node) => node.classList.toggle('active', node === viewButton));
         $$('[data-perps-panel]').forEach((node) => node.classList.toggle('active', node.dataset.perpsPanel === view));
+        if (view === 'onchain' && state.account) void loadPerpetualActivity().catch((error) => toastError(error, '链上记录加载失败'));
         return;
       }
       if (event.target.closest("[data-modern-perp-close]")) {

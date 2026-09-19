@@ -14,6 +14,9 @@ test('v13 preview uses the production adapter and fails closed for unsupported o
   assert.equal(root?.getAttribute('data-ui-preview'), 'v13');
   assert.equal(document.querySelectorAll('.perps-order-tabs [data-perps-order]').length, 1);
   assert.equal(document.querySelectorAll('.perps-toolbar [data-perps-mode]').length, 1);
+  assert.equal(document.querySelector('[data-perps-view="orders"]')?.textContent, '限价委托 (0)');
+  assert.equal(document.querySelectorAll('[data-perps-panel="orders"] .compact-order').length, 0);
+  assert.match(document.querySelector('[data-perps-panel="orders"]')?.textContent || '', /限价单暂未开放/);
   assert.ok(document.querySelector('[data-perps-leverage-range]'));
   assert.ok(document.querySelector('[data-perps-settlement-note]'));
   assert.ok(document.querySelector('#perps-price-limit'));

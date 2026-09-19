@@ -71,7 +71,7 @@ test("official Pump announcements and fail-closed perpetual product routes are w
   assert.match(bridge, /perpetualPanelActive/);
   assert.match(bridge, /!perpetualPanelActive\(\)/);
   assert.doesNotMatch(bridge, /if \(ui20260911\) void loadPerpetual\(\)/);
-  assert.match(bridge, /Keeper 正在续期链上心跳/);
+  assert.match(bridge, /正在准备上链条件，请稍后/);
   assert.match(bridge, /position limit exceeded/);
   assert.match(bridge, /开仓金额超出单仓上限/);
   assert.match(bridge, /showErrorDialog/);
@@ -148,7 +148,7 @@ test("perpetual terminal binds live candles, indexed activity, honest order capa
   assert.doesNotMatch(bridge, /\[data-perps-price\], \[data-perps-mark\]/);
   assert.match(bridge, /data-perps-chart-interval/);
   assert.match(bridge, /perpMarketActivity/);
-  assert.match(bridge, /当前合约仅支持钱包签名后立即上链的市价操作/);
+  assert.match(bridge, /限价单暂未开放/);
   assert.match(bridge, /当前合约未开放止盈止损条件单/);
   assert.match(bridge, /data-perp-activity-filter/);
   assert.match(bridge, /initializePerpetualForms/);
