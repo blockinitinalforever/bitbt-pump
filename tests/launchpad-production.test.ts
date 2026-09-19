@@ -148,6 +148,9 @@ test("perpetual terminal binds live candles, indexed activity, honest order capa
   assert.doesNotMatch(bridge, /\[data-perps-price\], \[data-perps-mark\]/);
   assert.match(bridge, /data-perps-chart-interval/);
   assert.match(bridge, /perpMarketActivity/);
+  assert.match(bridge, /const activity = state\.account \? personalActivity : perpMarketActivity\(market\)/);
+  assert.doesNotMatch(bridge, /personalActivity : perpMarketActivity\(market\)\)\.slice/);
+  assert.match(bridge, /state\.account && perpetualPanelActive\(\)[\s\S]*await loadPerpetualActivity\(\)/);
   assert.match(bridge, /限价单暂未开放/);
   assert.match(bridge, /当前合约未开放止盈止损条件单/);
   assert.match(bridge, /data-perp-activity-filter/);

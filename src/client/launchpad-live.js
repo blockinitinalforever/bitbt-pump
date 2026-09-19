@@ -1427,7 +1427,7 @@
         const decimals = Number(market?.quoteDecimals || 18);
         const quote = market?.quoteTokenSymbol || 'QUOTE';
         const personalActivity = state.perpActivity.filter((item) => market && Number(item.marketId) === Number(market.marketId));
-        const activity = (state.account ? personalActivity : perpMarketActivity(market)).slice(0, 5);
+        const activity = state.account ? personalActivity : perpMarketActivity(market);
         const rows = activity.map((item) => {
           const settled = ['close', 'liquidate', 'expire'].includes(item.eventType);
           const rawPnl = item.realizedPnlRaw == null ? '' : String(item.realizedPnlRaw);
@@ -1679,6 +1679,13 @@
     renderPerpetual();
     setPerpReadError('config');
     await Promise.all([loadPerpetualPosition(), loadPerpetualWalletBalance(), loadPerpetualServiceData(), loadPerpetualCandles()]);
+    if (state.account && perpetualPanelActive()) {
+      try {
+        await loadPerpetualActivity();
+      } catch (error) {
+        toastError(error, "链上记录加载失败");
+      }
+    }
   };
   const perpetualPanelActive = () => Boolean(root.querySelector('[data-panel="perpetual"].active, [data-panel="perps"].active'));
   const refreshPerpetualStatus = async () => {
