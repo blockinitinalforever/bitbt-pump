@@ -89,8 +89,8 @@ else
 fi
 
 PUMP_LIVE_HTML="$(curl -fsS -H 'Cache-Control: no-cache' "https://bitbt.fun/launchpad/bitbt-wallet-ui.html?release=$PUMP_RELEASE_SHA")"
-grep -Fq '/launchpad/bitbt-launch-ui-app.html?v=' <<<"$PUMP_LIVE_HTML"
-PUMP_LIVE_APP="$(curl -fsS -H 'Cache-Control: no-cache' "https://bitbt.fun/launchpad/bitbt-launch-ui-app.html?release=$PUMP_RELEASE_SHA")"
+grep -Fq '/launchpad/bitbt-launch-ui-app-v13.html?v=' <<<"$PUMP_LIVE_HTML"
+PUMP_LIVE_APP="$(curl -fsS -H 'Cache-Control: no-cache' "https://bitbt.fun/launchpad/bitbt-launch-ui-app-v13.html?release=$PUMP_RELEASE_SHA")"
 grep -Eq 'launch-logo-upload\.js\?v=[0-9a-f]{16}' <<<"$PUMP_LIVE_APP"
 grep -Eq 'launchpad-live\.js\?v=[0-9a-f]{16}' <<<"$PUMP_LIVE_APP"
 

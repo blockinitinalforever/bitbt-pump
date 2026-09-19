@@ -21,13 +21,13 @@ test('v13 preview uses the production adapter and fails closed for unsupported o
   assert.match(html, /<script src="\.\/launchpad-live\.js"><\/script>/);
 });
 
-test('v13 wrapper remains isolated from the current production entry', () => {
+test('v13 is the current production entry while the legacy inner shell remains available for rollback', () => {
   const wrapper = fs.readFileSync('public/launchpad/bitbt-wallet-ui-v13.html', 'utf8');
   const production = fs.readFileSync('public/launchpad/bitbt-wallet-ui.html', 'utf8');
 
   assert.match(wrapper, /bitbt-launch-ui-app-v13\.html/);
-  assert.match(production, /bitbt-launch-ui-app\.html/);
-  assert.doesNotMatch(production, /bitbt-launch-ui-app-v13\.html/);
+  assert.match(production, /bitbt-launch-ui-app-v13\.html/);
+  assert.ok(fs.existsSync('public/launchpad/bitbt-launch-ui-app.html'));
 });
 
 test('live adapter sanitizes v13 sample leverage claims and supports its history metrics', () => {

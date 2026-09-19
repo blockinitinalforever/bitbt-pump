@@ -1554,7 +1554,7 @@ test("every locale-relative Launchpad script has an executable public rewrite", 
   assert.match(nextConfig, /source: "\/pump"/);
   assert.match(nextConfig, /\/:locale\(en\|zh\)\/pump\/:address/);
   assert.doesNotMatch(nextConfig, /source: "\/:locale\/pump/);
-  assert.match(shell, /src="\/launchpad\/bitbt-launch-ui-app\.html"/);
+  assert.match(shell, /src="\/launchpad\/bitbt-launch-ui-app-v13\.html"/);
   assert.match(html, /<base\s+href="\/launchpad\/"\s*\/>/);
   for (const script of ["launch-logo-upload.js", "launchpad-live.js"]) {
     assert.match(html, new RegExp(`<script src="\\./${script.replaceAll(".", "\\.")}">`));

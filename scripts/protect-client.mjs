@@ -67,7 +67,12 @@ const listJavaScript = async (directory, prefix = "") => {
   return files.sort();
 };
 
-const productionHtml = ["bitbt-launch-ui-app.html", "bitbt-wallet-ui.html"];
+const productionHtml = [
+  "bitbt-launch-ui-app.html",
+  "bitbt-launch-ui-app-v13.html",
+  "bitbt-wallet-ui.html",
+  "bitbt-wallet-ui-v13.html",
+];
 for (const file of productionHtml) {
   const html = await fs.readFile(path.join(sourceRoot, file), "utf8");
   const inlineScripts = [...html.matchAll(/<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi)];
@@ -155,18 +160,32 @@ const launchAppOutput = await versionScriptReferences(launchAppSource);
 const launchAppVersion = sha256(launchAppOutput).slice(0, 16);
 await fs.writeFile(path.join(outputRoot, launchAppName), launchAppOutput, "utf8");
 
+const launchV13Name = "bitbt-launch-ui-app-v13.html";
+const launchV13Source = await fs.readFile(path.join(sourceRoot, launchV13Name), "utf8");
+const launchV13Output = await versionScriptReferences(launchV13Source);
+const launchV13Version = sha256(launchV13Output).slice(0, 16);
+await fs.writeFile(path.join(outputRoot, launchV13Name), launchV13Output, "utf8");
+
 const walletName = "bitbt-wallet-ui.html";
 const walletSource = await fs.readFile(path.join(sourceRoot, walletName), "utf8");
-const walletOutput = walletSource.replace(
-  /\/launchpad\/bitbt-launch-ui-app\.html(?:\?[^'"]*)?/g,
-  `/launchpad/bitbt-launch-ui-app.html?v=${launchAppVersion}`,
-);
+const versionWalletEntry = (html) => html
+  .replace(/\/launchpad\/bitbt-launch-ui-app-v13\.html(?:\?[^'"]*)?/g, `/launchpad/bitbt-launch-ui-app-v13.html?v=${launchV13Version}`)
+  .replace(/\/launchpad\/bitbt-launch-ui-app\.html(?:\?[^'"]*)?/g, `/launchpad/bitbt-launch-ui-app.html?v=${launchAppVersion}`);
+const walletOutput = versionWalletEntry(walletSource);
 await fs.writeFile(path.join(outputRoot, walletName), walletOutput, "utf8");
 
-manifest.html = productionHtml.map((file) => ({
-  file,
-  outputSha256: sha256(file === launchAppName ? launchAppOutput : walletOutput),
-}));
+const walletV13Name = "bitbt-wallet-ui-v13.html";
+const walletV13Source = await fs.readFile(path.join(sourceRoot, walletV13Name), "utf8");
+const walletV13Output = versionWalletEntry(walletV13Source);
+await fs.writeFile(path.join(outputRoot, walletV13Name), walletV13Output, "utf8");
+
+const protectedHtml = new Map([
+  [launchAppName, launchAppOutput],
+  [launchV13Name, launchV13Output],
+  [walletName, walletOutput],
+  [walletV13Name, walletV13Output],
+]);
+manifest.html = productionHtml.map((file) => ({ file, outputSha256: sha256(protectedHtml.get(file)) }));
 
 await fs.writeFile(
   path.join(root, ".next", "client-protection-manifest.json"),
