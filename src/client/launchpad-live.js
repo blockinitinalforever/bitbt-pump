@@ -3617,26 +3617,51 @@
         exportButton.disabled = !filteredActivity.length;
         exportButton.title = '导出当前筛选下已加载的事件，不代表全部历史';
       }
-      const rows = filteredActivity.map(item => {
+      const historyDateLabel = (value, currentPosition) => {
+        if (currentPosition) return uiCopy('当前持仓', 'Open positions');
+        if (value === null || value === undefined || value === '') return uiCopy('日期未知', 'Unknown date');
+        const date = new Date(value || 0);
+        if (!Number.isFinite(date.getTime())) return uiCopy('日期未知', 'Unknown date');
+        const timeZone = typeof displayTimeZone === 'function' ? displayTimeZone() : undefined;
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          ...(timeZone ? { timeZone } : {}), year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+        return `${parts.year}/${parts.month}/${parts.day}`;
+      };
+      const groups = new Map();
+      filteredActivity.forEach(item => {
+        const key = historyDateLabel(item.updatedAt, item.currentPosition === true);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+      });
+      const rows = [...groups.entries()].map(([dateLabel, items]) => uiMarkup`<section class="wallet-history-group">
+        <h2>${escapeHtml(dateLabel)}</h2>
+        <div class="wallet-history-list">${items.map(item => {
         const itemMarket = state.perpMarkets.find(candidate => Number(candidate.marketId) === Number(item.marketId));
-        const logo = itemMarket?.tokenLogoUrl
-          ? `<img src="${escapeHtml(itemMarket.tokenLogoUrl)}" alt="${escapeHtml(itemMarket.tokenSymbol || '')}">`
-          : itemMarket?.tokenSymbol
-            ? `<span class="perps-letter-logo" aria-label="${escapeHtml(itemMarket.tokenSymbol)}">${escapeHtml(String(itemMarket.tokenSymbol).charAt(0).toUpperCase())}</span>`
-            : '';
         const hash = String(item.lastTxHash || '');
         const validHash = /^0x[0-9a-fA-F]{64}$/.test(hash);
         const currentPosition = item.currentPosition === true;
-        const label = currentPosition ? '当前未平仓位' : ({ open: '开仓', close: '平仓', liquidate: '清算', expire: '到期结算' }[item.eventType] || '未知事件');
-        return uiMarkup`<article class="onchain-row">
-          <div class="record-identity">${logo}<div><strong>${escapeHtml(itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`)}</strong><small>BSC · 区块 #${Number(item.blockNumber).toLocaleString('en-US')}</small></div></div>
-          <div class="record-cell"><strong>${label}</strong><span>${escapeHtml(short(item.traderAddress || ''))}</span></div>
-          <div class="record-cell"><span>成交价</span><strong>—</strong></div>
-          <div class="record-cell"><span>保证金 / 仓位</span><strong>—</strong></div>
-          <div><span class="record-status">${currentPosition ? '持仓中' : '已索引'}</span><div class="record-hash"><small>${escapeHtml(short(hash))}</small></div></div>
-          ${currentPosition ? uiMarkup`<button class="record-open" type="button" data-perp-close-market="${Number(item.marketId)}">去平仓</button>` : validHash ? uiMarkup`<a class="record-open" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${hash}`)}" target="_blank" rel="noopener noreferrer">详情</a>` : '<span class="record-open">哈希不可用</span>'}
-        </article>`;
-      }).join('');
+        const label = currentPosition
+          ? uiCopy('当前未平仓位', 'Open position')
+          : ({ open: uiCopy('开仓', 'Opened'), close: uiCopy('平仓', 'Closed'), liquidate: uiCopy('清算', 'Liquidated'), expire: uiCopy('到期结算', 'Expired') }[item.eventType] || uiCopy('合约事件', 'Contract event'));
+        const pair = itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`;
+        const quoteUnit = itemMarket?.quoteTokenSymbol || 'QUOTE';
+        const rawDelta = item.quoteDeltaRaw == null ? '' : String(item.quoteDeltaRaw);
+        const hasDelta = /^-?\d+$/.test(rawDelta);
+        const delta = hasDelta ? BigInt(rawDelta) : 0n;
+        const amount = hasDelta ? `${delta > 0n ? '+' : ''}${formatUnits(delta, Number(itemMarket?.quoteDecimals || 18))} ${quoteUnit}` : label;
+        const amountClass = hasDelta ? (delta > 0n ? 'up' : delta < 0n ? 'down' : '') : (item.eventType === 'open' || currentPosition ? 'up' : '');
+        const contract = short(state.perpConfig?.contractAddress || '');
+        const body = uiMarkup`<span class="wallet-history-icon" aria-hidden="true"><i class="ico" style="--icon:url('./assets/icons/lucide/file-signature.svg')"></i></span>
+          <span class="wallet-history-main"><strong>${uiCopy('合约交互', 'Contract interaction')}</strong><small>${escapeHtml(label)} · ${escapeHtml(pair)}</small><small>${escapeHtml(contract)} · ${uiCopy('区块', 'Block')} #${Number(item.blockNumber).toLocaleString('en-US')}${validHash ? ` · ${escapeHtml(short(hash))}` : ''}</small></span>
+          <span class="wallet-history-value ${amountClass}"><strong>${escapeHtml(amount)}</strong><small>${currentPosition ? uiCopy('点击前往平仓', 'Tap to close') : validHash ? uiCopy('查看链上详情', 'View on-chain') : uiCopy('交易哈希不可用', 'Transaction hash unavailable')}</small></span>
+          <span class="wallet-history-chevron" aria-hidden="true">›</span>`;
+        return currentPosition
+          ? uiMarkup`<button class="onchain-row wallet-history-row" type="button" data-perp-close-market="${Number(item.marketId)}">${body}</button>`
+          : validHash
+            ? uiMarkup`<a class="onchain-row wallet-history-row" href="${escapeHtml(`${NETWORKS.bsc.explorer}/tx/${hash}`)}" target="_blank" rel="noopener noreferrer">${body}</a>`
+            : uiMarkup`<div class="onchain-row wallet-history-row wallet-history-row-static">${body}</div>`;
+      }).join('')}</div></section>`).join('');
       const ledger = activityPanel.querySelector('.onchain-ledger');
       if (ledger) ledger.innerHTML = rows || `<p class="footer-note">${!isBscFeatureChain() ? '当前网络尚无永续事件索引。' : !state.account ? uiCopy("请连接钱包查看自己的交易记录。", "Connect your wallet to view your trades.") : state.perpHistoryBusy ? '正在加载逐笔记录…' : '当前筛选暂无已索引事件；这不代表钱包没有历史交易。'}</p>`;
       const errors = Object.values(state.perpReadErrors).filter(Boolean).join('；');

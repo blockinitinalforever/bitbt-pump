@@ -636,7 +636,7 @@ test('live history refresh preserves delivered shell and removes sample records'
   const toolbar = panel.querySelector('.ledger-toolbar');
   const overview = panel.querySelector('.record-overview');
   const hash = `0x${'a'.repeat(64)}`;
-  const state = { perpActivity: [{ marketId: 0, eventType: 'open', lastTxHash: hash, blockNumber: 12, traderAddress: '0x1234' }], perpMarkets: [], perpActivityFilter: 'all', account: '0x1234', perpHistoryBusy: false, perpReadErrors: {}, perpHistoryCursor: null };
+  const state = { perpActivity: [{ marketId: 0, eventType: 'open', lastTxHash: hash, blockNumber: 12, traderAddress: '0x1234', updatedAt: '2026-09-18T12:00:00Z' }], perpMarkets: [], perpConfig: { contractAddress: '0x375dcfa11d02813117830ac6d572f7f8b86b706d' }, perpActivityFilter: 'all', account: '0x1234', perpHistoryBusy: false, perpReadErrors: {}, perpHistoryCursor: null };
   const context = vm.createContext({ ...renderLocale(),
     state,
     $: (selector: string) => document.querySelector(selector),
@@ -654,8 +654,11 @@ test('live history refresh preserves delivered shell and removes sample records'
   assert.equal(panel.querySelector('.record-overview'), overview);
   assert.equal(panel.querySelectorAll('.record-overview > div').length, 4);
   assert.equal(panel.querySelectorAll('.onchain-row').length, 1);
-  assert.equal(panel.querySelector('.onchain-row')!.children.length, 6);
-  assert.equal(panel.querySelector('.record-open')!.getAttribute('href'), `https://bscscan.com/tx/${hash}`);
+  assert.equal(panel.querySelectorAll('.wallet-history-group').length, 1);
+  assert.equal(panel.querySelector('.wallet-history-group h2')!.textContent, '2026/09/18');
+  assert.equal(panel.querySelector('.onchain-row')!.children.length, 4);
+  assert.equal(panel.querySelector('.wallet-history-row')!.getAttribute('href'), `https://bscscan.com/tx/${hash}`);
+  assert.match(panel.querySelector('.wallet-history-row')!.textContent || '', /合约交互.*开仓.*0x375d/);
   assert.doesNotMatch(panel.textContent || '', /CASHCAT|MOONBUN|12,842|4.28M|记录已刷新|CSV 导出已准备/);
   assert.equal(panel.querySelector('[data-record-filter="long"]')!.hasAttribute('disabled'), true);
   state.account = '';
