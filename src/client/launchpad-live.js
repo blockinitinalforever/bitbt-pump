@@ -3738,15 +3738,29 @@
           : ({ open: uiCopy('开仓', 'Opened'), close: uiCopy('平仓', 'Closed'), liquidate: uiCopy('清算', 'Liquidated'), expire: uiCopy('到期结算', 'Expired') }[item.eventType] || uiCopy('合约事件', 'Contract event'));
         const pair = itemMarket ? perpetualPairLabel(itemMarket) : `Market #${Number(item.marketId)}`;
         const quoteUnit = itemMarket?.quoteTokenSymbol || 'QUOTE';
-        const rawDelta = item.quoteDeltaRaw == null ? '' : String(item.quoteDeltaRaw);
-        const hasDelta = /^-?\d+$/.test(rawDelta);
-        const delta = hasDelta ? BigInt(rawDelta) : 0n;
-        const amount = hasDelta ? `${delta > 0n ? '+' : ''}${formatUnits(delta, Number(itemMarket?.quoteDecimals || 18))} ${quoteUnit}` : label;
-        const amountClass = hasDelta ? (delta > 0n ? 'up' : delta < 0n ? 'down' : '') : (item.eventType === 'open' || currentPosition ? 'up' : '');
+        const rawPnl = item.realizedPnlRaw == null ? '' : String(item.realizedPnlRaw);
+        const hasPnl = /^-?\d+$/.test(rawPnl);
+        const pnl = hasPnl ? BigInt(rawPnl) : 0n;
+        const rawReturn = item.settlementPayoutRaw == null ? '' : String(item.settlementPayoutRaw);
+        const hasReturn = /^\d+$/.test(rawReturn);
+        const returned = hasReturn ? BigInt(rawReturn) : 0n;
+        const amount = hasPnl
+          ? `${pnl > 0n ? '+' : ''}${formatUnits(pnl, Number(itemMarket?.quoteDecimals || 18))} ${quoteUnit}`
+          : item.eventType === 'liquidate' && hasReturn
+            ? `${formatUnits(returned, Number(itemMarket?.quoteDecimals || 18))} ${quoteUnit}`
+            : label;
+        const amountClass = hasPnl ? (pnl > 0n ? 'up' : pnl < 0n ? 'down' : '') : (item.eventType === 'open' || currentPosition ? 'up' : '');
+        const valueNote = currentPosition
+          ? uiCopy('点击前往平仓', 'Tap to close')
+          : hasPnl
+            ? uiCopy('已实现盈亏', 'Realized PnL')
+            : item.eventType === 'liquidate' && hasReturn
+              ? uiCopy('清算后返还（事件未提供盈亏）', 'Post-liquidation return (PnL unavailable)')
+              : validHash ? uiCopy('查看链上详情', 'View on-chain') : uiCopy('交易哈希不可用', 'Transaction hash unavailable');
         const contract = short(state.perpConfig?.contractAddress || '');
         const body = uiMarkup`<span class="wallet-history-icon" aria-hidden="true"><i class="ico" style="--icon:url('./assets/icons/lucide/file-signature.svg')"></i></span>
           <span class="wallet-history-main"><strong>${uiCopy('合约交互', 'Contract interaction')}</strong><small>${escapeHtml(label)} · ${escapeHtml(pair)}</small><small>${escapeHtml(contract)} · ${uiCopy('区块', 'Block')} #${Number(item.blockNumber).toLocaleString('en-US')}${validHash ? ` · ${escapeHtml(short(hash))}` : ''}</small></span>
-          <span class="wallet-history-value ${amountClass}"><strong>${escapeHtml(amount)}</strong><small>${currentPosition ? uiCopy('点击前往平仓', 'Tap to close') : validHash ? uiCopy('查看链上详情', 'View on-chain') : uiCopy('交易哈希不可用', 'Transaction hash unavailable')}</small></span>
+          <span class="wallet-history-value ${amountClass}"><strong>${escapeHtml(amount)}</strong><small>${escapeHtml(valueNote)}</small></span>
           <span class="wallet-history-chevron" aria-hidden="true"><i class="ico sm" style="--icon:url('./assets/icons/lucide/chevron-right.svg')"></i></span>`;
         return currentPosition
           ? uiMarkup`<button class="onchain-row wallet-history-row" type="button" data-perp-close-market="${Number(item.marketId)}">${body}</button>`
@@ -6645,7 +6659,7 @@
       if (event.target.closest("[data-perp-activity-export]")) {
         event.preventDefault();
         const exportedActivity = filteredPerpetualActivity();
-        const rows = [["market_id", "trader", "event_type", "tx_hash", "block_number", "log_index", "indexed_at"], ...exportedActivity.map((item) => [item.marketId, item.traderAddress, item.eventType, item.lastTxHash || "", item.blockNumber, item.logIndex, item.updatedAt])];
+        const rows = [["market_id", "trader", "event_type", "realized_pnl_raw", "settlement_payout_raw", "settlement_fee_raw", "liquidation_reward_raw", "tx_hash", "block_number", "log_index", "indexed_at"], ...exportedActivity.map((item) => [item.marketId, item.traderAddress, item.eventType, item.realizedPnlRaw || "", item.settlementPayoutRaw || "", item.settlementFeeRaw || "", item.liquidationRewardRaw || "", item.lastTxHash || "", item.blockNumber, item.logIndex, item.updatedAt])];
         const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
         const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
         const link = document.createElement("a");

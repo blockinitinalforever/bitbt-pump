@@ -16,6 +16,9 @@ test('v13 preview uses the production adapter and fails closed for unsupported o
   assert.equal(document.querySelectorAll('.perps-toolbar [data-perps-mode]').length, 1);
   assert.ok(document.querySelector('[data-perps-leverage-range]'));
   assert.ok(document.querySelector('[data-perps-settlement-note]'));
+  assert.ok(document.querySelector('#perps-price-limit'));
+  assert.ok(document.querySelector('[data-perps-use-market-price]'));
+  assert.equal(document.querySelector('#perps-price-limit')?.hasAttribute('readonly'), false);
   assert.ok(document.querySelector('[data-panel="perps-onchain"] .onchain-ledger'));
   assert.equal(document.querySelector('.connect-global [data-wallet-copy]')?.textContent, '连接钱包');
   assert.ok(document.querySelector('[data-panel="live"] [data-market-stream-status]'));
