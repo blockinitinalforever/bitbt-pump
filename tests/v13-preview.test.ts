@@ -17,6 +17,7 @@ test('v13 preview uses the production adapter and fails closed for unsupported o
   assert.ok(document.querySelector('[data-perps-leverage-range]'));
   assert.ok(document.querySelector('[data-perps-settlement-note]'));
   assert.ok(document.querySelector('[data-panel="perps-onchain"] .onchain-ledger'));
+  assert.equal(document.querySelector('.connect-global [data-wallet-copy]')?.textContent, '连接钱包');
   assert.ok(document.querySelector('[data-panel="live"] [data-market-stream-status]'));
   assert.equal(document.querySelector('[data-panel="live"] [data-filter-value="create"]')?.textContent, '新币');
   assert.equal(document.querySelectorAll('[data-panel="rank"] [data-rank-filter]').length, 7);
