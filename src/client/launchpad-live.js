@@ -76,6 +76,7 @@
     perpHistoryCursor: null,
     perpHistoryBusy: false,
     perpReadErrors: {},
+    perpPlatformFeeClaims: [],
     perpServiceRequests: [],
     perpServiceBusy: false,
     kol: null,
@@ -1687,6 +1688,39 @@
       }
     }
   };
+  const loadPerpetualRevenue = async () => {
+    const current = beginPerpRead('revenue', false);
+    const account = state.account;
+    if (!account || !isBscFeatureChain()) {
+      state.perpPlatformFeeClaims = [];
+      renderVaults();
+      return;
+    }
+    const config = await api("v1/pump/perpetual/config");
+    const markets = config?.enabled ? await api("v1/pump/perpetual/markets") : [];
+    if (!current() || state.account !== account) return;
+    const uniqueQuotes = [];
+    const seenQuotes = new Set();
+    for (const market of Array.isArray(markets) ? markets : []) {
+      const quoteTokenAddress = String(market.quoteTokenAddress || '').toLowerCase();
+      if (!/^0x[0-9a-f]{40}$/.test(quoteTokenAddress) || seenQuotes.has(quoteTokenAddress)) continue;
+      seenQuotes.add(quoteTokenAddress);
+      uniqueQuotes.push(market);
+    }
+    const positions = await Promise.all(uniqueQuotes.map((market) => api(`v1/pump/perpetual/position?market_id=${Number(market.marketId)}&wallet_address=${encodeURIComponent(account)}`)));
+    if (!current() || state.account !== account) return;
+    state.perpConfig = config;
+    state.perpMarkets = Array.isArray(markets) ? markets : [];
+    state.perpPlatformFeeClaims = uniqueQuotes.map((market, index) => ({
+      marketId: Number(market.marketId),
+      quoteTokenAddress: String(market.quoteTokenAddress || '').toLowerCase(),
+      quoteTokenSymbol: market.quoteTokenSymbol || 'QUOTE',
+      quoteDecimals: Number(market.quoteDecimals || 18),
+      configuredRecipient: String(market.platformFeeRecipient || '').toLowerCase(),
+      amountRaw: /^\d+$/.test(String(positions[index]?.platformFeeClaimableRaw || '')) ? String(positions[index].platformFeeClaimableRaw) : '0',
+    }));
+    renderVaults();
+  };
   const perpetualPanelActive = () => Boolean(root.querySelector('[data-panel="perpetual"].active, [data-panel="perps"].active'));
   const refreshPerpetualStatus = async () => {
     if (!ui20260911 || !perpetualPanelActive() || !isBscFeatureChain() || perpStatusRefreshInFlight || state.perpKeeperWaking) return;
@@ -2027,6 +2061,41 @@
       return;
     }
     await submitPerpetualAction();
+  };
+  const claimPerpetualPlatformFees = async (marketId) => {
+    if (state.perpSubmitting) return;
+    if (!state.account) await connectWallet();
+    const claim = state.perpPlatformFeeClaims.find((item) => Number(item.marketId) === Number(marketId));
+    const market = state.perpMarkets.find((item) => Number(item.marketId) === Number(marketId));
+    if (!claim || !market || BigInt(claim.amountRaw || '0') <= 0n) throw new Error('当前钱包没有可领取的永续平台手续费');
+    const account = state.account;
+    const provider = selectedProvider();
+    const epoch = walletSessionEpoch;
+    const contract = String(state.perpConfig?.contractAddress || '').toLowerCase();
+    const current = () => walletSessionEpoch === epoch && state.account === account
+      && state.selectedChain === 'bsc' && selectedProvider() === provider
+      && String(state.perpConfig?.contractAddress || '').toLowerCase() === contract;
+    const assertContext = () => {
+      if (!current()) throw new Error('钱包、网络或永续合约已变化，请重新加载收入数据');
+    };
+    const request = { wallet_address: account, market_id: Number(market.marketId), action: 'claim_platform_fees' };
+    state.perpSubmitting = true;
+    renderVaults();
+    try {
+      const prepared = await preparePerpetualWhenReady(request, assertContext);
+      assertContext();
+      validatePreparedPerpetual(prepared, market, request);
+      await executePreparedPerpetual(prepared, market, request, undefined, assertContext);
+      toast(`永续平台手续费领取成功：${formatUnits(BigInt(claim.amountRaw), claim.quoteDecimals)} ${claim.quoteTokenSymbol}`);
+      try {
+        await loadPerpetualRevenue();
+      } catch {
+        toast('领取交易已成功，链上余额暂时刷新失败，请稍后重新打开收入中心', 6000);
+      }
+    } finally {
+      state.perpSubmitting = false;
+      renderVaults();
+    }
   };
   const pumpBasePath = () => "/pump";
   const routeTokenAddress = () => {
@@ -2580,11 +2649,17 @@
     text("[data-vault-count]", String(state.vaults.length));
     const rewardList = $(`[data-unified-revenue-list]`);
     if (rewardList) {
+      const perpetualFees = state.perpPlatformFeeClaims.map((claim) => {
+        const amount = BigInt(claim.amountRaw || '0');
+        const recipient = /^0x[0-9a-f]{40}$/.test(claim.configuredRecipient) ? short(claim.configuredRecipient) : '—';
+        return uiMarkup`<div class="profile-card vault-card"><div class="section-title"><h3>永续平台手续费</h3><span class="tag lime">链上实时</span></div><div class="review-row"><span>当前钱包可领取 · ${escapeHtml(claim.quoteTokenSymbol)}</span><strong>${escapeHtml(formatUnits(amount, claim.quoteDecimals))} ${escapeHtml(claim.quoteTokenSymbol)}</strong></div><div class="review-row"><span>当前市场手续费接收地址</span><strong>${escapeHtml(recipient)}</strong></div><p class="footer-note">只显示计入当前连接钱包的链上余额；历史收益不会因接收地址变更而迁移。</p><button class="primary" type="button" data-perp-fee-claim="${Number(claim.marketId)}" ${amount > 0n && !state.perpSubmitting ? '' : 'disabled'}>${state.perpSubmitting ? '等待钱包确认…' : amount > 0n ? `领取 ${escapeHtml(formatUnits(amount, claim.quoteDecimals))} ${escapeHtml(claim.quoteTokenSymbol)}` : '当前无可领取收益'}</button></div>`;
+      }).join('');
       const creator = state.creatorRewards.map((reward) => uiMarkup`<div class="profile-card vault-card"><div class="review-row"><span>创建者奖励 · ${escapeHtml(reward.status || "—")}</span><strong>${escapeHtml(baseUnits(reward.amount_wei))} ${escapeHtml(reward.quote_symbol || "BNB")}</strong></div></div>`).join("");
       const dividends = state.holderDividends.map((reward) => uiMarkup`<div class="profile-card vault-card"><div class="review-row"><span>持币分红 · ${escapeHtml(reward.symbol)}</span><strong>${escapeHtml(baseUnits(reward.claimable_wei))} ${escapeHtml(reward.quote_symbol)}</strong></div><button class="secondary" type="button" data-holder-dividend-claim="${escapeHtml(reward.token_address)}">领取持币分红</button></div>`).join("");
       const v3Rewards = state.v3FeeRewards.map((reward) => uiMarkup`<div class="profile-card vault-card"><div class="section-title"><h3>V3 LP 手续费奖励</h3><span class="tag lime">Epoch ${escapeHtml(reward.onchain_epoch)}</span></div><div class="review-row"><span>项目 / 奖励资产</span><strong>${escapeHtml(short(reward.token_address))} / ${escapeHtml(short(reward.reward_token_address))}</strong></div><div class="review-row"><span>${reward.claimed ? "已领取" : "可领取"}</span><strong>${escapeHtml(baseUnits(reward.amount_raw))}</strong></div><a class="review-row" href="https://bscscan.com/tx/${escapeHtml(reward.publish_tx_hash)}" target="_blank" rel="noopener noreferrer"><span>分配快照区块 ${Number(reward.snapshot_block).toLocaleString("en-US")}</span><strong>查看发布交易</strong></a>${reward.claim_transaction ? uiMarkup`<button class="secondary" type="button" data-v3-fee-claim="${escapeHtml(reward.id)}">领取 V3 手续费奖励</button>` : ""}</div>`).join("");
       const vaultRows = state.vaults.flatMap((vault) => vault.recipients.filter((item) => item.is_current_wallet).map((item) => uiMarkup`<div class="profile-card vault-card"><div class="review-row"><span>Vault 可领取 · ${escapeHtml(vault.quote_symbol)}</span><strong>${escapeHtml(baseUnits(item.claimable_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div><div class="review-row"><span>Vault 已领取</span><strong>${escapeHtml(baseUnits(item.claimed_wei))} ${escapeHtml(vault.quote_symbol)}</strong></div></div>`)).join("");
-      rewardList.innerHTML = creator || dividends || v3Rewards || vaultRows ? creator + dividends + v3Rewards + vaultRows : `<p class="footer-note">${state.account ? uiCopy("当前没有可展示的收入。", "No income available to display.") : "连接钱包后显示创建者奖励、持币分红和链上 Vault 收入。"}</p>`;
+      rewardList.innerHTML = perpetualFees || creator || dividends || v3Rewards || vaultRows ? perpetualFees + creator + dividends + v3Rewards + vaultRows : `<p class="footer-note">${state.account ? uiCopy("当前没有可展示的收入。", "No income available to display.") : "连接钱包后显示创建者奖励、持币分红和链上 Vault 收入。"}</p>`;
+      $$(`[data-perp-fee-claim]`).forEach((button) => button.addEventListener("click", () => claimPerpetualPlatformFees(button.dataset.perpFeeClaim).catch((error) => toastError(error, "永续平台手续费领取失败"))));
       $$(`[data-holder-dividend-claim]`).forEach((button) => button.addEventListener("click", () => claimHolderDividend(button.dataset.holderDividendClaim).catch((error) => toastError(error, "持币分红领取失败"))));
       $$(`[data-v3-fee-claim]`).forEach((button) => button.addEventListener("click", () => claimV3FeeReward(button.dataset.v3FeeClaim).catch((error) => toastError(error, "V3 手续费奖励领取失败"))));
     }
@@ -4663,6 +4738,7 @@
     state.perpQuoteBalance = null;
     state.perpServiceRequests = [];
     state.perpActivity = [];
+    state.perpPlatformFeeClaims = [];
     state.perpHistoryCursor = null;
     state.perpHistoryBusy = false;
     state.perpReadErrors = {};
@@ -6433,7 +6509,10 @@
     if ((name === "alerts" || name === "alert-center") && state.account) void loadUserPanels().catch((error) => toastError(error, "提醒加载失败"));
     if (name === "revenue-center" || name === "income-center") {
       renderVaults();
-      if (state.account) void loadVaults().catch((error) => toastError(error, "Vault 数据读取失败"));
+      if (state.account) {
+        void loadVaults().catch((error) => toastError(error, "Vault 数据读取失败"));
+        void loadPerpetualRevenue().catch((error) => toastError(error, "永续收益读取失败"));
+      }
     }
     if (name === "vault-store") {
       renderStrategyStore();
@@ -7295,6 +7374,7 @@
       userDataRequestSequence += 1;
       state.perpIndexedPositions = [];
       state.perpActivity = [];
+      state.perpPlatformFeeClaims = [];
       state.perpServiceRequests = [];
       state.perpHistoryCursor = null;
       state.perpHistoryBusy = false;

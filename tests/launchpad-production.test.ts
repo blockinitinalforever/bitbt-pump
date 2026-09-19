@@ -1760,6 +1760,11 @@ test("Split Vault and three-tier Vault Store stay SIWE-bound and fail closed bef
   assert.match(bridge, /if \(!state\.vaultConfig\?\.enabled\) throw new Error/);
   assert.match(bridge, /if \(!state\.strategyConfig\?\.enabled\) throw new Error/);
   assert.match(bridge, /for \(const item of claims\).*catch \(error\).*failures\.push/s);
+  for (const marker of ["loadPerpetualRevenue", "claimPerpetualPlatformFees", "data-perp-fee-claim", "永续平台手续费", "历史收益不会因接收地址变更而迁移"]) assert.match(bridge, new RegExp(marker));
+  assert.match(bridge, /action: 'claim_platform_fees'/);
+  assert.match(bridge, /BigInt\(claim\.amountRaw \|\| '0'\) <= 0n/);
+  assert.match(bridge, /validatePreparedPerpetual\(prepared, market, request\)/);
+  assert.match(bridge, /executePreparedPerpetual\(prepared, market, request/);
 });
 
 test("Developer Center exposes signed Webhook lifecycle without leaking its one-time secret", () => {
