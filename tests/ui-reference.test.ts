@@ -475,6 +475,21 @@ test('mobile wallet browsers never auto-zoom text entry controls', () => {
 test('mobile connected wallet keeps the shortened address visible', () => {
   const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8');
   assert.match(html, /<style id="bitbt-live-extensions">\s*@media\(max-width:560px\)[\s\S]*?\.connect-global span\s*\{display:block;[\s\S]*?text-overflow:ellipsis/);
+  const v13 = fs.readFileSync('public/launchpad/bitbt-launch-ui-app-v13.html', 'utf8');
+  assert.match(v13, /<style id="bitbt-v13-live-extensions">[\s\S]*?@media\(max-width:560px\)[\s\S]*?\.connect-global span\{display:block;[\s\S]*?text-overflow:ellipsis/);
+  assert.match(v13, /\.hero-launch:after\{content:"";[\s\S]*?arrow-up-right\.svg/);
+  assert.match(v13, /\.hero-launch \.launch-now:after\{content:"";[\s\S]*?arrow-up-right\.svg/);
+});
+
+test('v13 uses local icons instead of decorative Unicode glyphs', () => {
+  const html = fs.readFileSync('public/launchpad/bitbt-launch-ui-app-v13.html', 'utf8');
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  assert.doesNotMatch(html, />\s*[+→↓↑←↗↘‹›✓✕✖⚠]\s*</);
+  assert.doesNotMatch(html, /content:"(?:[+→↓↑←↗↘‹›✓✕✖⚠]|\\2197)"/);
+  assert.doesNotMatch(source, /wallet-history-chevron[^>]*>\s*›\s*</);
+  assert.doesNotMatch(source, /data-vault-remove-recipient[^>]*>\s*×\s*</);
+  assert.match(html, /assets\/icons\/lucide\/arrow-up-right\.svg/);
+  assert.match(source, /assets\/icons\/lucide\/chevron-right\.svg/);
 });
 
 test('every secondary workflow has an explicit return control', () => {

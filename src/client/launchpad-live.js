@@ -2418,7 +2418,7 @@
         const value = kind === "buy" ? `−${quoteAmount} ${quote}` : kind === "sell" ? `+${quoteAmount} ${quote}` : symbol;
         const detail = kind === "create" ? `${short(tx.token_address)} · ${tx.status || "—"}` : `${tokenAmount} ${symbol} · ${tx.status || "—"}`;
         const txHash = validTxHash(tx.tx_hash);
-        const content = `<span class="wallet-history-icon" aria-hidden="true"><i class="ico" style="--icon:url('./assets/icons/lucide/${kind === "sell" ? "arrow-up-right" : kind === "buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><span class="wallet-history-main"><strong>${escapeHtml(label)} · ${escapeHtml(symbol)}</strong><small>${escapeHtml(detail)}</small><small>${escapeHtml(txHash ? short(txHash) : short(tx.token_address))} · ${escapeHtml(age(tx.created_at))}</small></span><span class="wallet-history-value ${kind === "sell" ? "up" : kind === "buy" ? "down" : ""}"><strong>${escapeHtml(value)}</strong><small>${txHash ? uiCopy("查看链上详情", "View on-chain") : uiCopy("链上哈希不可用", "Transaction hash unavailable")}</small></span><span class="wallet-history-chevron" aria-hidden="true">›</span>`;
+        const content = `<span class="wallet-history-icon" aria-hidden="true"><i class="ico" style="--icon:url('./assets/icons/lucide/${kind === "sell" ? "arrow-up-right" : kind === "buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><span class="wallet-history-main"><strong>${escapeHtml(label)} · ${escapeHtml(symbol)}</strong><small>${escapeHtml(detail)}</small><small>${escapeHtml(txHash ? short(txHash) : short(tx.token_address))} · ${escapeHtml(age(tx.created_at))}</small></span><span class="wallet-history-value ${kind === "sell" ? "up" : kind === "buy" ? "down" : ""}"><strong>${escapeHtml(value)}</strong><small>${txHash ? uiCopy("查看链上详情", "View on-chain") : uiCopy("链上哈希不可用", "Transaction hash unavailable")}</small></span><span class="wallet-history-chevron" aria-hidden="true"><i class="ico sm" style="--icon:url('./assets/icons/lucide/chevron-right.svg')"></i></span>`;
         return txHash ? `<a class="activity-card wallet-history-row" href="${escapeHtml(selectedNetwork().explorer)}/tx/${txHash}" target="_blank" rel="noopener noreferrer">${content}</a>` : `<div class="activity-card wallet-history-row wallet-history-row-static">${content}</div>`;
       }).join("")}</div></section>`).join("");
       activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", groups || uiMarkup`<p class="footer-note">${state.account ? uiCopy("当前筛选暂无真实交易记录。", "No real transactions match this filter.") : uiCopy("连接并验证钱包后显示真实交易记录。", "Connect and verify your wallet to view real transactions.")}</p>`);
@@ -2486,7 +2486,7 @@
       if (list.children.length >= 10) return toast("最多支持 10 个收款地址");
       const row = document.createElement("div");
       row.className = "vault-recipient-row";
-      row.innerHTML = `<input class="field" data-vault-recipient-address placeholder="0x 收款地址" value="${escapeHtml(address)}"><input class="field" data-vault-recipient-bps inputmode="numeric" placeholder="bps" value="${escapeHtml(bps)}"><button type="button" data-vault-remove-recipient aria-label="删除">×</button>`;
+      row.innerHTML = `<input class="field" data-vault-recipient-address placeholder="0x 收款地址" value="${escapeHtml(address)}"><input class="field" data-vault-recipient-bps inputmode="numeric" placeholder="bps" value="${escapeHtml(bps)}"><button type="button" data-vault-remove-recipient aria-label="删除"><i class="ico sm" aria-hidden="true" style="--icon:url('./assets/icons/lucide/x.svg')"></i></button>`;
       row.querySelector("[data-vault-remove-recipient]")?.addEventListener("click", () => {
         if (list.children.length <= 1) return toast("至少保留一个收款地址");
         row.remove();
@@ -3730,7 +3730,7 @@
         const body = uiMarkup`<span class="wallet-history-icon" aria-hidden="true"><i class="ico" style="--icon:url('./assets/icons/lucide/file-signature.svg')"></i></span>
           <span class="wallet-history-main"><strong>${uiCopy('合约交互', 'Contract interaction')}</strong><small>${escapeHtml(label)} · ${escapeHtml(pair)}</small><small>${escapeHtml(contract)} · ${uiCopy('区块', 'Block')} #${Number(item.blockNumber).toLocaleString('en-US')}${validHash ? ` · ${escapeHtml(short(hash))}` : ''}</small></span>
           <span class="wallet-history-value ${amountClass}"><strong>${escapeHtml(amount)}</strong><small>${currentPosition ? uiCopy('点击前往平仓', 'Tap to close') : validHash ? uiCopy('查看链上详情', 'View on-chain') : uiCopy('交易哈希不可用', 'Transaction hash unavailable')}</small></span>
-          <span class="wallet-history-chevron" aria-hidden="true">›</span>`;
+          <span class="wallet-history-chevron" aria-hidden="true"><i class="ico sm" style="--icon:url('./assets/icons/lucide/chevron-right.svg')"></i></span>`;
         return currentPosition
           ? uiMarkup`<button class="onchain-row wallet-history-row" type="button" data-perp-close-market="${Number(item.marketId)}">${body}</button>`
           : validHash
@@ -5383,7 +5383,7 @@
     const feeAmount = decimal(response.fee_quote ?? response.fee_bnb);
     text("[data-quote-output]", `${baseUnits(state.quote.output, 8)} ${outputUnit}`);
     text("[data-quote-min]", `${baseUnits(state.quote.minOut.toString(), 8)} ${outputUnit}`);
-    text("[data-quote-route]", isDex ? `${state.detail.quote_token} ↔ ${state.detail.dex_profile === "pancakeswap_v2" ? "PancakeSwap V2" : state.detail.dex_profile} ↔ ${state.detail.symbol}` : side === "buy" ? `${state.detail.quote_token} → 联合曲线` : `联合曲线 → ${state.detail.quote_token}`);
+    text("[data-quote-route]", isDex ? `${state.detail.quote_token} / ${state.detail.dex_profile === "pancakeswap_v2" ? "PancakeSwap V2" : state.detail.dex_profile} / ${state.detail.symbol}` : side === "buy" ? `${state.detail.quote_token} / 联合曲线` : `联合曲线 / ${state.detail.quote_token}`);
     text("[data-quote-fee]", isDex ? "PancakeSwap 池费已计入报价" : feeRate ? `${feeRate} · ${feeAmount} ${state.detail.quote_token}` : `${feeAmount} ${state.detail.quote_token}`);
     text("[data-protocol-fee]", isDex ? "DEX 池费 + 代币税（如有）" : feeRate || "以实时报价为准");
     text("[data-slippage-value], [data-slippage-label]", `${(state.quote.slippageBps / 100).toFixed(0)}% · 固定`);
