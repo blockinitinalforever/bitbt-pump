@@ -1313,6 +1313,9 @@ test("a regular browser can connect through WalletConnect and exposes wallet-app
   app.window.document.querySelector(".connect-global")?.dispatchEvent(new app.window.Event("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 450));
   const buttons = [...app.window.document.querySelectorAll(".wallet-provider-list button")];
+  const supportedWallets = [...app.window.document.querySelectorAll(".wallet-provider-supported img")];
+  assert.deepEqual(supportedWallets.map((icon) => icon.getAttribute("alt")), ["MetaMask", "OKX Wallet", "TokenPocket", "Binance Wallet", "Trust Wallet"]);
+  assert.ok(buttons.every((button) => button.querySelector(".wallet-provider-icon")), "wallet choice is missing its brand logo");
   assert.ok(buttons.some((button) => button.textContent?.includes("OKX Wallet App")));
   assert.ok(buttons.some((button) => button.textContent?.includes("MetaMask App")));
   assert.ok(buttons.some((button) => button.textContent?.includes("Trust Wallet App")));
@@ -1322,6 +1325,8 @@ test("a regular browser can connect through WalletConnect and exposes wallet-app
   assert.match(html, /wss:\/\/\*\.walletconnect\.org/);
   assert.match(html, /https:\/\/fonts\.reown\.com/);
   assert.match(walletConfigRoute, /api\/v1\/connect\/capabilities/);
+  assert.match(walletConnectBridge, /showQrModal:\s*true/);
+  assert.match(walletConnectBridge, /enableExplorer:\s*true/);
   for (const method of ["personal_sign", "eth_sendTransaction", "eth_estimateGas"]) assert.match(walletConnectBridge, new RegExp(method));
   const walletConnect = buttons.find((button) => button.textContent?.includes("WalletConnect"));
   assert.ok(walletConnect, "WalletConnect choice was not rendered in a regular browser");

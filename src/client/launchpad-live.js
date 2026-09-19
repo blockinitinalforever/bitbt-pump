@@ -282,21 +282,25 @@
     return [
       {
         name: "OKX Wallet App",
+        brand: "okx",
         note: "在 OKX Wallet DApp 浏览器打开",
         url: `https://www.okx.com/download?deeplink=${encodeURIComponent(okxDeepLink)}`,
       },
       {
         name: "MetaMask App",
+        brand: "metamask",
         note: "在 MetaMask 浏览器打开",
         url: `https://metamask.app.link/dapp/${dappWithoutScheme}`,
       },
       {
         name: "Trust Wallet App",
+        brand: "trust",
         note: "在 Trust Wallet 浏览器打开",
         url: `https://link.trustwallet.com/open_url?coin_id=20000714&url=${encodeURIComponent(dappUrl)}`,
       },
       {
         name: "TokenPocket App",
+        brand: "tokenpocket",
         note: "在 TokenPocket DApp 浏览器打开",
         url: `tpdapp://open?params=${encodeURIComponent(JSON.stringify({ url: dappUrl, chain: "BSC", source: "BitBT Pump" }))}`,
       },
@@ -351,6 +355,17 @@
     const popup = window.open(url, "_blank", "noopener,noreferrer");
     if (!popup) window.location.href = url;
   };
+  const walletBrand = (name = "", rdns = "") => {
+    const identity = `${name} ${rdns}`.toLowerCase();
+    if (/walletconnect/.test(identity)) return "walletconnect";
+    if (/okx|okex/.test(identity)) return "okx";
+    if (/binance/.test(identity)) return "binance";
+    if (/tokenpocket|token pocket/.test(identity)) return "tokenpocket";
+    if (/metamask/.test(identity)) return "metamask";
+    if (/trust/.test(identity)) return "trust";
+    return "wallet";
+  };
+  const walletBrandIcon = (brand) => `./assets/wallets/${brand}.svg`;
   const chooseAnnouncedProvider = () => {
     if (providerSelectionPromise) return providerSelectionPromise;
     const choices = announcedProviders.filter((entry) => !entry.trustedDirect && !entry.userApproved && isEvmProvider(entry.provider));
@@ -366,20 +381,50 @@
       title.textContent = "选择钱包";
       const note = document.createElement("p");
       note.textContent = "请选择你当前正在使用的钱包。只有确认后，页面才会请求连接和签名。";
+      const supported = document.createElement("div");
+      supported.className = "wallet-provider-supported";
+      supported.setAttribute("aria-label", "支持的钱包");
+      [
+        ["metamask", "MetaMask"],
+        ["okx", "OKX Wallet"],
+        ["tokenpocket", "TokenPocket"],
+        ["binance", "Binance Wallet"],
+        ["trust", "Trust Wallet"],
+      ].forEach(([brand, label]) => {
+        const badge = document.createElement("span");
+        badge.title = label;
+        const icon = document.createElement("img");
+        icon.src = walletBrandIcon(brand);
+        icon.alt = label;
+        icon.width = 28;
+        icon.height = 28;
+        badge.appendChild(icon);
+        supported.appendChild(badge);
+      });
       const list = document.createElement("div");
       list.className = "wallet-provider-list";
       const cleanup = () => {
         overlay.remove();
         providerSelectionPromise = null;
       };
-      const addChoice = (nameText, noteText, onClick) => {
+      const addChoice = (nameText, noteText, onClick, brand = walletBrand(nameText)) => {
         const button = document.createElement("button");
         button.type = "button";
+        button.className = "wallet-provider-choice";
+        const icon = document.createElement("img");
+        icon.className = "wallet-provider-icon";
+        icon.src = walletBrandIcon(brand);
+        icon.alt = "";
+        icon.width = 42;
+        icon.height = 42;
+        const copy = document.createElement("span");
+        copy.className = "wallet-provider-copy";
         const name = document.createElement("strong");
         name.textContent = nameText;
         const note = document.createElement("small");
         note.textContent = noteText;
-        button.append(name, note);
+        copy.append(name, note);
+        button.append(icon, copy);
         button.addEventListener("click", onClick);
         list.appendChild(button);
         return button;
@@ -391,7 +436,7 @@
           sessionStorage.setItem(PROVIDER_KIND_KEY, "injected");
           cleanup();
           resolve(entry.provider);
-        });
+        }, walletBrand(entry.info.name, entry.info.rdns));
         button.dataset.eip6963Provider = entry.info.rdns || entry.info.name || "provider";
       });
       addChoice("WalletConnect", "扫码或选择 OKX、TokenPocket、Binance、MetaMask 等钱包", () => {
@@ -413,8 +458,8 @@
             });
             toastError(error, "WalletConnect 连接失败，请重试");
           });
-      });
-      walletDeepLinks().forEach((wallet) => addChoice(wallet.name, wallet.note, () => openWalletApp(wallet.url)));
+      }, "walletconnect");
+      walletDeepLinks().forEach((wallet) => addChoice(wallet.name, wallet.note, () => openWalletApp(wallet.url), wallet.brand));
       const cancel = document.createElement("button");
       cancel.type = "button";
       cancel.className = "wallet-provider-cancel";
@@ -423,7 +468,7 @@
         cleanup();
         reject(new Error("已取消钱包连接"));
       });
-      panel.append(title, note, list, cancel);
+      panel.append(title, note, supported, list, cancel);
       overlay.appendChild(panel);
       root.appendChild(overlay);
       list.querySelector("button")?.focus();
