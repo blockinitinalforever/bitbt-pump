@@ -1727,7 +1727,7 @@ test("Pump proxy hides wallet RPC credentials and protects every write endpoint"
   assert.match(proxy, /delete payload\.data\.rpcFallback/);
   assert.match(proxy, /SIWE_REQUIRED_ENDPOINTS/);
   assert.match(proxy, /SIWE_REQUIRED_ENDPOINTS = new Set\(\[[\s\S]*v1\/pump\/wallet-activity/);
-  for (const endpoint of ["v1/upload/image", "v1/token/prepare-launch", "v1/token/launch"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
+  for (const endpoint of ["v1/upload/image", "v1/token/prepare-launch", "v1/token/launch", "v1/pump/perpetual/fee-claims"]) assert.match(proxy, new RegExp(endpoint.replaceAll("/", "\\/")));
   assert.match(proxy, /SIWE session required for this operation/);
   assert.match(proxy, /request\.headers\.get\("authorization"\)\?\.startsWith\("Bearer "\)/);
   assert.match(proxy, /export async function HEAD/);
