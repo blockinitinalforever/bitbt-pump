@@ -6320,7 +6320,10 @@
     $$('[data-launch-result-share], [data-launch-result-open]').forEach(button => { button.disabled = !token; });
   };
   let actionBackScreen = 'profile';
-  const mainScreens = ['discover', 'perps', 'rank', 'create-mode', 'profile'];
+  // Keep the mobile tab bar available on every destination represented by a
+  // production bottom-nav item. v13 uses `live` where the legacy shell uses
+  // `perps`, so both are primary destinations for the shared adapter.
+  const mainScreens = ['discover', 'live', 'perps', 'rank', 'create-mode', 'profile'];
   const setGlobalMenuOpen = (open) => {
     root.classList.toggle('navigation-open', open);
     $('[data-global-menu-toggle]')?.setAttribute('aria-expanded', open ? 'true' : 'false');

@@ -315,18 +315,18 @@ test('mobile bottom stack keeps tabs last and removes the contact footer from th
   assert.equal(document.querySelector('.official-contact-footer')!.hasAttribute('hidden'), false);
 });
 
-test('bottom navigation visibility follows the five mobile primary screens, not transaction subpages', () => {
+test('bottom navigation visibility follows mobile primary screens, including v13 live, not transaction subpages', () => {
   const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
   const {document} = parseHTML(fs.readFileSync('public/launchpad/bitbt-launch-ui-app.html', 'utf8'));
   const start = source.indexOf('  const mainScreens =');
   const end = source.indexOf('  const show =', start);
   const apply = vm.runInNewContext(source.slice(start, end) + ';applyScreenChrome', {$:(s:string)=>document.querySelector(s),$$:(s:string)=>[...document.querySelectorAll(s)]});
-  for (const name of ['discover','perps','rank','create-mode','profile']) {
+  for (const name of ['discover','live','perps','rank','create-mode','profile']) {
     apply(name);
     assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), true);
     assert.equal(document.querySelectorAll('.has-bottom-nav').length, 1);
   }
-  for (const name of ['detail','trade','live','create-basic','create-economics','create-tax','create-review','perps-create-pool']) {
+  for (const name of ['detail','trade','create-basic','create-economics','create-tax','create-review','perps-create-pool']) {
     apply(name);
     assert.equal(document.querySelector('.bottom-nav')!.classList.contains('visible'), false);
     assert.equal(document.querySelectorAll('.has-bottom-nav').length, 0);
