@@ -1357,7 +1357,7 @@ test("a forged EIP-6963 OKX announcement cannot replace a directly injected wall
   assert.ok(app.providerCalls.includes("personal_sign"));
 });
 
-test("wallet activity loads buy, sell, and create once and filters them locally", async () => {
+test("wallet activity loads buy, sell, and create once and renders the v13 dated history locally", async () => {
   const account = "0x5945f53249015dae01fbfb039f5a64af5cff5629";
   const token = "0xb749f8fb754c583b0557cdedcd4b1c88df148888";
   let activityRequests = 0;
@@ -1397,6 +1397,20 @@ test("wallet activity loads buy, sell, and create once and filters them locally"
   window.document.querySelector('[data-history-filter="pump_buy"]')?.dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.equal(window.document.querySelectorAll('[data-panel="activity"] .activity-card').length, 1);
   assert.equal(activityRequests, 1, "local history filtering made an unnecessary API request");
+
+  const v13 = await boot(response, { account, session: { token: "session", address: account }, sourceHtml: v13Html, pathname: "/launchpad/bitbt-launch-ui-app-v13.html" });
+  for (let attempt = 0; attempt < 20 && v13.window.document.querySelectorAll('[data-panel="activity"] .activity-card').length !== 3; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+  const v13Activity = v13.window.document.querySelector('[data-panel="activity"]');
+  assert.equal(activityRequests, 2);
+  assert.equal(v13Activity?.querySelectorAll('.wallet-history-group').length, 1);
+  assert.equal(v13Activity?.querySelectorAll('.wallet-history-row').length, 3);
+  assert.match(v13Activity?.textContent || "", /买入 · TROLL/);
+  assert.match(v13Activity?.textContent || "", /−0\.001 BNB/);
+  assert.ok(v13Activity?.querySelector('[data-history-filter="pump_sell"]'));
+  v13Activity?.querySelector('[data-history-filter="pump_sell"]')?.dispatchEvent(new v13.window.Event("click", { bubbles: true }));
+  assert.equal(v13Activity?.querySelectorAll('.wallet-history-row').length, 1);
+  assert.match(v13Activity?.textContent || "", /卖出 · TROLL/);
+  assert.equal(activityRequests, 2, "v13 local history filtering made an unnecessary API request");
 });
 
 test("wallet position keeps BNB cost basis and USD valuation in the same unit", async () => {

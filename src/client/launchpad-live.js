@@ -2398,18 +2398,30 @@
     }
     const activity = $('[data-panel="activity"]');
     if (activity) {
-      activity.querySelectorAll(".activity-card, .footer-note").forEach((node) => node.remove());
-      const cards = visibleHistory
-        .map((tx) => {
-          const kind = activityType(tx);
-          const label = kind === "buy" ? uiCopy("买入", "Buy") : kind === "sell" ? uiCopy("卖出", "Sell") : kind === "create" ? uiCopy("创建代币", "Create Token") : "交易";
-          const amount = kind === "create" ? `${tx.symbol || tx.token_name || "—"} · ${short(tx.token_address)}` : `${decimal(tx.quote_amount)} ${tx.quote_token || "BNB"} · ${decimal(tx.token_amount)} ${tx.symbol || tx.token_name || "TOKEN"}`;
-          const txHash = validTxHash(tx.tx_hash);
-          const content = `<span class="activity-icon"><i class="ico" style="--icon:url('./assets/icons/lucide/${kind === "sell" ? "arrow-up-right" : kind === "buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><div><strong>${escapeHtml(label)} · ${escapeHtml(tx.token_name || tx.symbol || "—")}</strong><small>${escapeHtml(amount)} · ${escapeHtml(tx.status || "—")}</small></div><div class="right"><strong>${escapeHtml(txHash ? short(txHash) : "—")}</strong><small>${escapeHtml(age(tx.created_at))}</small></div>`;
-          return txHash ? `<a class="activity-card" href="${escapeHtml(selectedNetwork().explorer)}/tx/${txHash}" target="_blank" rel="noopener noreferrer">${content}</a>` : `<div class="activity-card">${content}</div>`;
-        })
-        .join("");
-      activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", cards || uiMarkup`<p class="footer-note">暂无真实交易记录。</p>`);
+      activity.querySelectorAll(".activity-card, .wallet-history-group, .footer-note").forEach((node) => node.remove());
+      const groupedHistory = new Map();
+      visibleHistory.forEach((tx) => {
+        const date = new Date(tx.created_at || 0);
+        const dateLabel = Number.isFinite(date.getTime())
+          ? date.toLocaleDateString(pumpLocale() === "zh" ? "zh-CN" : "en-CA", { timeZone: displayTimeZone() })
+          : uiCopy("日期未知", "Unknown date");
+        if (!groupedHistory.has(dateLabel)) groupedHistory.set(dateLabel, []);
+        groupedHistory.get(dateLabel).push(tx);
+      });
+      const groups = [...groupedHistory.entries()].map(([dateLabel, transactions]) => uiMarkup`<section class="wallet-history-group"><h2>${escapeHtml(dateLabel)}</h2><div class="wallet-history-list">${transactions.map((tx) => {
+        const kind = activityType(tx);
+        const label = kind === "buy" ? uiCopy("买入", "Buy") : kind === "sell" ? uiCopy("卖出", "Sell") : kind === "create" ? uiCopy("创建代币", "Create Token") : uiCopy("交易", "Transaction");
+        const symbol = tx.symbol || tx.token_name || "TOKEN";
+        const quote = tx.quote_token || "BNB";
+        const quoteAmount = decimal(tx.quote_amount);
+        const tokenAmount = decimal(tx.token_amount);
+        const value = kind === "buy" ? `−${quoteAmount} ${quote}` : kind === "sell" ? `+${quoteAmount} ${quote}` : symbol;
+        const detail = kind === "create" ? `${short(tx.token_address)} · ${tx.status || "—"}` : `${tokenAmount} ${symbol} · ${tx.status || "—"}`;
+        const txHash = validTxHash(tx.tx_hash);
+        const content = `<span class="wallet-history-icon" aria-hidden="true"><i class="ico" style="--icon:url('./assets/icons/lucide/${kind === "sell" ? "arrow-up-right" : kind === "buy" ? "arrow-down-left" : "waypoints"}.svg')"></i></span><span class="wallet-history-main"><strong>${escapeHtml(label)} · ${escapeHtml(symbol)}</strong><small>${escapeHtml(detail)}</small><small>${escapeHtml(txHash ? short(txHash) : short(tx.token_address))} · ${escapeHtml(age(tx.created_at))}</small></span><span class="wallet-history-value ${kind === "sell" ? "up" : kind === "buy" ? "down" : ""}"><strong>${escapeHtml(value)}</strong><small>${txHash ? uiCopy("查看链上详情", "View on-chain") : uiCopy("链上哈希不可用", "Transaction hash unavailable")}</small></span><span class="wallet-history-chevron" aria-hidden="true">›</span>`;
+        return txHash ? `<a class="activity-card wallet-history-row" href="${escapeHtml(selectedNetwork().explorer)}/tx/${txHash}" target="_blank" rel="noopener noreferrer">${content}</a>` : `<div class="activity-card wallet-history-row wallet-history-row-static">${content}</div>`;
+      }).join("")}</div></section>`).join("");
+      activity.querySelector(".filter-row")?.insertAdjacentHTML("afterend", groups || uiMarkup`<p class="footer-note">${state.account ? uiCopy("当前筛选暂无真实交易记录。", "No real transactions match this filter.") : uiCopy("连接并验证钱包后显示真实交易记录。", "Connect and verify your wallet to view real transactions.")}</p>`);
     }
     const profilePanel = $('[data-panel="profile"]');
     if (!profilePanel?.hasAttribute('data-reference-profile')) {
@@ -4177,6 +4189,18 @@
   const prepareV13ApiPanels = () => {
     if (root.dataset.uiPreview !== "v13") return;
     root.querySelector(".project-placements")?.remove();
+    root.querySelectorAll('[data-panel="activity"] [data-list-filter="activity"]').forEach((button) => {
+      const values = { all: "all", buy: "pump_buy", sell: "pump_sell", create: "launch" };
+      button.dataset.historyFilter = values[button.dataset.filterValue] || "all";
+      button.removeAttribute("data-list-filter");
+      button.removeAttribute("data-filter-value");
+    });
+    root.querySelectorAll('[data-panel="my-launches"] [data-list-filter="launches"]').forEach((button) => {
+      const values = { all: "all", curve: "curve", dex: "migrated", draft: "curve" };
+      button.dataset.launchFilter = values[button.dataset.filterValue] || "all";
+      button.removeAttribute("data-list-filter");
+      button.removeAttribute("data-filter-value");
+    });
     const marketStrip = root.querySelector("[data-panel='discover'] .market-strip");
     const marketStats = marketStrip?.querySelectorAll(":scope > div") || [];
     if (marketStats[1]) marketStats[1].innerHTML = '<span>24H LAUNCHES</span><strong data-market-launches>—</strong>';
