@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
+import { parseHTML } from 'linkedom';
+
+const previewPath = 'public/launchpad/bitbt-launch-ui-app-v13.html';
+
+test('v13 preview uses the production adapter and fails closed for unsupported order types', () => {
+  const html = fs.readFileSync(previewPath, 'utf8');
+  const { document } = parseHTML(html);
+  const root = document.querySelector('#bitbt-launch');
+
+  assert.equal(root?.getAttribute('data-ui-version'), '20260911');
+  assert.equal(root?.getAttribute('data-ui-preview'), 'v13');
+  assert.equal(document.querySelectorAll('.perps-order-tabs [data-perps-order]').length, 1);
+  assert.equal(document.querySelectorAll('.perps-toolbar [data-perps-mode]').length, 1);
+  assert.ok(document.querySelector('[data-perps-leverage-range]'));
+  assert.ok(document.querySelector('[data-perps-settlement-note]'));
+  assert.ok(document.querySelector('[data-panel="perps-onchain"] .onchain-ledger'));
+  assert.doesNotMatch(html, /const tokenCatalog|const perpsCatalog/);
+  assert.match(html, /<script src="\.\/launchpad-live\.js"><\/script>/);
+});
+
+test('v13 wrapper remains isolated from the current production entry', () => {
+  const wrapper = fs.readFileSync('public/launchpad/bitbt-wallet-ui-v13.html', 'utf8');
+  const production = fs.readFileSync('public/launchpad/bitbt-wallet-ui.html', 'utf8');
+
+  assert.match(wrapper, /bitbt-launch-ui-app-v13\.html/);
+  assert.match(production, /bitbt-launch-ui-app\.html/);
+  assert.doesNotMatch(production, /bitbt-launch-ui-app-v13\.html/);
+});
+
+test('live adapter sanitizes v13 sample leverage claims and supports its history metrics', () => {
+  const source = fs.readFileSync('src/client/launchpad-live.js', 'utf8');
+  assert.match(source, /\.record-overview > div, \.onchain-kpis > article/);
+  assert.match(source, /Keeper 待命是正常按需状态，不代表后台故障/);
+  assert.match(source, /1\[–-\]100×/);
+});

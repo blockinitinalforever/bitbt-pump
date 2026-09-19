@@ -3585,8 +3585,14 @@
         const node = activityPanel.querySelector(selector);
         if (node) node.textContent = value;
       };
-      set('.page-guide span', uiCopy("显示当前钱包已索引的真实事件和实时未平仓位；历史未回补。未提供的价格、杠杆和保证金显示 —，不使用原型数据。", "Shows indexed events and live open positions for this wallet; historical data is not backfilled. Missing prices, leverage and collateral show —, never sample data."));
-      const metrics = [...activityPanel.querySelectorAll('.record-overview > div')];
+      const historyGuide = uiCopy("显示当前钱包已索引的真实事件和实时未平仓位；历史未回补。未提供的价格、杠杆和保证金显示 —，不使用原型数据。", "Shows indexed events and live open positions for this wallet; historical data is not backfilled. Missing prices, leverage and collateral show —, never sample data.");
+      set('.page-guide span', historyGuide);
+      set('.onchain-intro h1', uiCopy('每一笔合约交互，都有链上凭证。', 'Every contract interaction has on-chain proof.'));
+      set('.onchain-intro p', historyGuide);
+      set('.onchain-sync span', 'V11 EVENT FEED');
+      set('.onchain-sync strong', uiCopy('BNB Chain 索引', 'BNB Chain index'));
+      set('.onchain-sync small', uiCopy('数据来自当前钱包的已索引事件', 'Data comes from indexed events for this wallet'));
+      const metrics = [...activityPanel.querySelectorAll('.record-overview > div, .onchain-kpis > article')];
       const values = [
         [uiCopy("已加载记录", "Loaded records"), String(state.perpActivity.length)],
         [uiCopy("开仓 / 当前仓位", "Opens / current positions"), String(state.perpActivity.filter(item => item.eventType === 'open').length)],
@@ -3596,9 +3602,20 @@
       metrics.forEach((node, index) => {
         const value = values[index];
         if (!value) return;
-        node.querySelector('span').textContent = value[0];
-        node.querySelector('strong').textContent = value[1];
+        const label = node.matches('.onchain-kpi') ? node.querySelector('div > span') : node.querySelector('span');
+        const metric = node.matches('.onchain-kpi') ? node.querySelector('div > strong') : node.querySelector('strong');
+        if (label) label.textContent = value[0];
+        if (metric) metric.textContent = value[1];
+        const note = node.matches('.onchain-kpi') ? node.querySelector('div > small') : node.querySelector('small');
+        if (note) note.textContent = uiCopy('仅统计当前已加载数据', 'Loaded data only');
       });
+      const explainer = activityPanel.querySelector('.onchain-explainer span');
+      if (explainer) explainer.textContent = uiCopy('当前只展示 BNB Chain V11 已索引记录；Keeper 待命是正常按需状态，不代表后台故障。', 'Only indexed BNB Chain V11 records are shown. Keeper standby is a normal on-demand state, not a backend failure.');
+      const controls = activityPanel.querySelector('.record-control-bar');
+      if (controls && !controls.dataset.liveActivityControls) {
+        controls.dataset.liveActivityControls = 'true';
+        controls.innerHTML = uiMarkup`<div class="record-filter-block"><span>记录类型</span><div class="record-filter-group" aria-label="记录类型筛选"><button class="active" type="button" data-record-filter="all">全部</button><button type="button" data-record-filter="open">开仓</button><button type="button" data-record-filter="closed">平仓 / 清算 / 结算</button></div></div><button class="secondary record-export" type="button"><i class="ico" style="--icon:url('./assets/icons/lucide/arrow-down.svg')"></i>导出 CSV</button>`;
+      }
       const refresh = activityPanel.querySelector('[data-perp-activity-refresh], .appbar button[aria-label="刷新记录"]');
       if (refresh) { refresh.removeAttribute('data-toast'); refresh.dataset.perpActivityRefresh = ''; }
       activityPanel.querySelectorAll('[data-record-filter]').forEach(button => {
@@ -3611,11 +3628,12 @@
         button.classList.toggle('active', state.perpActivityFilter === filter);
       });
       const exportButton = activityPanel.querySelector('.ledger-toolbar > button');
-      if (exportButton) {
-        exportButton.removeAttribute('data-toast');
-        exportButton.dataset.perpActivityExport = '';
-        exportButton.disabled = !filteredActivity.length;
-        exportButton.title = '导出当前筛选下已加载的事件，不代表全部历史';
+      const modernExportButton = exportButton || activityPanel.querySelector('.record-export');
+      if (modernExportButton) {
+        modernExportButton.removeAttribute('data-toast');
+        modernExportButton.dataset.perpActivityExport = '';
+        modernExportButton.disabled = !filteredActivity.length;
+        modernExportButton.title = '导出当前筛选下已加载的事件，不代表全部历史';
       }
       const historyDateLabel = (value, currentPosition) => {
         if (currentPosition) return uiCopy('当前持仓', 'Open positions');
@@ -3664,6 +3682,8 @@
       }).join('')}</div></section>`).join('');
       const ledger = activityPanel.querySelector('.onchain-ledger');
       if (ledger) ledger.innerHTML = rows || `<p class="footer-note">${!isBscFeatureChain() ? '当前网络尚无永续事件索引。' : !state.account ? uiCopy("请连接钱包查看自己的交易记录。", "Connect your wallet to view your trades.") : state.perpHistoryBusy ? '正在加载逐笔记录…' : '当前筛选暂无已索引事件；这不代表钱包没有历史交易。'}</p>`;
+      const ledgerMeta = activityPanel.querySelector('.ledger-meta');
+      if (ledgerMeta) ledgerMeta.innerHTML = uiMarkup`<span>当前显示 <strong>${filteredActivity.length}</strong> 条已加载记录</span><span><i></i>BNB Chain V11 · 以链上索引为准</span>`;
       const errors = Object.values(state.perpReadErrors).filter(Boolean).join('；');
       const footer = activityPanel.querySelector('.ledger-foot > span');
       if (footer) {
@@ -4171,6 +4191,23 @@
         });
         prototypePattern.lastIndex = 0;
       });
+      // The delivered v13 artwork describes capabilities beyond the deployed
+      // V11 contract. Remove those claims before the preview is revealed; real
+      // limits are written back later from the API response.
+      const unsupportedClaims = [
+        [/最高\s*100×/g, uiCopy('杠杆以市场参数为准', 'Leverage follows market parameters')],
+        [/1[–-]100×/g, uiCopy('杠杆以市场参数为准', 'Leverage follows market parameters')],
+        [/仅限双链/g, uiCopy('当前仅限 BNB Chain', 'BNB Chain only')],
+      ];
+      $$('*').forEach((node) => {
+        [...node.childNodes].filter((child) => child.nodeType === 3).forEach((child) => {
+          let value = String(child.textContent || '');
+          unsupportedClaims.forEach(([pattern, replacement]) => { value = value.replace(pattern, replacement); });
+          child.textContent = value;
+        });
+      });
+      const ticker = $('.trend-ticker');
+      if (ticker) ticker.innerHTML = uiCopy('<span class="trend-label"><i></i>真实市场数据</span><span class="trend-live"><i></i>正在连接数据流…</span>', '<span class="trend-label"><i></i>LIVE MARKET DATA</span><span class="trend-live"><i></i>Connecting…</span>');
     }
     $$("#launch-kline, #trade-kline").forEach((node) => {
       node.replaceChildren();
