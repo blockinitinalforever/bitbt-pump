@@ -17,6 +17,10 @@ test('v13 preview uses the production adapter and fails closed for unsupported o
   assert.ok(document.querySelector('[data-perps-leverage-range]'));
   assert.ok(document.querySelector('[data-perps-settlement-note]'));
   assert.ok(document.querySelector('[data-panel="perps-onchain"] .onchain-ledger'));
+  assert.ok(document.querySelector('[data-panel="live"] [data-market-stream-status]'));
+  assert.equal(document.querySelector('[data-panel="live"] [data-filter-value="create"]')?.textContent, '新币');
+  assert.equal(document.querySelectorAll('[data-panel="rank"] [data-rank-filter]').length, 7);
+  assert.equal(document.querySelectorAll('[data-panel="rank"] [data-rank-window]').length, 5);
   assert.doesNotMatch(html, /const tokenCatalog|const perpsCatalog/);
   assert.match(html, /<script src="\.\/launchpad-live\.js"><\/script>/);
 });
@@ -35,4 +39,11 @@ test('live adapter sanitizes v13 sample leverage claims and supports its history
   assert.match(source, /\.record-overview > div, \.onchain-kpis > article/);
   assert.match(source, /Keeper 待命是正常按需状态，不代表后台故障/);
   assert.match(source, /1\[–-\]100×/);
+});
+
+test('v13 live and ranking rows reset native button chrome and stay full width', () => {
+  const html = fs.readFileSync(previewPath, 'utf8');
+  assert.match(html, /button\.live-row,#bitbt-launch button\.rank-row\{width:100%/);
+  assert.match(html, /button\.rank-row\{grid-template-columns:24px 38px minmax\(0,1fr\)/);
+  assert.match(html, /button\.live-row\{grid-template-columns:38px minmax\(0,1fr\) auto/);
 });
