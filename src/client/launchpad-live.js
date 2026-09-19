@@ -4129,7 +4129,72 @@
     renderSelected();
     toast(favorite ? "已取消收藏" : "已加入自选");
   };
+  const prepareV13ApiPanels = () => {
+    if (root.dataset.uiPreview !== "v13") return;
+    root.querySelector(".project-placements")?.remove();
+    const marketStrip = root.querySelector("[data-panel='discover'] .market-strip");
+    const marketStats = marketStrip?.querySelectorAll(":scope > div") || [];
+    if (marketStats[1]) marketStats[1].innerHTML = '<span>24H LAUNCHES</span><strong data-market-launches>—</strong>';
+    if (marketStats[2]) marketStats[2].innerHTML = '<span>24H TRADES</span><strong data-market-trades>—</strong>';
+    const heroProof = root.querySelectorAll("[data-panel='discover'] .hero-proof > div");
+    if (heroProof[0]) heroProof[0].innerHTML = '<strong data-market-trades>—</strong><span>24H 成交笔数</span>';
+    if (heroProof[1]) heroProof[1].innerHTML = '<strong data-market-total>—</strong><span>真实项目</span>';
+    if (heroProof[2]) heroProof[2].innerHTML = '<strong>2</strong><span>已配置主网</span>';
+
+    const profile = root.querySelector("[data-panel='profile']");
+    if (profile) {
+      profile.setAttribute("data-reference-profile", "");
+      const profileConnect = profile.querySelector(".profile-connect-card");
+      profileConnect?.classList.add("connect");
+      profileConnect?.querySelector(".profile-connect-copy strong")?.setAttribute("data-wallet-copy", "");
+      const revenueFoot = profile.querySelector(".revenue-tool .tool-foot > span");
+      if (revenueFoot) revenueFoot.textContent = "以真实奖励账本为准";
+      const growthStats = profile.querySelectorAll(".growth-spotlight .growth-stats strong");
+      if (growthStats[0]) growthStats[0].textContent = "—";
+      if (growthStats[1]) { growthStats[1].textContent = "—"; growthStats[1].setAttribute("data-referral-activated", ""); }
+      const securityScore = profile.querySelector(".security-summary .security-score-copy > strong");
+      if (securityScore) securityScore.textContent = "—";
+      const quickRows = profile.querySelectorAll(".profile-quick-grid > button");
+      const announcementCopy = quickRows[0]?.querySelector("small");
+      const announcementCount = quickRows[0]?.querySelector(".notice-count");
+      if (announcementCopy) announcementCopy.innerHTML = '<span data-announcement-unread>0</span> 条未读';
+      if (announcementCount) announcementCount.setAttribute("data-announcement-unread", "");
+      const alertCopy = quickRows[1]?.querySelector("small");
+      if (alertCopy) alertCopy.innerHTML = '<span data-alert-total>0</span> 条开启';
+      profile.querySelector(".profile-support")?.remove();
+      const footer = profile.querySelector(":scope > .footer-note");
+      if (footer) footer.textContent = "BitBT Pump 是非托管、无需许可的发射与交易界面，不构成投资建议。";
+    }
+
+    const keepHeading = (panel) => [...panel.children].filter((node) => node.matches(".appbar,.page-title"));
+    const income = root.querySelector("[data-panel='income-center']");
+    if (income) {
+      income.replaceChildren(...keepHeading(income));
+      income.insertAdjacentHTML("beforeend", `<div class="account-metric-grid"><article><span>奖励账本</span><strong>API</strong><small>当前钱包真实记录</small></article><article><span>Split Vault</span><strong data-vault-count>0</strong><small data-vault-feature-status>读取配置中</small></article><article><span>自动分配</span><strong data-vault-keeper-status>读取配置中</strong><small>阈值 <span data-vault-keeper-threshold>—</span></small></article></div><div class="account-tabs"><button class="active" data-account-tab="income-overview">真实收入</button><button data-account-tab="income-split">Split Vault</button><button data-account-tab="income-records">说明</button></div><div class="account-panel active" data-account-panel="income-overview"><div data-unified-revenue-list><p class="footer-note">连接钱包后读取真实奖励账本。</p></div></div><div class="account-panel" data-account-panel="income-split"><div data-vault-list><p class="footer-note">连接并验证钱包后读取链上 Vault。</p></div></div><div class="account-panel" data-account-panel="income-records"><div class="account-card"><p class="footer-note">这里只展示 API 或链上已确认的数据；没有确认回执的金额不会显示为已到账。</p><button class="secondary" data-income-show-vaults>查看 Vault 与领取回执</button></div></div>`);
+    }
+
+    const developer = root.querySelector("[data-panel='developer-tools']");
+    if (developer) {
+      developer.replaceChildren(...keepHeading(developer));
+      developer.insertAdjacentHTML("beforeend", `<div class="account-card"><div class="card-heading"><div><h3>生产集成状态</h3><p>来自服务端状态接口，不展示演示密钥。</p></div><span class="tag" data-integration-status>CHECKING</span></div><div class="review-row"><span>API / 数据库</span><strong data-integration-api>读取中</strong></div><div class="review-row"><span>Webhook / Vault</span><strong data-integration-services>读取中</strong></div><div class="review-row"><span>合作方密钥</span><strong data-integration-partner-keys>读取中</strong></div></div><div class="account-card"><div class="card-heading"><div><h3>Webhook</h3><p>创建和删除均绑定当前 SIWE 钱包。</p></div><span class="tag" data-webhook-status>连接钱包后管理</span></div><label class="profile-field"><span>HTTPS 回调地址</span><input id="webhook-endpoint" placeholder="https://example.com/bitbt/events" aria-label="Webhook 回调地址"></label><div class="filter-row" data-webhook-events><button class="active" type="button" data-webhook-event="token.created">Token</button><button class="active" type="button" data-webhook-event="trade.buy">Buy</button><button class="active" type="button" data-webhook-event="trade.sell">Sell</button><button class="active" type="button" data-webhook-event="token.migrated">Migrated</button></div><button class="primary" type="button" data-webhook-create>创建 Webhook</button><div class="risk-note" data-webhook-secret hidden></div></div><div class="section-title"><h3>已创建 Webhook</h3><span class="tag" data-webhook-count>0</span></div><div data-webhook-list><p class="footer-note">连接钱包后读取。</p></div>`);
+    }
+
+    const invite = root.querySelector("[data-panel='invite-center']");
+    if (invite) {
+      invite.replaceChildren(...keepHeading(invite));
+      invite.insertAdjacentHTML("beforeend", `<div class="invite-reward-hero"><div class="invite-hero-copy"><span class="eyebrow">INVITE & EARN</span><h1>邀请与 KOL 数据</h1><p>邀请码、活动与 KOL 申请均绑定当前 SIWE 钱包。</p><div class="invite-code-line"><span><small>我的邀请码</small><strong data-referral-code>—</strong></span><button data-referral-copy-code>复制</button></div><div class="invite-share-row"><button class="primary" data-referral-create>生成我的邀请码</button><button class="secondary" data-referral-share="telegram">Telegram</button><button class="secondary" data-referral-share="twitter">X / Twitter</button></div></div><div class="rebate-card"><span>真实邀请数据</span><strong data-referral-counts>—</strong><div><span>累计邀请 / 已激活</span><span>奖励以真实账本为准</span></div></div></div><div class="invite-metric-grid"><article><span>累计邀请</span><strong data-referral-invited>—</strong><small>API 实时读取</small></article><article><span>已激活用户</span><strong data-referral-activated>—</strong><small>完成有效行为</small></article><article><span>上级邀请码</span><strong data-referrer-address>未绑定</strong><small>绑定后不可修改</small></article><article><span>KOL 状态</span><strong data-kol-status>未提交</strong><small>审核结果以 API 为准</small></article></div><div class="invite-content-grid"><article class="invite-card"><div class="card-heading"><div><h3>绑定邀请码</h3><p>仅在尚未绑定时提交。</p></div></div><label class="profile-field"><span>邀请码</span><input id="referral-code-input" maxlength="24"></label><button class="secondary" data-referral-bind>确认绑定</button></article><article class="invite-card"><div class="card-heading"><div><h3>KOL 申请</h3><p>提交或更新真实申请资料。</p></div></div><label class="profile-field"><span>社交主页</span><input id="kol-social-url" type="url"></label><label class="profile-field"><span>受众数量</span><input id="kol-audience-size" inputmode="numeric"></label><label class="profile-field"><span>备注</span><input id="kol-note"></label><button class="primary" data-kol-submit>提交 / 更新申请</button></article></div><div class="section-title"><h3>当前活动</h3><span>API</span></div><div data-campaign-list><p class="footer-note">连接钱包后读取。</p></div>`);
+    }
+
+    const alerts = root.querySelector("[data-panel='alert-center']");
+    if (alerts) {
+      alerts.replaceChildren(...keepHeading(alerts));
+      const alertTag = alerts.querySelector(".appbar > .tag");
+      if (alertTag) alertTag.innerHTML = '<span data-alert-total>0</span> 条开启';
+      alerts.insertAdjacentHTML("beforeend", `<div class="account-card"><div class="card-heading"><div><h3>新建提醒</h3><p>代币与类型均来自真实市场和提醒 API。</p></div></div><div class="alert-composer"><select id="alert-token-select" aria-label="选择提醒代币"><option value="">请选择代币</option></select><select id="alert-kind-select" aria-label="选择提醒类型"><option value="curve_80">联合曲线达到 80%</option><option value="curve_90">联合曲线达到 90%</option><option value="migrated">迁移完成</option></select><div><input id="alert-threshold-display" disabled value="80" aria-label="提醒阈值"><span>%</span></div></div><button class="primary" data-alert-create>创建提醒</button></div><div class="section-title"><h3>我的提醒</h3><span data-alert-record-count>0 条</span></div><div class="profile-menu-group" data-alert-list><p class="footer-note">连接钱包后显示真实提醒。</p></div>`);
+    }
+  };
   const clearPrototype = () => {
+    prepareV13ApiPanels();
     charts.forEach(({ chart }) => chart.remove?.());
     charts.clear();
     $$(".token-grid").forEach((node) => {

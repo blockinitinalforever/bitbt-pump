@@ -8,6 +8,7 @@ import { parseHTML } from "linkedom";
 const root = path.resolve(process.cwd());
 const html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app.html"), "utf8");
 const candidateHtml = fs.readFileSync(path.join(root, "public/launchpad/bitbt-ui-20260911-candidate.html"), "utf8");
+const v13Html = fs.readFileSync(path.join(root, "public/launchpad/bitbt-launch-ui-app-v13.html"), "utf8");
 const shell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const walletShell = fs.readFileSync(path.join(root, "public/launchpad/bitbt-wallet-ui.html"), "utf8");
 const bridge = fs.readFileSync(path.join(root, "src/client/launchpad-live.js"), "utf8");
@@ -374,6 +375,27 @@ test("2026-09-11 UI candidate clears prototype data and binds the first live-dat
   assert.equal((candidate.querySelector("[data-launch-publish]") as HTMLButtonElement).disabled, true);
   assert.doesNotMatch(candidate.querySelector('[data-panel="profile"]')?.textContent || "", /模拟|演示数据/);
   for (const sample of ["1,284", "$18.6M", "$721K", "2,840.62 USDT", "CASHCAT", "MOONBUN"]) assert.equal((candidate.textContent || "").includes(sample), false, `candidate leaked prototype value: ${sample}`);
+});
+
+test("v13 UI clears prototype financial data and binds the first live-data batch", async () => {
+  const tokenAddress = "0x1111111111111111111111111111111111111111";
+  const token = { token_name: "Real Alpha", symbol: "RALPHA", contract_address: tokenAddress, creator_address: "0x2222222222222222222222222222222222222222", quote_token: "BNB", status: "bonding", submitted_at: new Date().toISOString(), progress_percent: 42, current_price_quote: "0.0001", market_cap_quote: "10", volume_quote_24h: "2", trade_count_24h: 3 };
+  const response = async (input: string) => {
+    const url = String(input);
+    if (url.includes("v1/pump/market-activity")) return { ok: true, json: async () => ({ data: { activity: [], summary: { total_tokens: 1, launches_24h: 1, trades_24h: 3 } } }) };
+    if (url.includes("v1/pump/market")) return { ok: true, json: async () => ({ data: [token] }) };
+    if (url.includes("v1/pump/detail")) return { ok: true, json: async () => ({ data: { ...token, creator: token.creator_address, curve_address: "0x3333333333333333333333333333333333333333", total_raised_quote: "1" } }) };
+    if (url.includes("v1/pump/trades") || url.includes("v1/pump/candles") || url.includes("v1/pump/announcements") || url.includes("v1/market/favorites")) return { ok: true, json: async () => ({ data: [] }) };
+    if (url.includes("v1/app/config")) return { ok: true, json: async () => ({ data: { pump: {} } }) };
+    if (url.includes("v1/token/launch-options")) return { ok: true, json: async () => ({ data: { network: { id: "bsc", chain_id: 56, chain_id_hex: "0x38", native_symbol: "BNB", launch_enabled: true, trade_enabled: true }, quotes: [{ symbol: "BNB", address: "0x0000000000000000000000000000000000000000" }], dex_profiles: [{ id: "pancakeswap_v2", name: "PancakeSwap V2", enabled: true, lp_policy: "burn" }] } }) };
+    throw new Error(`unmocked ${url}`);
+  };
+  const { window } = await boot(response, { sourceHtml: v13Html, pathname: "/launchpad/bitbt-launch-ui-app-v13.html" });
+  const preview = window.document.querySelector('[data-ui-preview="v13"]');
+  assert.ok(preview);
+  assert.equal(preview.querySelector('[data-market-panel="spot"] [data-live-token]')?.textContent?.includes("RALPHA"), true);
+  const samples = ["CASHCAT", "MOONBUN", "AGENT404", "BITBULL", "BREAD", "1,284", "$18.6M", "$721K", "0.24 BNB", "1.28 BNB", "BITBT-71A4", "64,812,904"];
+  assert.deepEqual(samples.filter((sample) => (preview.textContent || "").includes(sample)), []);
 });
 
 test("production HTML boots with API failure without exposing prototype financial data", async () => {
