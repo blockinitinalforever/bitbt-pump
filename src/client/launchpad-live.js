@@ -77,6 +77,7 @@
     perpHistoryBusy: false,
     perpReadErrors: {},
     perpPlatformFeeClaims: [],
+    perpPlatformFeeClaimHistory: [],
     perpServiceRequests: [],
     perpServiceBusy: false,
     kol: null,
@@ -1693,6 +1694,7 @@
     const account = state.account;
     if (!account || !isBscFeatureChain()) {
       state.perpPlatformFeeClaims = [];
+      state.perpPlatformFeeClaimHistory = [];
       renderVaults();
       return;
     }
@@ -1707,7 +1709,22 @@
       seenQuotes.add(quoteTokenAddress);
       uniqueQuotes.push(market);
     }
-    const positions = await Promise.all(uniqueQuotes.map((market) => api(`v1/pump/perpetual/position?market_id=${Number(market.marketId)}&wallet_address=${encodeURIComponent(account)}`)));
+    const pendingKey = `bitbt_perp_fee_claim_confirmation:bsc:${String(config.contractAddress || '').toLowerCase()}:${account.toLowerCase()}`;
+    const pendingHash = readLocalPreference(pendingKey);
+    if (/^0x[0-9a-fA-F]{64}$/.test(pendingHash)) {
+      try {
+        await api("v1/pump/perpetual/fee-claims", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ walletAddress: account, txHash: pendingHash }),
+        });
+        writeLocalPreference(pendingKey, "");
+      } catch {}
+    }
+    const [positions, claimHistory] = await Promise.all([
+      Promise.all(uniqueQuotes.map((market) => api(`v1/pump/perpetual/position?market_id=${Number(market.marketId)}&wallet_address=${encodeURIComponent(account)}`))),
+      api(`v1/pump/perpetual/fee-claims?wallet_address=${encodeURIComponent(account)}`),
+    ]);
     if (!current() || state.account !== account) return;
     state.perpConfig = config;
     state.perpMarkets = Array.isArray(markets) ? markets : [];
@@ -1719,6 +1736,7 @@
       configuredRecipient: String(market.platformFeeRecipient || '').toLowerCase(),
       amountRaw: /^\d+$/.test(String(positions[index]?.platformFeeClaimableRaw || '')) ? String(positions[index].platformFeeClaimableRaw) : '0',
     }));
+    state.perpPlatformFeeClaimHistory = Array.isArray(claimHistory) ? claimHistory : [];
     renderVaults();
   };
   const perpetualPanelActive = () => Boolean(root.querySelector('[data-panel="perpetual"].active, [data-panel="perps"].active'));
@@ -2085,7 +2103,17 @@
       const prepared = await preparePerpetualWhenReady(request, assertContext);
       assertContext();
       validatePreparedPerpetual(prepared, market, request);
-      await executePreparedPerpetual(prepared, market, request, undefined, assertContext);
+      const txHash = await executePreparedPerpetual(prepared, market, request, undefined, assertContext);
+      const confirmationKey = `bitbt_perp_fee_claim_confirmation:bsc:${contract}:${account.toLowerCase()}`;
+      writeLocalPreference(confirmationKey, txHash);
+      try {
+        await api("v1/pump/perpetual/fee-claims", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ walletAddress: account, txHash }),
+        });
+        writeLocalPreference(confirmationKey, "");
+      } catch {}
       toast(`永续平台手续费领取成功：${formatUnits(BigInt(claim.amountRaw), claim.quoteDecimals)} ${claim.quoteTokenSymbol}`);
       try {
         await loadPerpetualRevenue();
@@ -2662,6 +2690,23 @@
       $$(`[data-perp-fee-claim]`).forEach((button) => button.addEventListener("click", () => claimPerpetualPlatformFees(button.dataset.perpFeeClaim).catch((error) => toastError(error, "永续平台手续费领取失败"))));
       $$(`[data-holder-dividend-claim]`).forEach((button) => button.addEventListener("click", () => claimHolderDividend(button.dataset.holderDividendClaim).catch((error) => toastError(error, "持币分红领取失败"))));
       $$(`[data-v3-fee-claim]`).forEach((button) => button.addEventListener("click", () => claimV3FeeReward(button.dataset.v3FeeClaim).catch((error) => toastError(error, "V3 手续费奖励领取失败"))));
+    }
+    const incomeRecordsPanel = $(`[data-account-panel="income-records"]`);
+    if (incomeRecordsPanel) {
+      const quoteDetails = new Map(state.perpMarkets.map((market) => [String(market.quoteTokenAddress || '').toLowerCase(), {
+        symbol: market.quoteTokenSymbol || 'QUOTE',
+        decimals: Number(market.quoteDecimals || 18),
+      }]));
+      const rows = state.perpPlatformFeeClaimHistory.map((record) => {
+        const quote = quoteDetails.get(String(record.quoteTokenAddress || '').toLowerCase()) || { symbol: 'QUOTE', decimals: 18 };
+        const amount = /^\d+$/.test(String(record.amountRaw || '')) ? BigInt(record.amountRaw) : 0n;
+        const hash = String(record.txHash || '').toLowerCase();
+        const transaction = /^0x[0-9a-f]{64}$/.test(hash)
+          ? `<a href="${escapeHtml(selectedNetwork().explorer)}/tx/${escapeHtml(hash)}" target="_blank" rel="noopener noreferrer">${escapeHtml(short(hash))}</a>`
+          : '—';
+        return uiMarkup`<div class="simple-ledger-row"><span><strong>永续平台手续费 · 已领取</strong><small>${escapeHtml(formatDate(record.confirmedAt))} · 区块 ${Number(record.blockNumber || 0).toLocaleString('en-US')} · ${transaction}</small></span><b class="up">+${escapeHtml(formatUnits(amount, quote.decimals))} ${escapeHtml(quote.symbol)}</b></div>`;
+      }).join('');
+      incomeRecordsPanel.innerHTML = `<div class="account-card" data-perp-fee-claim-history>${rows || `<p class="footer-note">${state.account ? '当前钱包暂无已领取的永续平台手续费记录。' : '连接并验证钱包后显示真实领取记录。'}</p>`}</div>`;
     }
     const claimAll = $(`[data-vault-claim-all]`);
     if (claimAll) claimAll.disabled = state.vaultBusy || (!state.vaults.some((vault) => vault.recipients.some((item) => item.is_current_wallet && BigInt(item.claimable_wei || "0") > 0n)) && !state.holderDividends.some((item) => BigInt(item.claimable_wei || "0") > 0n) && !state.v3FeeRewards.some((item) => item.claim_transaction && !item.claimed && BigInt(item.amount_raw || "0") > 0n));
@@ -4739,6 +4784,7 @@
     state.perpServiceRequests = [];
     state.perpActivity = [];
     state.perpPlatformFeeClaims = [];
+    state.perpPlatformFeeClaimHistory = [];
     state.perpHistoryCursor = null;
     state.perpHistoryBusy = false;
     state.perpReadErrors = {};
@@ -7375,6 +7421,7 @@
       state.perpIndexedPositions = [];
       state.perpActivity = [];
       state.perpPlatformFeeClaims = [];
+      state.perpPlatformFeeClaimHistory = [];
       state.perpServiceRequests = [];
       state.perpHistoryCursor = null;
       state.perpHistoryBusy = false;
