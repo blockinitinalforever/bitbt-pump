@@ -43,7 +43,7 @@ test('live adapter sanitizes v13 sample leverage claims and supports its history
 
 test('v13 live and ranking rows reset native button chrome and stay full width', () => {
   const html = fs.readFileSync(previewPath, 'utf8');
-  assert.match(html, /button\.live-row,#bitbt-launch button\.rank-row\{width:100%/);
+  assert.match(html, /button\.live-row,#bitbt-launch button\.rank-row\{box-sizing:border-box;width:100%/);
   assert.match(html, /button\.rank-row\{grid-template-columns:24px 38px minmax\(0,1fr\)/);
   assert.match(html, /button\.live-row\{grid-template-columns:38px minmax\(0,1fr\) auto/);
 });
